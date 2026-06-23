@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# COGNOS run artifacts (experiment runs are reproducible; don't commit by default)
+runs/
+*.joblib
+*.pkl
+evals/report.json
+evals/_data/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local secrets
+.env

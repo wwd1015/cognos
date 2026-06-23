@@ -1,0 +1,51 @@
+# COGNOS eval cases.
+#
+# Each case runs the synthetic end-to-end demo for one task type and asserts the
+# expected shape of the run summary. The score.py harness invokes
+#     python -m cognos.cli demo --task <task> --runs-dir <tmp>
+# parses the produced runs/<id>/summary.txt token block (final_verdict +
+# per-stage verdict.<stage> lines), and asserts every `expected.*` field.
+#
+# Cases are chosen to exercise different paths through the eight-stage pipeline
+# (explore -> ideate -> model -> backtest -> validate -> comply -> document -> review):
+#
+#   regression      a clean continuous-target run -> all 8 stages, final in {PASS,WARN,FAIL}
+#   classification  a clean binary-target run     -> all 8 stages
+#   timeseries      a forecasting run             -> all 8 stages
+#   credit          a high-risk lending model     -> comply BLOCKs the fair-lending gate;
+#                                                    final_verdict BLOCK, run halts at comply
+#
+# Schema for the harness:
+#   task:                  one of regression | classification | timeseries | credit
+#                          (passed straight to `cognos demo --task`).
+#   expected.final_verdict:        exact match against the summary's `final_verdict:` line.
+#   expected.final_verdict_in:     list; final_verdict must be one of these.
+#   expected.stages_ran:           exact count of stages that ran (len of `stages_run:`).
+#   expected.stage_verdicts:       map of stage -> exact verdict, asserted against
+#                                  the `verdict.<stage>:` lines.
+
+cases:
+  - id: regression-clean
+    task: regression
+    expected:
+      stages_ran: 8
+      final_verdict_in: [PASS, WARN, FAIL]
+
+  - id: classification-clean
+    task: classification
+    expected:
+      stages_ran: 8
+      final_verdict_in: [PASS, WARN, FAIL]
+
+  - id: timeseries-clean
+    task: timeseries
+    expected:
+      stages_ran: 8
+      final_verdict_in: [PASS, WARN, FAIL]
+
+  - id: credit-fair-lending-block
+    task: credit
+    expected:
+      final_verdict: BLOCK
+      stage_verdicts:
+        comply: BLOCK

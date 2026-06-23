@@ -1,0 +1,57 @@
+# example-credit.yaml — a COGNOS project profile for a high-risk credit /
+# lending classification model. Like deputy's projects/<name>.yaml, this is the
+# ONLY place project-specific knowledge lives; the stage agents and orchestrator
+# are project-agnostic.
+#
+# This profile turns on the fair-lending machinery. With a protected attribute
+# and an under-mitigated model, the `comply` gate runs the ECOA/Reg B
+# four-fifths disparate-impact scan and is expected to BLOCK — exactly the
+# behavior the eval harness asserts for the `credit` case.
+#
+# Data: the eval harness writes a synthetic credit CSV to evals/_data/credit.csv
+# (see evals/score.py). The equivalent ad-hoc generator is:
+#     cognos demo --task credit --runs-dir runs
+# which writes its own synthetic CSV (with a `default` target and a `group`
+# protected attribute) under <runs-dir>/_demo_data/credit.csv.
+
+name: example_credit
+description: "Synthetic credit-default classification — high-risk, fair-lending gated."
+task: classification        # traditional statistical classification (logit)
+mode: autonomous            # gates auto-approve, but BLOCK halts the run
+
+data:
+  path: evals/_data/credit.csv
+  format: csv
+  target: default
+  features: []              # empty => all non-target / non-protected columns
+  datetime_col: null
+  protected_attributes: [group]   # excluded from features; used for fair-lending checks
+
+metric:
+  name: roc_auc             # maximized
+
+search:
+  max_candidates: 10
+  cv_folds: 5
+  holdout_fraction: 0.2
+  random_state: 42
+  ensemble: true
+
+compliance:
+  regimes: [SR11-7, NIST-AI-RMF]
+  risk_tier: high           # high tier => maximum validation intensity
+  fair_lending: true        # run ECOA/Reg B SCAN + disparate-impact checks
+  disparate_impact_threshold: 0.8   # four-fifths rule
+  jurisdictions: [US, EU]
+
+backtest:
+  enabled: true
+  scheme: holdout
+  n_splits: 5
+  deflate_sharpe: true
+  pbo: true
+
+stages:
+  enabled: [explore, ideate, model, backtest, validate, comply, document, review]
+  gates: [validate, comply, review]
+  halt_on_block: true

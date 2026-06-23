@@ -1,0 +1,51 @@
+# example-regression.yaml — a COGNOS project profile for a plain statistical
+# regression problem. This is the COGNOS analogue of deputy's projects/<name>.yaml:
+# the ONE place project-specific knowledge lives. The stage agents and the
+# orchestrator are project-agnostic — adding a new modeling problem means writing
+# one YAML like this, never editing .claude/agents/.
+#
+# Data: the eval harness writes a synthetic regression CSV to evals/_data/regression.csv
+# (see evals/score.py). You can also generate the same shape ad hoc with:
+#     cognos demo --task regression --runs-dir runs
+# which writes its own synthetic CSV under <runs-dir>/_demo_data/regression.csv.
+
+name: example_regression
+description: "Synthetic continuous-target regression — baseline COGNOS profile."
+task: regression            # traditional statistical regression (OLS/GLM)
+mode: autonomous            # gates auto-approve; BLOCK halts
+
+data:
+  path: evals/_data/regression.csv
+  format: csv
+  target: target
+  features: []              # empty => all non-target / non-protected columns
+  datetime_col: null
+  protected_attributes: []
+
+metric:
+  name: rmse                # minimized
+
+search:
+  max_candidates: 10        # small ratchet budget for fast runs
+  cv_folds: 5
+  holdout_fraction: 0.2
+  random_state: 42
+  ensemble: true
+
+compliance:
+  regimes: [SR11-7, NIST-AI-RMF]
+  risk_tier: medium
+  fair_lending: false
+  jurisdictions: [US]
+
+backtest:
+  enabled: true
+  scheme: holdout
+  n_splits: 5
+  deflate_sharpe: true
+  pbo: true
+
+stages:
+  enabled: [explore, ideate, model, backtest, validate, comply, document, review]
+  gates: [validate, comply, review]
+  halt_on_block: true
