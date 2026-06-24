@@ -51,12 +51,15 @@ def test_model_payload_and_scorer(reg_run):
     assert ctx.resolve(p["oof_perf_path"]).exists()
 
 
-def test_backtest_used_impact_and_pbo(reg_run):
+def test_backtest_oos_and_walkforward(reg_run):
     ctx, _ = reg_run
     p = ctx.require("backtest").payload
     assert "used_impact" in p and "score" not in p  # payload holds metrics, not the table
     assert p["oos_metric"] is not None
-    assert p["pbo"] is not None and "pbo" in p["pbo"]
+    assert p["walk_forward"] is not None and "mean" in p["walk_forward"]
+    # regression with no returns column: outcomes analysis (credit) and trading metrics are absent
+    assert p["outcomes_analysis"] is None
+    assert p["trading"] is None
     assert (ctx.run_dir / "stages/backtest/scored.parquet").exists()
 
 

@@ -80,9 +80,63 @@ def make_credit_dataset(n: int = 1000, seed: int = 42) -> pd.DataFrame:
     })
 
 
+def make_commercial_credit_dataset(n: int = 1200, seed: int = 42) -> pd.DataFrame:
+    """Commercial (business) lending default model with a vintage for out-of-time validation.
+
+    Business credit, so there are NO consumer protected attributes. Loans are originated across
+    monthly cohorts spanning ~3 years (``vintage``), and later vintages are slightly riskier (a mild
+    time trend) so PSI / calibration on an out-of-time holdout is interesting. Default probability is
+    a logistic function of the financial features: higher leverage and lower interest coverage push
+    PD up.
+    """
+    rng = np.random.default_rng(seed)
+
+    # ~3 years of monthly origination cohorts; spread loans uniformly across them.
+    cohorts = pd.date_range("2021-01-01", periods=36, freq="MS")
+    cohort_idx = rng.integers(0, len(cohorts), n)
+    vintage = cohorts[cohort_idx]
+    # 0 -> oldest cohort, 1 -> newest cohort; drives the mild time trend in risk.
+    time_pos = cohort_idx / (len(cohorts) - 1)
+
+    leverage = rng.gamma(2.0, 1.5, n)  # debt / EBITDA, positive
+    interest_coverage = rng.gamma(3.0, 2.0, n) + 0.5  # EBITDA / interest, positive
+    current_ratio = np.clip(rng.normal(1.6, 0.5, n), 0.2, 5.0)
+    log_assets = rng.normal(16.0, 1.5, n)  # log of total assets
+    profit_margin = np.clip(rng.normal(0.08, 0.06, n), -0.30, 0.40)
+    sector = rng.choice(["industrials", "tech", "retail", "energy"], size=n)
+    sector_effect = pd.Series(sector).map(
+        {"industrials": 0.0, "tech": -0.3, "retail": 0.2, "energy": 0.4}
+    ).to_numpy()
+
+    logit = (
+        -2.3
+        + 0.45 * leverage
+        - 0.30 * interest_coverage
+        - 0.50 * current_ratio
+        - 0.20 * (log_assets - 16.0)
+        - 4.0 * profit_margin
+        + sector_effect
+        + 0.8 * time_pos  # later vintages slightly riskier
+        + rng.normal(0, 0.3, n)
+    )
+    p_default = 1 / (1 + np.exp(-logit))
+    default = (rng.uniform(0, 1, n) < p_default).astype(int)
+    return pd.DataFrame({
+        "vintage": vintage,
+        "leverage": leverage,
+        "interest_coverage": interest_coverage,
+        "current_ratio": current_ratio,
+        "log_assets": log_assets,
+        "profit_margin": profit_margin,
+        "sector": sector,
+        "default": default,
+    })
+
+
 GENERATORS = {
     "regression": make_regression_dataset,
     "classification": make_classification_dataset,
     "timeseries": make_timeseries_dataset,
     "credit": make_credit_dataset,
+    "commercial": make_commercial_credit_dataset,
 }

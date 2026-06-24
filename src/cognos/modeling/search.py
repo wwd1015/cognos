@@ -83,6 +83,10 @@ def _hp_grid(family: str) -> list[dict]:
         return [{"alpha": a} for a in alphas]
     if family in ("ridge_logit", "lasso_logit"):
         return [{"C": c} for c in (0.1, 1.0, 10.0)]
+    if family in ("poisson", "gamma"):
+        return [{"alpha": a} for a in (0.0, 0.1, 1.0)]
+    if family == "tweedie":
+        return [{"power": p, "alpha": a} for p in (1.2, 1.5, 1.8) for a in (0.1, 1.0)]
     if family == "random_forest":
         return [{"max_depth": d, "n_estimators": 200} for d in (None, 6, 12)]
     if family == "gradient_boosting":

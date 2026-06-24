@@ -34,11 +34,13 @@ def make_config(tmp_path):
                                datetime_col="date"),
             "credit": dict(gen="credit", task="classification", target="default", metric="roc_auc",
                            protected=["group"], fair_lending=True),
+            "commercial": dict(gen="commercial", task="classification", target="default",
+                               metric="roc_auc", datetime_col="vintage"),
         }
         p = presets[task]
         # Credit needs a larger sample so the injected group disparity is statistically present
         # in the holdout (the fair-lending disparate-impact gate operates on the sealed holdout).
-        n = 800 if task == "credit" else 240
+        n = 800 if task in ("credit", "commercial") else 240
         df = synth.GENERATORS[p["gen"]](n=n)
         csv = _write_csv(tmp_path, df, task)
         raw = {

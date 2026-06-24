@@ -178,6 +178,8 @@ def _cmd_demo(args) -> int:
         "timeseries": dict(task="timeseries", target="target", metric="rmse", datetime_col="date"),
         "credit": dict(task="classification", target="default", metric="roc_auc",
                        protected=["group"], fair_lending=True),
+        "commercial": dict(task="classification", target="default", metric="roc_auc",
+                           datetime_col="vintage"),
     }
     p = presets[args.task]
     raw = {
@@ -188,7 +190,8 @@ def _cmd_demo(args) -> int:
                  "datetime_col": p.get("datetime_col"), "protected_attributes": p.get("protected", [])},
         "metric": {"name": p["metric"]},
         "compliance": {"fair_lending": p.get("fair_lending", False),
-                       "jurisdictions": ["US", "EU"], "risk_tier": "high" if args.task == "credit" else "medium"},
+                       "jurisdictions": ["US"] if args.task == "commercial" else ["US", "EU"],
+                       "risk_tier": "high" if args.task in ("credit", "commercial") else "medium"},
     }
     cfg = CognosConfig.from_dict(raw)
     orch = Orchestrator(cfg, runs_root=str(runs_dir))
@@ -240,7 +243,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pd = sub.add_parser("demo", help="run an end-to-end demo on synthetic data")
     pd.add_argument("--task", default="regression",
-                    choices=["regression", "classification", "timeseries", "credit"])
+                    choices=["regression", "classification", "timeseries", "credit", "commercial"])
     pd.add_argument("--runs-dir", default=None)
     pd.set_defaults(func=_cmd_demo)
 

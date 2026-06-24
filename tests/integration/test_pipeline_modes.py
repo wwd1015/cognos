@@ -27,6 +27,18 @@ def test_credit_completes_with_readiness_report(make_config, runs_dir):
     assert comply.payload.get("outstanding_human_steps")
 
 
+def test_commercial_backtest_outcomes_analysis(make_config, runs_dir):
+    # ADR-0005: a commercial PD model gets credit outcomes analysis on an out-of-time sample.
+    cfg = make_config("commercial")
+    ctx, summary = run_pipeline(cfg, runs_root=runs_dir)
+    bt = ctx.require("backtest").payload
+    assert bt["evaluation_sample"] == "out_of_time"
+    oa = bt["outcomes_analysis"]
+    assert oa is not None
+    assert set(oa) >= {"gini", "ks", "expected_calibration_error", "calibration_table", "psi"}
+    assert bt["trading"] is None  # no returns column => trading metrics off
+
+
 def test_leakage_blocks_at_validate(leak_config, runs_dir):
     # The real (and only) hard-BLOCK: confirmed target leakage stopped by the validate gate.
     ctx, summary = run_pipeline(leak_config, runs_root=runs_dir)

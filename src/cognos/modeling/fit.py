@@ -23,19 +23,29 @@ from sklearn.ensemble import (
 )
 from sklearn.linear_model import (
     ElasticNet,
+    GammaRegressor,
     Lasso,
     LinearRegression,
     LogisticRegression,
+    PoissonRegressor,
     Ridge,
+    TweedieRegressor,
 )
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-# family -> (is_linear, needs_scaling, is_classifier-capable)
-LINEAR_FAMILIES = {"ols", "ridge", "lasso", "elasticnet", "logit", "ridge_logit", "lasso_logit"}
+# GLM/econometric families: linear (scaled + sklearn-predicted) but with no statsmodels OLS/Logit
+# inference here, so they skip build_inference_design and report sklearn coef_ only.
+GLM_FAMILIES = {"poisson", "gamma", "tweedie"}
+
+# family -> (is_linear, needs_scaling, is_classifier-capable). GLMs are linear for scaling/predict.
+LINEAR_FAMILIES = {
+    "ols", "ridge", "lasso", "elasticnet", "logit", "ridge_logit", "lasso_logit", *GLM_FAMILIES
+}
 
 DEFAULT_FAMILIES = {
     "regression": ["ols", "ridge", "lasso", "elasticnet"],
+    "glm_regression": ["poisson", "gamma", "tweedie", "ols", "ridge"],
     "timeseries": ["ols", "ridge", "lasso"],
     "classification": ["logit", "ridge_logit", "lasso_logit"],
     "ml_regression": ["random_forest", "gradient_boosting"],
@@ -80,6 +90,12 @@ def _estimator(family: str, is_classification: bool, hp: dict[str, Any]):
     if family == "elasticnet":
         return ElasticNet(alpha=hp.get("alpha", 0.01), l1_ratio=hp.get("l1_ratio", 0.5),
                           max_iter=5000, random_state=rs)
+    if family == "poisson":
+        return PoissonRegressor(alpha=hp.get("alpha", 1.0), max_iter=300)
+    if family == "gamma":
+        return GammaRegressor(alpha=hp.get("alpha", 1.0), max_iter=300)
+    if family == "tweedie":
+        return TweedieRegressor(power=hp.get("power", 1.5), alpha=hp.get("alpha", 1.0), max_iter=300)
     if family == "logit":
         return LogisticRegression(C=1e6, max_iter=2000)
     if family == "ridge_logit":
@@ -227,7 +243,9 @@ def fit_full(candidate: Candidate, X: pd.DataFrame, y: np.ndarray, *, task: str,
         pipeline=pipe, feature_names=feat_names, raw_features=candidate.features,
     )
 
-    if candidate.is_linear:
+    # GLMs are linear (scaled + sklearn-predicted) but have no statsmodels OLS/Logit inference here;
+    # they report sklearn coef_ via FittedModel.coefficients() instead.
+    if candidate.is_linear and candidate.family not in GLM_FAMILIES:
         try:
             design_df = build_inference_design(Xf)  # full-rank K-1 design (valid p-values)
             yv = np.asarray(y).astype(float)
