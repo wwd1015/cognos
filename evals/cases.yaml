@@ -9,43 +9,61 @@
 # Cases are chosen to exercise different paths through the eight-stage pipeline
 # (explore -> ideate -> model -> backtest -> validate -> comply -> document -> review):
 #
-#   regression      a clean continuous-target run -> all 8 stages, final in {PASS,WARN,FAIL}
+#   regression      a clean continuous-target run -> all 8 stages, final in {PASS,WARN}
 #   classification  a clean binary-target run     -> all 8 stages
 #   timeseries      a forecasting run             -> all 8 stages
-#   credit          a high-risk lending model     -> comply BLOCKs the fair-lending gate;
-#                                                    final_verdict BLOCK, run halts at comply
+#   credit          a consumer lending model      -> all 8 stages run to completion; comply is a
+#                                                    non-gating report (verdict.comply PASS), so the
+#                                                    run never halts (ADR-0006). final in {PASS,WARN}.
+#   commercial      a commercial credit-risk model with an out-of-time (vintage) sample -> all 8
+#                                                    stages; backtest is SR 11-7 outcomes analysis
+#                                                    on the OOT sample (verdict.backtest PASS/WARN,
+#                                                    ADR-0004/0005). final in {PASS,WARN}.
 #
 # Schema for the harness:
-#   task:                  one of regression | classification | timeseries | credit
+#   task:                  one of regression | classification | timeseries | credit | commercial
 #                          (passed straight to `cognos demo --task`).
 #   expected.final_verdict:        exact match against the summary's `final_verdict:` line.
 #   expected.final_verdict_in:     list; final_verdict must be one of these.
 #   expected.stages_ran:           exact count of stages that ran (len of `stages_run:`).
 #   expected.stage_verdicts:       map of stage -> exact verdict, asserted against
 #                                  the `verdict.<stage>:` lines.
+#   expected.stage_verdicts_in:    map of stage -> list; the `verdict.<stage>:` line must be
+#                                  one of the listed verdicts.
 
 cases:
   - id: regression-clean
     task: regression
     expected:
       stages_ran: 8
-      final_verdict_in: [PASS, WARN, FAIL]
+      final_verdict_in: [PASS, WARN]
 
   - id: classification-clean
     task: classification
     expected:
       stages_ran: 8
-      final_verdict_in: [PASS, WARN, FAIL]
+      final_verdict_in: [PASS, WARN]
 
   - id: timeseries-clean
     task: timeseries
     expected:
       stages_ran: 8
-      final_verdict_in: [PASS, WARN, FAIL]
+      final_verdict_in: [PASS, WARN]
 
-  - id: credit-fair-lending-block
+  - id: credit-completes
     task: credit
     expected:
-      final_verdict: BLOCK
+      stages_ran: 8
+      final_verdict_in: [PASS, WARN]
       stage_verdicts:
-        comply: BLOCK
+        comply: PASS
+
+  - id: commercial
+    task: commercial
+    expected:
+      stages_ran: 8
+      final_verdict_in: [PASS, WARN]
+      stage_verdicts:
+        comply: PASS
+      stage_verdicts_in:
+        backtest: [PASS, WARN]

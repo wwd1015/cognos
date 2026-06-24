@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
 """End-to-end COGNOS demonstration on synthetic data.
 
-Shows every stage of the pipeline working, in both operating modes:
+Shows the pipeline working across three scenarios:
 
-  1. AUTONOMOUS mode on a clean regression problem — the full 8-stage pipeline runs unattended
-     and produces a validated, documented model (an OKF white-paper bundle).
-  2. The COMPLIANCE GATE firing — a synthetic credit model with an injected group disparity is
-     BLOCKed by the fair-lending (disparate-impact) check before it can be documented.
+  1. AUTONOMOUS commercial credit model — the full 8-stage pipeline runs unattended and produces
+     SR 11-7 outcomes analysis (Gini/KS, calibration, PSI) on an out-of-time sample, a non-gating
+     model-risk readiness report, and a white paper (OKF bundle).
+  2. The VALIDATION GATE firing — a model that uses a leaking feature is BLOCKed by the independent
+     validation gate before it can be documented (confirmed leakage is the hard BLOCK).
   3. STAGE-BY-STAGE mode — each agent invoked individually (human-in-the-loop friendly).
 
 Run:  python examples/end_to_end/run_demo.py
-(Requires `pip install -e .` from the repo root, plus optionally the IMPACT library for the real
-feature-table scoring path; without IMPACT, COGNOS falls back to its built-in scorer automatically.)
+(Requires `pip install -e .`; optionally the IMPACT library for the real feature-table scoring path —
+without it, COGNOS falls back to its built-in scorer automatically. The LLM-guided search and
+LLM-driven ideation activate only when an LLM brain is configured; this demo runs the deterministic
+engine.)
 """
 
 from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+
+import numpy as np
 
 from cognos import synth
 from cognos.config import CognosConfig
@@ -36,64 +41,57 @@ def banner(title: str) -> None:
 
 
 def show_run(ctx) -> None:
-    """Print each stage's verdict, key metrics, and a couple of findings."""
     for stage in ctx.config.stages.enabled:
         res = ctx.get(stage)
         if res is None:
             print(f"  - {stage:9s}  (not run — pipeline halted earlier)")
             continue
-        metrics = ", ".join(f"{k}={v}" for k, v in list(res.metrics.items())[:3])
         print(f"  - {stage:9s} {res.verdict.value:6s}  {res.summary}")
-        if metrics:
-            print(f"      metrics: {metrics}")
         for f in res.findings[:2]:
             print(f"      finding: {f.line()}")
 
 
-def demo_autonomous_regression(workdir: Path) -> None:
-    banner("1. AUTONOMOUS MODE — clean regression problem (full pipeline)")
-    csv = _write(synth.make_regression_dataset(n=600), workdir / "regression.csv")
+def demo_autonomous_commercial(workdir: Path) -> None:
+    banner("1. AUTONOMOUS MODE — commercial credit model (full pipeline, out-of-time backtest)")
+    csv = _write(synth.make_commercial_credit_dataset(n=1200), workdir / "commercial.csv")
     cfg = CognosConfig.from_dict({
-        "name": "house_prices_demo",
-        "description": "Synthetic regression demo for COGNOS",
-        "task": "regression",
-        "data": {"path": csv, "target": "target"},
-        "metric": {"name": "rmse"},
-        "search": {"max_candidates": 16, "cv_folds": 5, "holdout_fraction": 0.2},
-        "compliance": {"regimes": ["SR11-7", "NIST-AI-RMF"], "risk_tier": "medium",
-                       "jurisdictions": ["US", "EU"]},
-    })
-    orch = Orchestrator(cfg, runs_root=str(workdir / "runs"))
-    summary = orch.run()
-    show_run(orch.ctx)
-    print(f"\n  Final verdict: {summary.final_verdict.value}")
-    print(f"  Champion: {orch.ctx.require('model').metrics['champion']} "
-          f"({cfg.metric.name}={summary.champion_metric:.4f})")
-    print(f"  White paper (OKF bundle): {orch.ctx.docs_dir}")
-    print(f"  Concepts: {[p.name for p in sorted(orch.ctx.docs_dir.glob('*.md'))]}")
-
-
-def demo_compliance_block(workdir: Path) -> None:
-    banner("2. COMPLIANCE GATE — credit model with injected disparity is BLOCKed")
-    csv = _write(synth.make_credit_dataset(n=1000), workdir / "credit.csv")
-    cfg = CognosConfig.from_dict({
-        "name": "credit_default_demo",
-        "description": "Synthetic credit-default model (fair-lending demo)",
+        "name": "commercial_pd_demo",
+        "description": "Synthetic commercial credit-default model",
         "task": "classification",
-        "data": {"path": csv, "target": "default", "protected_attributes": ["group"]},
+        "data": {"path": csv, "target": "default", "datetime_col": "vintage"},
         "metric": {"name": "roc_auc"},
-        "search": {"max_candidates": 12, "cv_folds": 5},
-        "compliance": {"fair_lending": True, "risk_tier": "high", "jurisdictions": ["US", "EU"]},
+        "search": {"max_candidates": 12, "cv_folds": 5, "holdout_fraction": 0.2},
+        "compliance": {"regimes": ["SR11-7", "NIST-AI-RMF"], "risk_tier": "high",
+                       "jurisdictions": ["US"]},
     })
     orch = Orchestrator(cfg, runs_root=str(workdir / "runs"))
     summary = orch.run()
     show_run(orch.ctx)
-    comply = orch.ctx.require("comply").payload
-    di = comply["fair_lending"].get("disparate_impact")
+    bt = orch.ctx.require("backtest").payload
+    oa = bt.get("outcomes_analysis") or {}
     print(f"\n  Final verdict: {summary.final_verdict.value}")
-    print(f"  Disparate impact ratio: {di:.3f} (four-fifths threshold 0.80) -> "
-          f"{'BLOCKED' if summary.final_verdict.value == 'BLOCK' else 'passed'}")
-    print("  The pipeline correctly halted before shipping a model with a fair-lending violation.")
+    print(f"  Evaluation sample: {bt['evaluation_sample']}")
+    print(f"  Outcomes analysis: Gini={oa.get('gini'):.3f}, KS={oa.get('ks'):.3f}, "
+          f"PSI={oa.get('psi'):.3f} ({oa.get('psi_label')})")
+    print(f"  White paper (OKF bundle): {orch.ctx.docs_dir}")
+
+
+def demo_validation_block_on_leakage(workdir: Path) -> None:
+    banner("2. VALIDATION GATE — a leaking model is BLOCKed before documentation")
+    df = synth.make_regression_dataset(n=600)
+    df["leaky"] = df["target"] + np.random.default_rng(0).normal(0, 1e-3, len(df))  # target leak
+    csv = _write(df, workdir / "leak.csv")
+    cfg = CognosConfig.from_dict({
+        "name": "leakage_demo", "task": "regression",
+        "data": {"path": csv, "target": "target"},
+        "metric": {"name": "rmse"}, "search": {"max_candidates": 8, "cv_folds": 3},
+    })
+    orch = Orchestrator(cfg, runs_root=str(workdir / "runs"))
+    summary = orch.run()
+    show_run(orch.ctx)
+    print(f"\n  Final verdict: {summary.final_verdict.value}")
+    print("  The independent validation gate detected target leakage and halted the pipeline "
+          "before the model could be documented or shipped.")
 
 
 def demo_stage_by_stage(workdir: Path) -> None:
@@ -115,11 +113,13 @@ def demo_stage_by_stage(workdir: Path) -> None:
 def main() -> None:
     workdir = Path(tempfile.mkdtemp(prefix="cognos_demo_"))
     print(f"COGNOS end-to-end demo. Working directory: {workdir}")
-    demo_autonomous_regression(workdir)
-    demo_compliance_block(workdir)
+    demo_autonomous_commercial(workdir)
+    demo_validation_block_on_leakage(workdir)
     demo_stage_by_stage(workdir)
     banner("DONE")
     print(f"All run artifacts (models, diagnostics, OKF white papers) are under: {workdir}/runs")
+    print("Tip: set an LLM brain (brain.kind: llm + ANTHROPIC_API_KEY) and search.guided: true to let "
+          "the reasoning layer drive feature engineering and the search.")
 
 
 if __name__ == "__main__":

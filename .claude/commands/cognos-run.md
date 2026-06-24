@@ -22,16 +22,18 @@ All judgment lives in the stage agents (`cognos-explore … cognos-review`). You
 
 Read these before doing anything:
 
-- `$PROFILE` — the project profile. Note `stages.enabled`, `stages.gates` (default: `validate`, `comply`, `review`), and `stages.halt_on_block`.
+- `$PROFILE` — the project profile. Note `stages.enabled`, `stages.gates` (default: `validate`, `review`), and `stages.halt_on_block`.
 - `CLAUDE.md` in the repo root if present.
 
 # The eight stages, in order
 
 ```
 explore → ideate → model → backtest → validate → comply → document → review
-                                       ^^^^^^^^   ^^^^^^             ^^^^^^
+                                       ^^^^^^^^                       ^^^^^^
                                        gates (may BLOCK / pause)
 ```
+
+The only gates are **`validate`** (technical soundness) and **`review`** (docs↔code consistency). `comply` is **not** a gate: it is a non-gating model-risk readiness report that always returns PASS ("report produced") and **never BLOCKs or halts** the pipeline.
 
 Map each stage to its agent: `cognos-<stage>` (e.g. stage `validate` → agent `cognos-validate`).
 
@@ -53,7 +55,7 @@ For each stage `S` in `stages.enabled`, in order:
 2. Use the **Task** tool to launch the `cognos-<S>` subagent. Pass it `PROFILE` and `RUN_ID` and remind it to run `cognos run-stage <S> --config $PROFILE --run $RUN_ID` and read `runs/$RUN_ID/stages/<S>/result.json`.
 3. After the Task returns, **read the artifact yourself** with the Read tool: `runs/$RUN_ID/stages/<S>/result.json`. Trust the JSON's `verdict`, not the agent's prose, as the load-bearing signal. (If the file is missing → halt with `HALT: stage=S produced no result.json`.)
 4. Record `verdict.S = <verdict>`.
-5. **Gate handling** (only if `S` is in `stages.gates` — `validate`, `comply`, `review`):
+5. **Gate handling** (only if `S` is in `stages.gates` — `validate`, `review`):
    - Verdict is PASS / WARN / SKIP → continue to the next stage.
    - Verdict is FAIL / OPEN_QUESTIONS / BLOCK / ERROR → apply the **mode rules** below.
 6. Non-gate stage with verdict ERROR → halt with `HALT: stage=S errored`. Non-gate FAIL/WARN → record and continue (the gates downstream will act on it).
@@ -62,13 +64,13 @@ For each stage `S` in `stages.enabled`, in order:
 
 ## Autonomous mode (default)
 
-- **BLOCK** (and `halt_on_block` is true, the default) → **halt the pipeline immediately**. Do not run later stages. Print `HALT: gate=S BLOCKED`. This mirrors the CLI's own behavior, where a credit model failing the fair-lending scan BLOCKs at `comply` and the run stops there.
+- **BLOCK** (and `halt_on_block` is true, the default) → **halt the pipeline immediately**. Do not run later stages. Print `HALT: gate=S BLOCKED`. This mirrors the CLI's own behavior — a BLOCK comes only from a gate (`validate` on confirmed target leakage, or `review` on stale docs↔code references); `comply` never BLOCKs.
 - **FAIL / OPEN_QUESTIONS** → record the verdict and **continue** (the prototype run still produces downstream docs/consistency output), exactly as `cognos run --config` would.
 - **ERROR** → halt with `HALT: gate=S errored`.
 
 ## Step-by-step mode (`--step` / `--interactive`)
 
-- At **every gate** (`validate`, `comply`, `review`), regardless of verdict, **pause and surface to the human**: print the gate's token line and its findings verbatim, then ask: `Approve and continue past gate S? [approve / reject]`.
+- At **every gate** (`validate`, `review`), regardless of verdict, **pause and surface to the human**: print the gate's token line and its findings verbatim, then ask: `Approve and continue past gate S? [approve / reject]`.
   - Human **approves** → continue to the next stage.
   - Human **rejects** → halt with `HALT: human rejected gate S`.
 - A non-gate stage never pauses, even in step mode.
@@ -100,7 +102,7 @@ Whenever you halt, print:
 
 1. A single line beginning with `HALT:` summarizing the cause.
 2. The relevant gate's token line and findings verbatim.
-3. A one-line next step for the human (e.g. "fair-lending BLOCK at comply — mitigate disparate impact and re-run", "review drift at review — fix the white paper and re-run document+review").
+3. A one-line next step for the human (e.g. "target-leakage BLOCK at validate — drop the leaked feature and re-run", "review drift at review — fix the white paper and re-run document+review").
 
 Then print the final summary block (above) and stop.
 

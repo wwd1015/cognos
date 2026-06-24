@@ -17,9 +17,10 @@ trustworthy.
    core anti-reward-hacking guarantee.
 5. **Independent challenge.** `validate`, `comply`, and `review` must not reuse the modeling stage's
    reasoning; they re-derive risk from artifacts. Keep them separate.
-6. **Gates BLOCK only on high-confidence harm.** Reserve `BLOCK` for confirmed target leakage
-   (`validate`), disparate-impact violations (`comply`), and stale docs↔code references (`review`).
-   Noisy signals (e.g. PBO) are WARN/FAIL, not BLOCK.
+6. **Gates BLOCK only on high-confidence harm.** The only gates are `validate` and `review`; reserve
+   `BLOCK` for confirmed target leakage (`validate`) and stale docs↔code references (`review`).
+   Compliance is a non-gating report (ADR-0006) and never BLOCKs. Noisy signals (e.g. PBO) are
+   WARN/FAIL, not BLOCK.
 7. **Tests + lint must pass.** `pytest` green and `ruff check src/ tests/` clean before any commit.
 
 ## Stage contract

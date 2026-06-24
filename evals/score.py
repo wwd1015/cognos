@@ -331,6 +331,14 @@ def run_case(case: dict[str, Any], python: str, keep_runs: bool) -> CaseResult:
                     f"verdict.{stage}: expected={want} observed={got!r}"
                 )
 
+        exp_sv_in = expected.get("stage_verdicts_in") or {}
+        for stage, allowed in exp_sv_in.items():
+            got = stage_verdicts.get(stage)
+            if got not in allowed:
+                failed.append(
+                    f"verdict.{stage}: observed={got!r} not in {allowed}"
+                )
+
     except subprocess.TimeoutExpired:
         elapsed = time.monotonic() - start
         error = "timeout"

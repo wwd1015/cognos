@@ -3,6 +3,38 @@
 All notable changes to COGNOS are documented here. Format loosely follows Keep a Changelog;
 versioning is SemVer.
 
+## [0.2.0] — 2026-06-24
+
+Design-review outcomes (see `CONTEXT.md` and `docs/adr/0001-0007`). COGNOS is now explicitly a
+two-layer system — an LLM reasoning layer that *proposes* and a deterministic engine that *disposes*
+— focused on commercial model development.
+
+### Added
+- **Reasoning-driven core** (ADR-0001): LLM-driven ideation that emits engine-validated feature
+  transforms, and an opt-in **LLM-guided search** (`search.guided`) where the LLM proposes the next
+  experiment from the ledger and the engine keeps it only if it beats the incumbent on the frozen
+  metric.
+- **Safe, target-hidden transforms** (`modeling/transforms.py`, ADR-0002): AST-whitelisted expression
+  executor over a features-only view; transforms cannot reference the target, persist on the champion
+  + scorer, re-apply at serving, and round-trip to IMPACT derived fields.
+- **Two-tier reproducibility** (ADR-0003): reasoning transcript recorded to
+  `runs/<id>/reasoning/transcript.jsonl`; `ScriptedBrain` deterministic test double.
+- **Credit-risk outcomes analysis** (`modeling/credit_metrics.py`, ADR-0005): Gini/KS, calibration
+  (expected-vs-observed + ECE), PSI, on an out-of-time sample — now the default meaning of "backtest".
+- Opt-in **GLM/econometric families** (poisson, gamma, tweedie); a synthetic **commercial** demo
+  dataset with a vintage column (`cognos demo --task commercial`).
+
+### Changed
+- **Valid statistical inference** (Q6): coefficients/p-values now come from a full-rank K-1 inference
+  design, decoupled from the all-K prediction pipeline (fixes the dummy-variable trap).
+- **Compliance is a non-gating model-risk readiness report** (ADR-0006), never a verdict and never
+  rubber-stamped; the only gates are now `validate` and `review`.
+- **Single interpretable champion** deployed (ADR-0007); the ensemble is an opt-in, labelled challenger
+  benchmark, never silently shipped.
+- **Backtesting**: PBO / Deflated Sharpe demoted to an opt-in trading mode (`backtest.returns_column`).
+- **Scope** (ADR-0004): primary domain is commercial model development; consumer fair lending is an
+  optional, off-by-default module.
+
 ## [0.1.0] — 2026-06-22
 
 Initial release: the full COGNOS system.
