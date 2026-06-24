@@ -67,7 +67,8 @@ class SearchConfig(BaseModel):
     holdout_fraction: float = 0.2  # sealed final holdout (frozen substrate)
     random_state: int = 42  # pinned seed (reproducibility / autoforge contract)
     model_families: list[str] = Field(default_factory=list)  # empty => task defaults
-    ensemble: bool = True  # Caruana ensemble of survivors
+    ensemble: bool = False  # off by default (ADR-0007); when on, an ensemble is a labelled
+    # challenger benchmark only — the deployed model is always the single interpretable champion.
     max_features_per_candidate: int | None = None
     complexity_penalty: float = 0.0  # parsimony / simplicity bias (>=0)
 
@@ -118,8 +119,9 @@ class StagesConfig(BaseModel):
             "review",
         ]
     )
-    gates: list[str] = Field(default_factory=lambda: ["validate", "comply", "review"])
+    gates: list[str] = Field(default_factory=lambda: ["validate", "review"])
     # Stages that may BLOCK the pipeline. In interactive mode these are the human pause points.
+    # Compliance is intentionally NOT a gate (ADR-0006): it is a non-gating readiness report.
     halt_on_block: bool = True  # autonomous mode: stop the run when a gate BLOCKs
 
 

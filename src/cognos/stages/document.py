@@ -134,8 +134,14 @@ class DocumentStage(Stage):
         ))
 
         # --- 3. methodology (carries the core code anchors) ----------------------
-        ensemble = mp.get("ensemble") or {}
+        challenger = mp.get("challenger_benchmark") or {}
         diagnostics = mp.get("diagnostics", {}) or {}
+        challenger_line = (
+            f"- **Challenger benchmark (not deployed):** ensemble of "
+            f"{challenger.get('n_members', 0)} member(s); headroom vs champion="
+            f"{challenger.get('headroom_vs_champion', False)}\n\n"
+            if challenger else "\n"
+        )
         emit(OKFConcept(
             name="methodology", type="methodology",
             title="Methodology", description="Search procedure and statistical battery.",
@@ -143,18 +149,16 @@ class DocumentStage(Stage):
             body=(
                 "# Methodology\n\n"
                 "## Champion search\n\n"
-                "Candidates are explored with a *ratchet* search: each accepted experiment must "
-                "beat the incumbent on nested cross-validation before it becomes the new incumbent, "
-                "guarding against selection drift. Model selection uses nested CV; the final score is "
-                "read once on a sealed, *frozen holdout* that is never touched during search. "
-                "Surviving candidates are blended into a Caruana ensemble where it improves the score. "
-                "The ratchet acceptance loop is implemented in "
+                "Candidates are explored with a *ratchet* search: each accepted experiment must beat "
+                "the incumbent on leakage-safe cross-validation (all preprocessing fit inside each "
+                "training fold) before it becomes the new incumbent. The final score is read once on a "
+                "sealed *frozen holdout* never touched during search. The deployed model is the single "
+                "interpretable champion. The ratchet loop is implemented in "
                 "{@code:src/cognos/modeling/search.py#ratchet_search}, orchestrated by the modeling "
                 "stage at {@code:src/cognos/stages/model.py}.\n\n"
                 f"- **Candidates tried:** {mp.get('n_candidates_tried', 'n/a')}\n"
                 f"- **Hypothesis families considered:** {', '.join(ip.get('families', []) or []) or 'n/a'}\n"
-                f"- **Ensemble:** {ensemble.get('n_members', 0)} member(s); "
-                f"improved={ensemble.get('improved', False)}\n\n"
+                f"{challenger_line}"
                 "## Statistical battery\n\n"
                 f"A battery of {diagnostics.get('n_run', 0)} statistical tests is run on the champion "
                 f"({diagnostics.get('n_passed', 0)} passed, {diagnostics.get('n_failed', 0)} failed). "

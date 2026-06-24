@@ -61,3 +61,24 @@ def make_config(tmp_path):
         return CognosConfig.from_dict(raw)
 
     return _make
+
+
+@pytest.fixture
+def leak_config(tmp_path):
+    """A regression dataset with a deliberately leaking feature (near-copy of the target).
+
+    The champion will use it, `explore` flags it as a leakage suspect, and `validate` must BLOCK —
+    the real (and now only) hard-BLOCK condition after compliance was demoted (ADR-0006).
+    """
+    import numpy as np
+
+    df = synth.make_regression_dataset(n=240)
+    df["leaky"] = df["target"] + np.random.default_rng(0).normal(0, 1e-3, len(df))
+    csv = tmp_path / "leak.csv"
+    df.to_csv(csv, index=False)
+    return CognosConfig.from_dict({
+        "name": "test_leak", "task": "regression",
+        "data": {"path": str(csv), "target": "target"},
+        "metric": {"name": "rmse"},
+        "search": {"max_candidates": 8, "cv_folds": 3},
+    })

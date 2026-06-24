@@ -127,5 +127,20 @@ def test_pbo_detects_overfitting():
     assert pbo_signal < 0.2
 
 
+def test_inference_design_is_full_rank():
+    # ADR-0006/Q6: the statsmodels inference design must be full-rank (K-1 dummies + intercept),
+    # not the all-K prediction encoding that creates the dummy-variable trap.
+    from cognos.modeling.fit import build_inference_design
+
+    df = synth.make_regression_dataset(n=120)
+    design = build_inference_design(df[["x1", "x2", "x3", "region"]])
+    assert "const" in design.columns
+    region_cols = [c for c in design.columns if c.startswith("region_")]
+    assert len(region_cols) == 3  # 4 levels -> K-1 = 3 dummies, no trap
+    M = design.to_numpy(dtype=float)
+    assert np.linalg.matrix_rank(M) == M.shape[1]  # full rank
+    assert np.linalg.cond(M) < 1e3  # well-conditioned (the all-K design was ~1e15)
+
+
 def coerce_target_reg(df):
     return df["target"].astype(float).to_numpy()

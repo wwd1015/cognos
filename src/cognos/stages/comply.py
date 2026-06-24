@@ -45,8 +45,8 @@ def _reason_codes(weights: dict[str, float], k: int = 5) -> dict[str, str]:
 class ComplyStage(Stage):
     name = "comply"
     requires = ("model",)
-    is_gate = True
-    description = "Assess SR 11-7 / NIST AI RMF compliance and run a fair-lending scan."
+    is_gate = False  # ADR-0006: compliance is a non-gating report, never a verdict
+    description = "Produce a non-gating SR 11-7 / NIST AI RMF model-risk readiness report."
 
     def run(self, ctx: RunContext) -> StageResult:
         cfg = ctx.config
@@ -94,16 +94,18 @@ class ComplyStage(Stage):
                 "evidence": "No per-feature effects available; conceptual soundness cannot be evidenced from the model object.",
             }
 
-        if getattr(cfg.backtest, "enabled", False):
-            ongoing = {
-                "status": PASS,
-                "evidence": "Backtest is enabled, providing a baseline for ongoing performance monitoring; production thresholds still require sign-off.",
-            }
-        else:
-            ongoing = {
-                "status": WARN,
-                "evidence": "Ongoing-monitoring thresholds (drift, performance decay, exception rates) must be configured before deployment.",
-            }
+        # Ongoing monitoring is a production discipline (thresholds, cadence, owner, exception
+        # reporting) that does not exist at development time. The backtest produces monitoring-ready
+        # baselines, but monitoring itself is always an outstanding human step — never auto-PASS.
+        ongoing = {
+            "status": WARN,
+            "evidence": (
+                "Outstanding: ongoing monitoring requires a production monitoring plan — drift/PSI "
+                "alert thresholds, performance-decay triggers, exception reporting, cadence and owner."
+                + (" Backtest produced monitoring-ready baselines (calibration/stability)."
+                   if getattr(cfg.backtest, "enabled", False) else "")
+            ),
+        }
 
         if has_backtest and oos_metric is not None:
             outcomes = {
@@ -216,23 +218,23 @@ class ComplyStage(Stage):
                     location=char, confidence=0.6,
                 ))
 
-        # --- decision -----------------------------------------------------------
-        di_violation = (
-            comp.fair_lending
-            and disparate_impact is not None
-            and disparate_impact < comp.disparate_impact_threshold
-        )
-        sr_fail = any(e["status"] == FAIL for e in sr11_7.values())
-        sr_warn = any(e["status"] == WARN for e in sr11_7.values())
-        if di_violation:
-            decision = Verdict.BLOCK
-        elif sr_fail:
-            decision = Verdict.FAIL
-        elif sr_warn or res.findings:
-            decision = Verdict.WARN
-        else:
-            decision = Verdict.PASS
+        # --- report, never a verdict (ADR-0006) ---------------------------------
+        # An agent cannot adjudicate SR 11-7 compliance (independent human validation is required) and
+        # a verdict tempts rubber-stamping. This stage reports evidence + outstanding gaps; its verdict
+        # is always PASS meaning "report produced", never a compliance judgement, and it never BLOCKs.
+        outstanding_human_steps = [
+            "Independent model validation and sign-off (by a function independent of development).",
+            "A production monitoring plan: drift/PSI thresholds, performance-decay triggers, cadence, owner.",
+            "Model governance: change-control, override policy, and an approval record.",
+        ]
+        if comp.fair_lending and disparate_impact is not None and disparate_impact < comp.disparate_impact_threshold:
+            outstanding_human_steps.append(
+                f"Fair-lending review: disparate-impact ratio {disparate_impact:.3f} is below "
+                f"{comp.disparate_impact_threshold:.2f} (note: fair lending applies to consumer, not "
+                "commercial, credit)."
+            )
 
+        n_evidenced = sum(1 for e in sr11_7.values() if e["status"] == PASS)
         payload = {
             "inventory": inventory,
             "sr11_7": sr11_7,
@@ -241,21 +243,23 @@ class ComplyStage(Stage):
             "fair_lending": fair_lending,
             "regimes": list(comp.regimes),
             "jurisdictions": jurisdictions,
-            "decision": decision.value,
+            "outstanding_human_steps": outstanding_human_steps,
+            "report_only": True,
         }
         ref = ctx.save_json("stages/comply/compliance.json", payload)
         res.add_artifact(ref)
         res.payload = payload
-        res.verdict = decision
+        res.verdict = Verdict.PASS  # "report produced" — never a compliance verdict
         res.metrics = {
-            "decision": decision.value,
+            "sr11_7_evidenced": n_evidenced,
             "disparate_impact": disparate_impact,
+            "n_outstanding": len(outstanding_human_steps),
             "n_findings": len(res.findings),
         }
-        di_str = f"DI={disparate_impact:.3f}" if disparate_impact is not None else "fair-lending off"
+        di_str = f"DI={disparate_impact:.3f}" if disparate_impact is not None else "fair-lending n/a"
         res.summary = (
-            f"Compliance {decision.value}: SR 11-7 {sum(1 for e in sr11_7.values() if e['status'] == PASS)}/3 pass, "
-            f"{di_str}, {len(res.findings)} finding(s)."
+            f"Model-risk readiness report (non-gating): SR 11-7 {n_evidenced}/3 evidenced, "
+            f"{len(outstanding_human_steps)} human step(s) outstanding, {di_str}."
         )
         return res
 

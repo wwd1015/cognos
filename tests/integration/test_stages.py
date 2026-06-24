@@ -76,6 +76,20 @@ def test_comply_sr117_and_inventory(reg_run):
     assert p["inventory"].get("annex_iv_required") is True  # EU jurisdiction
 
 
+def test_comply_is_nongating_report(reg_run):
+    # ADR-0006: comply is a non-gating report — never a verdict, never a BLOCK.
+    from cognos.stages.base import make_stage
+
+    ctx, _ = reg_run
+    assert make_stage("comply").is_gate is False
+    comply = ctx.require("comply")
+    assert comply.verdict.value == "PASS"  # "report produced", not a compliance judgement
+    assert comply.payload.get("report_only") is True
+    assert comply.payload.get("outstanding_human_steps")
+    # ongoing monitoring is never auto-passed
+    assert comply.payload["sr11_7"]["ongoing_monitoring"]["status"] != "pass"
+
+
 def test_document_okf_bundle(reg_run):
     ctx, _ = reg_run
     p = ctx.require("document").payload

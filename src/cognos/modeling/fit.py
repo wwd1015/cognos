@@ -185,6 +185,31 @@ def _design_columns(pre: ColumnTransformer) -> list[str]:
         return [f"x{i}" for i in range(pre.transform_count_)]  # type: ignore
 
 
+def build_inference_design(Xf: pd.DataFrame) -> pd.DataFrame:
+    """Full-rank design for valid statsmodels inference, decoupled from the prediction pipeline.
+
+    Uses **K-1 (drop-first) dummy coding** for categoricals + standardized numerics + an intercept.
+    The prediction pipeline deliberately uses all-K one-hot for serving robustness, but all-K dummies
+    plus an intercept are perfectly collinear (the dummy-variable trap), which makes coefficients,
+    standard errors and p-values ill-defined. K-1 coding here yields a full-rank design so the
+    inference COGNOS reports is statistically valid — a hard requirement for SR 11-7 model validation.
+    Inference runs on training data only, so `handle_unknown` robustness is not needed.
+    """
+    import statsmodels.api as sm
+
+    num = Xf.select_dtypes(include=["number", "bool"]).columns.tolist()
+    cat = [c for c in Xf.columns if c not in num]
+    parts: list[pd.DataFrame] = []
+    if num:
+        scaler = StandardScaler()
+        parts.append(pd.DataFrame(scaler.fit_transform(Xf[num].astype(float)),
+                                  columns=num, index=Xf.index))
+    if cat:
+        parts.append(pd.get_dummies(Xf[cat].astype("object"), drop_first=True, dtype=float))
+    design = pd.concat(parts, axis=1) if parts else pd.DataFrame(index=Xf.index)
+    return sm.add_constant(design, has_constant="add")
+
+
 def fit_full(candidate: Candidate, X: pd.DataFrame, y: np.ndarray, *, task: str,
              is_classification: bool) -> FittedModel:
     """Fit the champion on the full training set; add statsmodels inference for linear families."""
@@ -204,14 +229,13 @@ def fit_full(candidate: Candidate, X: pd.DataFrame, y: np.ndarray, *, task: str,
 
     if candidate.is_linear:
         try:
-            design = pipe.named_steps["pre"].transform(Xf)
-            design_df = pd.DataFrame(np.asarray(design), columns=feat_names)
-            design_df = sm.add_constant(design_df, has_constant="add")
+            design_df = build_inference_design(Xf)  # full-rank K-1 design (valid p-values)
+            yv = np.asarray(y).astype(float)
             if is_classification:
-                res = sm.Logit(np.asarray(y).astype(float), design_df).fit(disp=0, maxiter=200)
-                fitted.residuals = np.asarray(y).astype(float) - res.predict(design_df)
+                res = sm.Logit(yv, design_df).fit(disp=0, maxiter=200)
+                fitted.residuals = yv - np.asarray(res.predict(design_df))
             else:
-                res = sm.OLS(np.asarray(y).astype(float), design_df).fit()
+                res = sm.OLS(yv, design_df).fit()
                 fitted.residuals = np.asarray(res.resid)
             fitted.sm_result = res
             fitted.design_matrix = design_df

@@ -3,7 +3,8 @@
 The heart of COGNOS. Seals a holdout (frozen substrate), runs the budget-aware ratchet search over
 the CASH space with leakage-safe nested CV, refits the champion on the full training set (adding
 statsmodels inference for linear families), runs the statistical diagnostic battery, evaluates the
-champion on the sealed holdout, and reports the Caruana ensemble of survivors. Persists a deployable
+champion on the sealed holdout, and (optionally) reports an ensemble as a labelled challenger
+benchmark — the deployed model is always the single interpretable champion. Persists a deployable
 scorer the backtest/IMPACT stage embeds as a derived field.
 """
 
@@ -63,19 +64,25 @@ class ModelStage(Stage):
         ctx.save_text("stages/model/ledger.tsv", sr.ledger_tsv(), kind="tsv")
 
         # --- ensemble of survivors (Caruana) ---------------------------------------
-        ensemble_info = None
+        # The deployed model is always the single interpretable champion (ADR-0007). An ensemble, when
+        # explicitly enabled, is computed only as a labelled predictive-ceiling *challenger benchmark*
+        # ("how much accuracy would a blend buy?") — it is reported, never silently shipped.
+        challenger_benchmark = None
         if cfg.search.ensemble and len(sr.evaluated) >= 2:
             top = sorted(sr.evaluated, key=lambda cv: cv[1].mean,
                          reverse=metric_direction(metric) == "maximize")[:8]
             ens = greedy_ensemble([cv.oof_pred for _, cv in top], y_train,
                                   metric=metric, is_classification=is_clf)
             if ens is not None:
-                ensemble_info = {
+                challenger_benchmark = {
+                    "kind": "ensemble (Caruana)",
+                    "deployed": False,
+                    "note": "Exploratory predictive-ceiling benchmark only; the deployed model is the single champion.",
                     "n_members": len(set(ens.member_indices)),
                     "weights": {top[i][0].label(): w for i, w in ens.weights.items()},
-                    "ensemble_score": ens.ensemble_score,
-                    "best_single_score": ens.best_single_score,
-                    "improved": ens.improved,
+                    "benchmark_score": ens.ensemble_score,
+                    "champion_single_score": ens.best_single_score,
+                    "headroom_vs_champion": ens.improved,
                 }
 
         # --- persist per-candidate OOF performance for an honest PBO ----------------
@@ -148,7 +155,7 @@ class ModelStage(Stage):
             "pvalues": pvalues,
             "feature_importances": importances,
             "diagnostics": diagnostics,
-            "ensemble": ensemble_info,
+            "challenger_benchmark": challenger_benchmark,
             "scorer_path": scorer_path,
             "raw_features": features,
             "is_classification": is_clf,

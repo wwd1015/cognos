@@ -15,12 +15,23 @@ def test_autonomous_regression_completes(make_config, runs_dir):
     assert summary.champion_metric is not None
 
 
-def test_credit_blocks_at_comply_autonomous(make_config, runs_dir):
-    cfg = make_config("credit")  # injected group disparity => disparate impact
+def test_credit_completes_with_readiness_report(make_config, runs_dir):
+    # ADR-0006: compliance no longer gates. A credit run completes all 8 stages and comply emits a
+    # non-gating model-risk readiness report (never a BLOCK).
+    cfg = make_config("credit")
     ctx, summary = run_pipeline(cfg, runs_root=runs_dir)
-    assert ctx.require("comply").verdict == Verdict.BLOCK
+    assert len(summary.stages_run) == 8
+    comply = ctx.require("comply")
+    assert comply.verdict == Verdict.PASS
+    assert comply.payload.get("report_only") is True
+    assert comply.payload.get("outstanding_human_steps")
+
+
+def test_leakage_blocks_at_validate(leak_config, runs_dir):
+    # The real (and only) hard-BLOCK: confirmed target leakage stopped by the validate gate.
+    ctx, summary = run_pipeline(leak_config, runs_root=runs_dir)
+    assert ctx.require("validate").verdict == Verdict.BLOCK
     assert summary.final_verdict == Verdict.BLOCK
-    # halt_on_block stops before documentation
     assert "document" not in summary.stages_run
 
 
@@ -57,17 +68,15 @@ def test_resume_reuses_checkpoints(make_config, runs_dir):
     assert orch2.ctx.run_id == run_id
 
 
-def test_interactive_reject_halts(make_config, runs_dir):
-    cfg = make_config("credit")
-    orch = Orchestrator(cfg, runs_root=runs_dir)
+def test_interactive_reject_halts(leak_config, runs_dir):
+    orch = Orchestrator(leak_config, runs_root=runs_dir)
     summary = orch.run(interactive=True, gate_handler=lambda r: "reject")
-    # rejecting the first non-OK gate halts the run before documentation
+    # rejecting the validate gate (leakage BLOCK) halts the run before documentation
     assert "document" not in summary.stages_run
 
 
-def test_interactive_approve_overrides_block(make_config, runs_dir):
-    cfg = make_config("credit")
-    orch = Orchestrator(cfg, runs_root=runs_dir)
+def test_interactive_approve_overrides_block(leak_config, runs_dir):
+    orch = Orchestrator(leak_config, runs_root=runs_dir)
     summary = orch.run(interactive=True, gate_handler=lambda r: "approve")
-    # approving overrides the disparate-impact BLOCK and continues to documentation/review
+    # approving overrides the validate leakage BLOCK and continues to documentation/review
     assert "document" in summary.stages_run and "review" in summary.stages_run
