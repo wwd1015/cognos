@@ -48,6 +48,28 @@ class HeuristicBrain(Brain):
         )
 
 
+class ScriptedBrain(Brain):
+    """A deterministic test double: ``available`` is True and ``generate`` replays queued responses.
+
+    Lets tests exercise the LLM-driven ideation/search paths offline and reproducibly, without an API
+    key — the reasoning layer's stand-in for CI (the production brain is LLMBrain).
+    """
+
+    kind = "scripted"
+    available = True
+
+    def __init__(self, responses: list[str]) -> None:
+        self._responses = list(responses)
+        self._i = 0
+
+    def generate(self, prompt: str, *, system: str | None = None, max_tokens: int | None = None) -> str:
+        if not self._responses:
+            return ""
+        resp = self._responses[self._i % len(self._responses)]
+        self._i += 1
+        return resp
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     """Pull the first JSON object out of an LLM reply (tolerant of code fences / prose)."""
     fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)

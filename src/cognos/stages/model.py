@@ -91,9 +91,37 @@ class ModelStage(Stage):
         # candidate so the backtest stage can compute PBO over the real search library.
         oof_perf_path = self._save_oof_perf(ctx, sr, y_train, is_clf)
 
-        # --- refit champion + statsmodels inference --------------------------------
-        fitted = fit_full(sr.champion, X_train, y_train, task=cfg.task.value, is_classification=is_clf)
-        diagnostics = stat_tests.run_battery(fitted, X_train, y_train,
+        # --- LLM-guided refinement (ADR-0001 stage B; opt-in; reasoning proposes) ---
+        champion_cand, champion_cv = sr.champion, sr.champion_cv
+        champion_transforms: list = []
+        guided_info = None
+        if cfg.search.guided and ctx.brain.available:
+            from ..modeling.guided import guided_search
+
+            gr = guided_search(
+                ctx.brain, X_train, y_train, profile=profile, champion=sr.champion,
+                champion_cv=sr.champion_cv, metric=metric, direction=metric_direction(metric),
+                is_classification=is_clf, is_timeseries=is_ts, folds=cfg.search.cv_folds,
+                random_state=cfg.search.random_state, rounds=cfg.search.guided_rounds,
+                log_fn=lambda p, r: ctx.log_reasoning("model", "guided-search", p, r),
+            )
+            guided_info = {"rounds": len(gr.rounds), "accepted": sum(1 for x in gr.rounds if x.accepted),
+                           "improved": gr.improved, "transforms": [t.to_dict() for t in gr.transforms]}
+            if gr.improved:  # engine verified the LLM-proposed champion beats the incumbent
+                champion_cand, champion_cv, champion_transforms = gr.champion, gr.champion_cv, gr.transforms
+
+        # --- refit champion (with any kept transforms) + statsmodels inference ------
+        base_features = list(sr.champion.features)
+        if champion_transforms:
+            from ..modeling.transforms import apply_transforms
+
+            X_fit, _, _ = apply_transforms(X_train[base_features], champion_transforms)
+        else:
+            X_fit = X_train
+        fitted = fit_full(champion_cand, X_fit, y_train, task=cfg.task.value, is_classification=is_clf)
+        fitted.transforms = champion_transforms
+        fitted.base_features = base_features
+        diagnostics = stat_tests.run_battery(fitted, X_fit, y_train,
                                              is_classification=is_clf, is_timeseries=is_ts)
 
         # --- sealed-holdout evaluation ---------------------------------------------
@@ -129,26 +157,26 @@ class ModelStage(Stage):
                                     category=f"diagnostic/{test['category']}",
                                     message=test["interpretation"], location=t))
         if holdout_metric is not None:
-            denom = abs(sr.champion_cv.mean) or 1.0
+            denom = abs(champion_cv.mean) or 1.0
             if metric_direction(metric) == "maximize":
-                gap = (sr.champion_cv.mean - holdout_metric) / denom
+                gap = (champion_cv.mean - holdout_metric) / denom
             else:
-                gap = (holdout_metric - sr.champion_cv.mean) / denom
+                gap = (holdout_metric - champion_cv.mean) / denom
             if gap > OVERFIT_GAP_FRAC:
                 res.add_finding(Finding(id="overfit-gap", severity=Severity.HIGH, category="overfitting",
                                         message=f"Holdout {metric} degrades {gap:.0%} vs CV — possible overfitting.",
                                         confidence=0.8))
 
         payload = {
-            "champion": sr.champion.to_dict(),
+            "champion": champion_cand.to_dict(),
             "metric": metric,
             "direction": metric_direction(metric),
-            "cv_mean": sr.champion_cv.mean,
-            "cv_std": sr.champion_cv.std,
+            "cv_mean": champion_cv.mean,
+            "cv_std": champion_cv.std,
             "holdout_metric": holdout_metric,
             "n_candidates_tried": sr.n_tried,
             "n_configs_for_deflation": sr.n_tried,
-            "cv_fold_scores": [float(s) for s in sr.champion_cv.fold_scores],
+            "cv_fold_scores": [float(s) for s in champion_cv.fold_scores],
             "oof_perf_path": oof_perf_path,
             "n_search_strategies": len(sr.evaluated),
             "coefficients": coefficients,
@@ -156,6 +184,9 @@ class ModelStage(Stage):
             "feature_importances": importances,
             "diagnostics": diagnostics,
             "challenger_benchmark": challenger_benchmark,
+            "guided": guided_info,
+            "transforms": [t.to_dict() for t in champion_transforms],
+            "base_features": base_features,
             "scorer_path": scorer_path,
             "raw_features": features,
             "is_classification": is_clf,
@@ -164,18 +195,21 @@ class ModelStage(Stage):
         }
         res.add_artifact(ctx.save_json("stages/model/summary.json", payload))
         res.payload = payload
-        res.metrics = {"cv_mean": sr.champion_cv.mean, "cv_std": sr.champion_cv.std,
+        res.metrics = {"cv_mean": champion_cv.mean, "cv_std": champion_cv.std,
                        "holdout_metric": holdout_metric, "n_candidates_tried": sr.n_tried,
-                       "champion": sr.champion.family}
+                       "champion": champion_cand.family, "n_transforms": len(champion_transforms)}
         worst = diagnostics["max_failed_severity"]
         res.add_artifact(ArtifactRef(name="oof_perf", kind="json", path=oof_perf_path,
                                      description="Per-candidate OOF performance matrix for PBO."))
         res.verdict = Verdict.WARN if (res.findings and (worst in ("MEDIUM", "HIGH"))) else Verdict.PASS
+        guided_note = (f" | guided +{len(champion_transforms)} transform(s)"
+                       if champion_transforms else "")
         res.summary = (
-            f"Champion {sr.champion.label()} | CV {metric}={sr.champion_cv.mean:.4f}"
-            f"±{sr.champion_cv.std:.4f}"
+            f"Champion {champion_cand.label()} | CV {metric}={champion_cv.mean:.4f}"
+            f"±{champion_cv.std:.4f}"
             + (f" | holdout={holdout_metric:.4f}" if holdout_metric is not None else "")
-            + f" | tried {sr.n_tried} candidates | diagnostics {diagnostics['n_passed']}/{diagnostics['n_run']} passed."
+            + f" | tried {sr.n_tried} candidates{guided_note} | "
+            f"diagnostics {diagnostics['n_passed']}/{diagnostics['n_run']} passed."
         )
         return res
 

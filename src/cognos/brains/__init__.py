@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import Brain, HeuristicBrain
+from .base import Brain, HeuristicBrain, ScriptedBrain
 
 if TYPE_CHECKING:
     from ..config import BrainConfig
 
-__all__ = ["Brain", "HeuristicBrain", "make_brain"]
+__all__ = ["Brain", "HeuristicBrain", "ScriptedBrain", "make_brain"]
 
 
 def make_brain(cfg: BrainConfig | None = None) -> Brain:

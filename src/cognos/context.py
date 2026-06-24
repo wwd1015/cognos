@@ -78,6 +78,10 @@ class RunContext:
         return self.run_dir / "stages"
 
     @property
+    def reasoning_dir(self) -> Path:
+        return self.run_dir / "reasoning"
+
+    @property
     def manifest_path(self) -> Path:
         return self.run_dir / "manifest.json"
 
@@ -186,6 +190,17 @@ class RunContext:
         df = pd.read_parquet(dc.path) if dc.format == "parquet" else pd.read_csv(dc.path)
         df.to_parquet(cached, index=False)
         return df
+
+    def log_reasoning(self, stage: str, kind: str, prompt: str, response: str) -> None:
+        """Append one LLM exchange to the reasoning transcript (the replay/audit artifact, ADR-0003)."""
+        self.reasoning_dir.mkdir(parents=True, exist_ok=True)
+        rec = {
+            "stage": stage, "kind": kind, "brain": getattr(self.brain, "kind", "?"),
+            "ts": datetime.now(UTC).isoformat(),
+            "prompt": prompt, "response": response,
+        }
+        with open(self.reasoning_dir / "transcript.jsonl", "a") as fh:
+            fh.write(json.dumps(rec) + "\n")
 
     def attach_dataset(self, df: pd.DataFrame) -> ArtifactRef:
         """Persist an in-memory DataFrame as the canonical dataset for this run."""

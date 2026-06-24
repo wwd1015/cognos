@@ -160,18 +160,30 @@ class FittedModel:
     sm_result: Any = None  # statsmodels result (linear families only)
     design_matrix: pd.DataFrame | None = None  # exog incl. const (for diagnostics)
     residuals: np.ndarray | None = None
+    transforms: list = field(default_factory=list)  # list[TransformSpec] LLM-authored, target-hidden
+    base_features: list[str] | None = None  # original columns needed to recompute the transforms
 
     @property
     def model_id(self) -> str:
         return f"{self.candidate.family}"
 
+    def _augment(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Recompute engineered features (target-hidden) so predict matches how the model was fit."""
+        if not self.transforms:
+            return X
+        from .transforms import apply_transforms
+
+        base = self.base_features or self.raw_features
+        aug, _, _ = apply_transforms(X[base], list(self.transforms))
+        return aug
+
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        return self.pipeline.predict(X[self.raw_features])
+        return self.pipeline.predict(self._augment(X)[self.raw_features])
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray | None:
         if not self.is_classification:
             return None
-        return self.pipeline.predict_proba(X[self.raw_features])[:, 1]
+        return self.pipeline.predict_proba(self._augment(X)[self.raw_features])[:, 1]
 
     def coefficients(self) -> dict[str, float] | None:
         if self.sm_result is not None:

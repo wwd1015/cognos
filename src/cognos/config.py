@@ -71,6 +71,8 @@ class SearchConfig(BaseModel):
     # challenger benchmark only — the deployed model is always the single interpretable champion.
     max_features_per_candidate: int | None = None
     complexity_penalty: float = 0.0  # parsimony / simplicity bias (>=0)
+    guided: bool = False  # opt-in LLM-guided search (ADR-0001 stage B); requires an LLM brain
+    guided_rounds: int = 6  # number of LLM-proposed experiments after the deterministic ratchet
 
 
 class ComplianceConfig(BaseModel):

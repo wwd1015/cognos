@@ -9,10 +9,25 @@ the deterministic plan always stands on its own so the stage runs offline.
 
 from __future__ import annotations
 
+import json
+import re
+
 from ..artifacts import Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..modeling.fit import DEFAULT_FAMILIES
 from .base import Stage, register_stage
+
+
+def _parse_json(text: str) -> dict:
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if not m:
+        return {}
+    try:
+        obj = json.loads(m.group(0))
+        return obj if isinstance(obj, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
 
 # Lower interpretability rank = more interpretable / preferred for regulated use.
 _INTERPRETABILITY = {
@@ -59,8 +74,10 @@ class IdeateStage(Stage):
             f"{len(families)} model families x feature strategies = {len(hypotheses)} hypotheses. "
             f"Strongest signals: {', '.join(top_feats) or 'n/a'}."
         )
+        proposed_transforms: list[dict] = []
         if ctx.brain.available:
-            notes += " " + self._llm_notes(ctx, profile, families)
+            extra_note, proposed_transforms = self._llm_propose(ctx, profile, families)
+            notes += " " + extra_note
 
         res = StageResult(stage=self.name, verdict=Verdict.PASS)
         payload = {
@@ -68,6 +85,7 @@ class IdeateStage(Stage):
             "families": families,
             "search_budget": cfg.search.max_candidates,
             "hypotheses": hypotheses,
+            "proposed_transforms": proposed_transforms,  # LLM-authored, engine-validated (target-hidden)
             "notes": notes,
         }
         res.add_artifact(ctx.save_json("stages/ideate/hypotheses.json", payload))
@@ -90,14 +108,40 @@ class IdeateStage(Stage):
         return f"Flexible {family} {feat_txt} to capture nonlinearity; weigh against interpretability."
 
     @staticmethod
-    def _llm_notes(ctx: RunContext, profile: dict, families: list[str]) -> str:
+    def _llm_propose(ctx: RunContext, profile: dict, families: list[str]) -> tuple[str, list[dict]]:
+        """LLM proposes feature-engineering transforms; the engine validates them (target-hidden).
+
+        Reasoning *proposes*; the engine *disposes* — a proposed transform is only retained if it
+        evaluates safely on a features-only view of the data. The exchange is logged for audit.
+        """
+        from ..modeling.transforms import SAFE_NP_FUNCS, TransformSpec, apply_transforms
+
         prompt = (
-            "You are COGNOS's idea-generation agent. Given this dataset profile, suggest 1-2 concise "
-            "feature-engineering or modeling ideas worth trying. Be specific and brief.\n\n"
-            f"Task: {profile.get('task')}\nFeatures: {profile.get('features')}\n"
-            f"Top correlations: {profile.get('top_correlations')}\nFamilies: {families}"
+            "You are COGNOS's idea-generation agent. Propose up to 3 feature-engineering transforms as "
+            "expressions over the EXISTING feature columns, using only np.<fn> "
+            f"(fn in {sorted(SAFE_NP_FUNCS)}) and arithmetic. Do NOT reference the target.\n"
+            f"Task: {profile.get('task')}\nFeature columns: {profile.get('features')}\n"
+            f"Top correlations: {profile.get('top_correlations')}\n"
+            'Respond with ONLY JSON: {"transforms": [{"name": <str>, "expr": <str>}], "note": <str>}.'
         )
         try:
-            return "LLM ideas: " + ctx.brain.generate(prompt, max_tokens=300).strip()
+            raw = ctx.brain.generate(prompt, max_tokens=500)
         except Exception:
-            return ""
+            return ("", [])
+        ctx.log_reasoning("ideate", "propose-transforms", prompt, raw)
+
+        obj = _parse_json(raw)
+        specs = [TransformSpec(name=str(t["name"]), expr=str(t["expr"]))
+                 for t in (obj.get("transforms") or [])
+                 if isinstance(t, dict) and t.get("name") and t.get("expr")]
+        if not specs:
+            return (f"LLM note: {obj.get('note', '')}".strip(), [])
+        try:
+            df = ctx.load_dataset()
+            features = profile.get("features", [])
+            _, applied, rejected = apply_transforms(df[features], specs)  # target-hidden: df[features]
+        except Exception:
+            return (f"LLM note: {obj.get('note', '')}".strip(), [])
+        note = (f"LLM proposed {len(specs)} transform(s); {len(applied)} validated, "
+                f"{len(rejected)} rejected. {obj.get('note', '')}").strip()
+        return (note, [s.to_dict() for s in applied])
