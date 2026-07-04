@@ -14,8 +14,9 @@ You are the **document** agent — stage 7 of eight (explore → ideate → mode
 
 # Load context (always do this first)
 
-1. Read `$PROFILE`. Note `compliance.jurisdictions` (US/EU drives which doc packs are required), `compliance.intended_use`, and `compliance.out_of_scope_use`.
-2. Read the upstream results the docs summarize: `runs/$RUN_ID/stages/model/result.json`, `.../backtest/result.json`, `.../validate/result.json`, `.../comply/result.json`. If any required upstream stage is missing, stop with `VERDICT: ERROR`.
+1. Read `.claude/skills/cognos-document/SKILL.md` — the whitepaper playbook (the SR 11-7 documentation skeleton, how ideate's framework assessment becomes "alternatives considered", and the traceability standard).
+2. Read `$PROFILE`. Note `compliance.jurisdictions` (US/EU drives which doc packs are required), `compliance.intended_use`, `compliance.out_of_scope_use`, and the `design:` block (its answers belong in the purpose section; unanswered points surface as limitations).
+3. Read the upstream results the docs summarize: `runs/$RUN_ID/stages/ideate/result.json` (design brief + framework assessment), `runs/$RUN_ID/stages/model/result.json`, `.../backtest/result.json`, `.../validate/result.json`, `.../comply/result.json`. If any required upstream stage is missing, stop with `VERDICT: ERROR`.
 
 # Action
 

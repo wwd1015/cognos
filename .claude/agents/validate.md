@@ -14,8 +14,9 @@ You are the **validate** agent — stage 5 of eight and the **first gate** (expl
 
 # Load context (always do this first)
 
-1. Read `$PROFILE`. Note `compliance.risk_tier` (drives validation intensity) and `metric`.
-2. Read `runs/$RUN_ID/stages/model/result.json` and `runs/$RUN_ID/stages/backtest/result.json`. The challenge tests model's claims against backtest's overfitting analytics. If either is missing, stop with `VERDICT: ERROR`.
+1. Read `.claude/skills/cognos-validate/SKILL.md` — the effective-challenge playbook (independence discipline, the leakage confirmation protocol behind the hard BLOCK, the challenge checklist, and the BLOCK-vs-WARN materiality bar). It defines what a defensible challenge looks like.
+2. Read `$PROFILE`. Note `compliance.risk_tier` (drives validation intensity) and `metric`.
+3. Read `runs/$RUN_ID/stages/model/result.json` and `runs/$RUN_ID/stages/backtest/result.json`. The challenge tests model's claims against backtest's overfitting analytics. If either is missing, stop with `VERDICT: ERROR`.
 
 # Action
 

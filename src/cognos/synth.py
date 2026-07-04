@@ -133,10 +133,102 @@ def make_commercial_credit_dataset(n: int = 1200, seed: int = 42) -> pd.DataFram
     })
 
 
+def make_cni_portfolio_dataset(n: int = 2000, seed: int = 7,
+                               include_leak: bool = True) -> pd.DataFrame:
+    """A realistic C&I (commercial & industrial) loan portfolio for the commercial-risk demo.
+
+    Obligor-level origination sample with quarterly vintages (2019Q1–2023Q4, so the 2020 stress
+    period is inside the sample), obligor financial ratios, facility characteristics, sector/region,
+    and the macro environment at origination. The target ``default`` is a 12-month default flag
+    driven by a logistic model with textbook signs: leverage up-risk; coverage, liquidity, margin,
+    and size down-risk; a 2020 vintage stress bump.
+
+    ``obligor_id`` is an identifier (drop it from features). When ``include_leak`` is True the frame
+    also carries ``dpd_at_outcome`` — days past due observed at the END of the outcome window. It is
+    an *outcome*, not a predictor available at origination, and is near-deterministically related to
+    ``default``: the classic post-outcome leakage field explore must flag and the config must drop.
+    """
+    rng = np.random.default_rng(seed)
+
+    # 20 quarterly origination cohorts spanning the 2020 stress period.
+    cohorts = pd.period_range("2019Q1", "2023Q4", freq="Q").to_timestamp()
+    cohort_idx = rng.integers(0, len(cohorts), n)
+    vintage = cohorts[cohort_idx]
+    year = vintage.year
+    # Macro at origination: unemployment with a 2020 spike, GDP growth with a 2020 dip.
+    unemployment_rate = np.where(year == 2020, rng.normal(9.0, 1.0, n),
+                                 rng.normal(4.2, 0.6, n)).clip(2.5, 15.0)
+    gdp_growth = np.where(year == 2020, rng.normal(-2.5, 1.0, n),
+                          rng.normal(2.3, 0.8, n)).clip(-8.0, 6.0)
+
+    # Obligor financials (ratios in plausible middle-market ranges).
+    debt_to_ebitda = np.clip(rng.gamma(2.2, 1.6, n), 0.2, 12.0)
+    interest_coverage = np.clip(rng.gamma(2.8, 1.8, n) + 0.3, 0.3, 25.0)
+    current_ratio = np.clip(rng.normal(1.7, 0.6, n), 0.2, 5.0)
+    operating_margin = np.clip(rng.normal(0.09, 0.07, n), -0.35, 0.45)
+    revenue_growth = np.clip(rng.normal(0.05, 0.12, n), -0.60, 0.80)
+    log_total_assets = rng.normal(17.0, 1.4, n)  # ~ $10M–$1B obligors
+
+    # Facility characteristics.
+    utilization_rate = np.clip(rng.beta(2.0, 2.5, n), 0.0, 1.0)  # revolver drawn/committed
+    collateral_coverage = np.clip(rng.gamma(3.0, 0.5, n), 0.0, 6.0)  # collateral value / exposure
+
+    sector = rng.choice(["manufacturing", "services", "retail_trade", "energy", "healthcare"],
+                        size=n, p=[0.28, 0.27, 0.20, 0.10, 0.15])
+    sector_effect = pd.Series(sector).map({
+        "manufacturing": 0.0, "services": -0.10, "retail_trade": 0.35,
+        "energy": 0.45, "healthcare": -0.20,
+    }).to_numpy()
+    region = rng.choice(["northeast", "southeast", "midwest", "west"], size=n)
+
+    logit = (
+        -3.4
+        + 0.32 * debt_to_ebitda
+        - 0.16 * interest_coverage
+        - 0.45 * current_ratio
+        - 3.0 * operating_margin
+        - 0.8 * revenue_growth
+        - 0.18 * (log_total_assets - 17.0)
+        + 1.2 * utilization_rate
+        - 0.25 * collateral_coverage
+        + 0.10 * (unemployment_rate - 4.2)
+        - 0.06 * gdp_growth
+        + sector_effect
+        + np.where(year == 2020, 0.5, 0.0)  # vintage stress bump
+        + rng.normal(0, 0.35, n)
+    )
+    p_default = 1 / (1 + np.exp(-logit))
+    default = (rng.uniform(0, 1, n) < p_default).astype(int)
+
+    df = pd.DataFrame({
+        "obligor_id": [f"OBL{100000 + i}" for i in range(n)],
+        "vintage": vintage,
+        "debt_to_ebitda": debt_to_ebitda,
+        "interest_coverage": interest_coverage,
+        "current_ratio": current_ratio,
+        "operating_margin": operating_margin,
+        "revenue_growth": revenue_growth,
+        "log_total_assets": log_total_assets,
+        "utilization_rate": utilization_rate,
+        "collateral_coverage": collateral_coverage,
+        "unemployment_rate": unemployment_rate,
+        "gdp_growth": gdp_growth,
+        "sector": sector,
+        "region": region,
+        "default": default,
+    })
+    if include_leak:
+        # Observed AFTER origination — belongs to the outcome window, not the information set.
+        df["dpd_at_outcome"] = np.where(default == 1, rng.integers(120, 181, n),
+                                        rng.integers(0, 6, n))
+    return df
+
+
 GENERATORS = {
     "regression": make_regression_dataset,
     "classification": make_classification_dataset,
     "timeseries": make_timeseries_dataset,
     "credit": make_credit_dataset,
     "commercial": make_commercial_credit_dataset,
+    "cni": make_cni_portfolio_dataset,
 }

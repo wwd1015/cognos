@@ -14,8 +14,9 @@ You are the **explore** agent — the first of eight stages in the COGNOS model-
 
 # Load context (always do this first)
 
-1. Read `$PROFILE`. Note `task`, `data.target`, `data.datetime_col`, `data.protected_attributes`, and `search`. These shape what "good" looks like for this dataset.
-2. If `runs/$RUN_ID/manifest.json` exists, Read it to confirm the run id and that explore has not already passed.
+1. Read `.claude/skills/cognos-explore/SKILL.md` — the commercial-risk data-quality playbook (post-outcome leakage patterns, default-flag conventions, ratio sanity ranges, event support). Apply it when judging which findings matter.
+2. Read `$PROFILE`. Note `task`, `data.target`, `data.datetime_col`, `data.protected_attributes`, and `search`. These shape what "good" looks like for this dataset.
+3. If `runs/$RUN_ID/manifest.json` exists, Read it to confirm the run id and that explore has not already passed.
 
 # Action
 

@@ -27,11 +27,26 @@
 - Class-imbalance and constant-feature detection.
 - Findings with severity; data profile artifact.
 
-## Idea generation (`ideate`)
-- Enumerates task-appropriate model families × feature strategies.
-- Ranks hypotheses by an interpretability/parsimony heuristic informed by the data profile.
-- Per-hypothesis rationale (Reg-friendly: prefers interpretable specs).
+## Idea generation / design (`ideate`)
+- **Data-structure assessment**: cross-sectional vs. vintage/panel vs. timeseries; event counts and
+  **events-per-variable** (Peduzzi ~10 rule) for PD-style tasks, with a finding when support is thin.
+- **Econometric framework assessment** (deterministic rules over the profile): structural Merton vs.
+  reduced-form PD scorecard vs. discrete-time hazard vs. rating migration vs. ML challenger — each
+  applicable/partial/**rejected with a stated reason**, which becomes the SR 11-7 "alternatives
+  considered" evidence.
+- **MD triangulation via the `design:` config block** (use case, horizon, default definition,
+  segment, interpretability): every unanswered design point becomes an explicit **open question to
+  the sponsor** (plus data-driven questions: leakage confirmation, panel-column hints, low EPV) —
+  never a silent assumption. Answers collapse the questions on re-run.
+- Enumerates task-appropriate model families × feature strategies; **leakage suspects are excluded
+  from the parsimonious feature strategy**; low EPV up-weights parsimonious specs.
+- Ranks hypotheses by an interpretability/parsimony heuristic; under `interpretability: required`
+  tree families carry `role: challenger` and interpretable families are searched first.
+- Human-readable **`design_brief.md` artifact** per run (sponsor brief, data structure, framework
+  table, open questions, ranked slate).
 - **LLM-driven ideation emits executable feature-engineering transforms** (not just prose), authored and run target-hidden via the safe AST-whitelisted executor (ADR-0001, ADR-0002).
+- **LLM design review** (additive): may add sponsor questions and extra candidate specs — only
+  engine-fittable families are kept, and the ratchet decides on evidence.
 
 ## Modeling & statistical testing (`model`)
 - **CASH search** (combined algorithm + hyperparameter selection) as one conditional space.

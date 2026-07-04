@@ -3,6 +3,43 @@
 All notable changes to COGNOS are documented here. Format loosely follows Keep a Changelog;
 versioning is SemVer.
 
+## [0.3.0] — 2026-07-04
+
+Commercial-risk domain capabilities: ideate becomes a true *design* stage, every agent gains a
+domain playbook, and a worked C&I example ships with the repo.
+
+### Added
+- **Ideate as the design stage**: deterministic **data-structure assessment** (cross-sectional vs
+  vintage/panel, event counts, events-per-variable with the Peduzzi ~10 rule), an **econometric
+  framework assessment** — structural Merton vs reduced-form PD vs discrete-time hazard vs rating
+  migration vs ML challenger, each applicable/partial/rejected **with stated reasons** (the SR 11-7
+  "alternatives considered") — and a per-run human-readable **`design_brief.md`** artifact.
+- **MD triangulation via the new `design:` config block** (`use_case`, `horizon`,
+  `default_definition`, `segment`, `interpretability`, `notes`): unanswered design points become
+  explicit **open questions to the model sponsor** (plus data-driven ones: leakage confirmation,
+  panel-column hints, low EPV) instead of silent assumptions; answers collapse the questions.
+- **Interpretability policy**: under `interpretability: required` tree families carry
+  `role: challenger` and interpretable families are searched first; `flexible` lets them compete.
+  Leakage suspects are excluded from the parsimonious feature strategy (`clean_top_features`).
+- **LLM design review** (additive, ADR-0001): the brain may add sponsor questions and extra
+  candidate specs; only engine-fittable families are kept and the ratchet decides on evidence.
+- **Per-agent commercial-risk skill packs** (`.claude/skills/cognos-<stage>/SKILL.md`): domain
+  playbooks for all eight agents (post-outcome leakage patterns, framework selection, economic
+  sign checks, Gini/KS/PSI norms, effective-challenge checklist, readiness mapping, whitepaper
+  skeleton, drift traps); each stage agent loads its playbook before judging engine output.
+- **Realistic C&I portfolio generator** (`synth.make_cni_portfolio_dataset`): quarterly vintages
+  spanning the 2020 stress period, obligor ratios, facility terms, macro at origination, and a
+  deliberate post-outcome leak (`dpd_at_outcome`); `cognos demo --task cni` preset.
+- **Worked example** `examples/commercial_credit/`: the leakage-catch → MD-triangulation →
+  answered-design → full-pipeline arc, with **real captured artifacts** committed under
+  `sample_output/` (design brief, open questions, run summary).
+
+### Changed
+- `cognos init` template now includes the `design:` block.
+- Agent specs (`.claude/agents/*.md`) load their skill packs; `comply` wording aligned with
+  ADR-0004 (fair-lending scans are out-of-scope-by-choice for commercial profiles, not
+  inapplicable law).
+
 ## [0.2.0] — 2026-06-24
 
 Design-review outcomes (see `CONTEXT.md` and `docs/adr/0001-0007`). COGNOS is now explicitly a

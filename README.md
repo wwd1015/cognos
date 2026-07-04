@@ -36,7 +36,7 @@ gates are **`validate`** and **`review`** only. Compliance is a non-gating repor
 | Stage | What it does | Key outputs |
 |------|------------|-------------|
 | `explore`  | Profiles data; flags target-leakage suspects, missingness, imbalance | data profile |
-| `ideate`   | Ranks candidate model specs; with an LLM, proposes engine-validated feature transforms | hypotheses |
+| `ideate`   | The design stage: assesses data structure + econometric frameworks (structural vs reduced-form vs hazard vs ML challenger), triangulates the `design:` brief with the sponsor (open questions, never silent assumptions), ranks candidate specs; with an LLM, proposes engine-validated feature transforms + a design review | design brief, hypotheses |
 | `model`    | Ratchet search over the CASH space, leakage-safe CV, full-rank statsmodels inference, statistical diagnostic battery, single interpretable champion; opt-in **LLM-guided search** | champion, valid coefficients, diagnostics, experiment ledger |
 | `backtest` | Scores via **IMPACT**; **outcomes analysis** on an out-of-time sample: Gini/KS, calibration, PSI (PBO/Deflated-Sharpe only in opt-in trading mode) | scored table, outcomes report |
 | `validate` ⛔ | **Independent** SR 11-7 challenge: leakage (BLOCKs), overfitting, stability, diagnostics, significance | rubric + verdict |
@@ -59,7 +59,10 @@ Python ≥ 3.11. Core deps: numpy, pandas, scikit-learn, statsmodels, scipy, pyd
 ```bash
 # End-to-end on synthetic data (no config needed):
 cognos demo --task commercial      # commercial credit, out-of-time outcomes analysis
+cognos demo --task cni             # richer C&I portfolio with an answered design brief
 cognos demo --task regression
+# Worked commercial-risk example (leakage arc + MD triangulation + design brief):
+python examples/commercial_credit/run_demo.py
 
 # Your own data:
 cognos init -o cognos.yaml         # write + edit a config template
@@ -118,6 +121,9 @@ process.
   code can't see the target.
 - **Valid inference** — coefficients/p-values come from a full-rank K-1 design (no dummy-variable
   trap), as SR 11-7 validation requires.
+- **Design by triangulation** — ideate turns every unanswered sponsor design point (use case,
+  horizon, default definition, segment) into an open question in `design_brief.md` instead of a
+  silent assumption; rejected frameworks are recorded with reasons ("alternatives considered").
 - **Independent challenge** — validation runs separately from modeling and BLOCKs on confirmed
   leakage.
 - **Honest backtesting** — Gini/KS + calibration + PSI on an out-of-time sample; no rubber-stamped
@@ -136,7 +142,8 @@ src/cognos/
   integrations/  impact_adapter, autoforge_loop
   runtime/       score (deployment scorer; re-applies transforms; the IMPACT derived-field entry point)
 .claude/         declarative agent specs + orchestrator command + safety hooks (deputy-style)
-projects/  examples/end_to_end/  evals/  tests/
+  skills/        per-agent commercial-risk domain playbooks (cognos-<stage>/SKILL.md)
+projects/  examples/end_to_end/  examples/commercial_credit/  evals/  tests/
 docs/adr/        architecture decision records (0001-0007)
 CONTEXT.md       ubiquitous-language glossary
 ```

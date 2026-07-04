@@ -55,6 +55,29 @@ class DataConfig(BaseModel):
     protected_attributes: list[str] = Field(default_factory=list)  # for fair-lending checks
 
 
+class DesignConfig(BaseModel):
+    """The modeling **design brief** — what the model sponsor (e.g. an MD in model development)
+    has decided about the problem, before any algorithm is chosen.
+
+    Ideate consumes this to ground its econometric-framework assessment; every *unanswered* field
+    becomes an explicit open design question in the design brief (MD triangulation) instead of a
+    silent assumption. All fields are optional free text so the engine never blocks on them.
+    """
+
+    use_case: str = ""  # e.g. origination | surveillance | CECL/IFRS9 | IRB | stress-testing
+    horizon: str = ""  # outcome window, e.g. "12-month PD", "lifetime"
+    default_definition: str = ""  # e.g. "90+ DPD or nonaccrual, per SR 11-7 documentation"
+    segment: str = ""  # e.g. "C&I middle-market", "CRE income-producing", "small business"
+    interpretability: str = "required"  # required | preferred | flexible
+    notes: str = ""  # free-form sponsor guidance (sign expectations, exclusions, priors)
+
+    def unanswered(self) -> list[str]:
+        """Names of the design questions the sponsor has not answered yet."""
+        blanks = [name for name in ("use_case", "horizon", "default_definition", "segment")
+                  if not getattr(self, name).strip()]
+        return blanks
+
+
 class MetricConfig(BaseModel):
     name: str = "auto"  # auto => rmse for regression, roc_auc for classification
     direction: Direction | None = None  # auto-inferred from metric when None
@@ -136,6 +159,7 @@ class CognosConfig(BaseModel):
     task: TaskType
     mode: Mode = Mode.AUTONOMOUS
     data: DataConfig
+    design: DesignConfig = Field(default_factory=DesignConfig)
     metric: MetricConfig = Field(default_factory=MetricConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     compliance: ComplianceConfig = Field(default_factory=ComplianceConfig)

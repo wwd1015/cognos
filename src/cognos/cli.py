@@ -29,6 +29,14 @@ data:
   datetime_col: null      # set for timeseries / walk-forward
   protected_attributes: []  # excluded from features; used for fair-lending checks
 
+design:                   # the sponsor's (MD's) design brief — unanswered fields become
+  use_case: ""            #   open design questions in ideate's design brief, never silent
+  horizon: ""             #   assumptions. e.g. origination | surveillance | CECL | IRB
+  default_definition: ""  # e.g. "90+ DPD or nonaccrual"
+  segment: ""             # e.g. "C&I middle-market"
+  interpretability: required  # required | preferred | flexible
+  notes: ""
+
 metric:
   name: auto              # auto, or rmse/mae/r2/roc_auc/accuracy/f1/log_loss/...
 
@@ -180,6 +188,13 @@ def _cmd_demo(args) -> int:
                        protected=["group"], fair_lending=True),
         "commercial": dict(task="classification", target="default", metric="roc_auc",
                            datetime_col="vintage"),
+        "cni": dict(task="classification", target="default", metric="roc_auc",
+                    datetime_col="vintage", drop=["obligor_id", "dpd_at_outcome"],
+                    design={"use_case": "origination underwriting",
+                            "horizon": "12-month PD",
+                            "default_definition": "90+ DPD or nonaccrual within 12 months",
+                            "segment": "C&I middle-market",
+                            "interpretability": "required"}),
     }
     p = presets[args.task]
     raw = {
@@ -187,11 +202,13 @@ def _cmd_demo(args) -> int:
         "description": f"COGNOS synthetic {args.task} demo",
         "task": p["task"],
         "data": {"path": str(csv), "format": "csv", "target": p["target"],
-                 "datetime_col": p.get("datetime_col"), "protected_attributes": p.get("protected", [])},
+                 "datetime_col": p.get("datetime_col"), "protected_attributes": p.get("protected", []),
+                 "drop_columns": p.get("drop", [])},
+        "design": p.get("design", {}),
         "metric": {"name": p["metric"]},
         "compliance": {"fair_lending": p.get("fair_lending", False),
-                       "jurisdictions": ["US"] if args.task == "commercial" else ["US", "EU"],
-                       "risk_tier": "high" if args.task in ("credit", "commercial") else "medium"},
+                       "jurisdictions": ["US"] if args.task in ("commercial", "cni") else ["US", "EU"],
+                       "risk_tier": "high" if args.task in ("credit", "commercial", "cni") else "medium"},
     }
     cfg = CognosConfig.from_dict(raw)
     orch = Orchestrator(cfg, runs_root=str(runs_dir))
@@ -243,7 +260,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     pd = sub.add_parser("demo", help="run an end-to-end demo on synthetic data")
     pd.add_argument("--task", default="regression",
-                    choices=["regression", "classification", "timeseries", "credit", "commercial"])
+                    choices=["regression", "classification", "timeseries", "credit", "commercial",
+                             "cni"])
     pd.add_argument("--runs-dir", default=None)
     pd.set_defaults(func=_cmd_demo)
 

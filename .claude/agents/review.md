@@ -14,8 +14,9 @@ You are the **review** agent — stage 8 of eight and the **final gate** (explor
 
 # Load context (always do this first)
 
-1. Read `$PROFILE`.
-2. Read `runs/$RUN_ID/stages/document/result.json` to know which documents and `artifacts[]` the review must reconcile against. Cross-check against `model`, `backtest`, and `comply` results — the docs make claims those stages must support. If document is missing, stop with `VERDICT: ERROR`.
+1. Read `.claude/skills/cognos-review/SKILL.md` — the docs↔code drift playbook (champion-swap, feature-rename, metric, design-brief, and path drift; the BLOCK bar for confirmed stale references).
+2. Read `$PROFILE`.
+3. Read `runs/$RUN_ID/stages/document/result.json` to know which documents and `artifacts[]` the review must reconcile against. Cross-check against `model`, `backtest`, and `comply` results — the docs make claims those stages must support. If document is missing, stop with `VERDICT: ERROR`.
 
 # Action
 

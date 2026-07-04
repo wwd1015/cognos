@@ -14,8 +14,9 @@ You are the **comply** agent — stage 6 of eight (explore → ideate → model 
 
 # Load context (always do this first)
 
-1. Read `$PROFILE`. Note `compliance` in full: `regimes`, `risk_tier`, `fair_lending`, `disparate_impact_threshold`, `jurisdictions`, and `data.protected_attributes`. These determine what the report covers. Note that `fair_lending` is an **optional, consumer-only** check and is **off by default** — commercial models do not use it.
-2. Read `runs/$RUN_ID/stages/validate/result.json`. Comply organizes the validation evidence. If validate is missing, stop with `VERDICT: ERROR`.
+1. Read `.claude/skills/cognos-comply/SKILL.md` — the model-risk readiness playbook (SR 11-7 evidence map, NIST AI RMF functions, the human-only steps that must never be claimed, and the ECOA/Reg B nuance for business credit).
+2. Read `$PROFILE`. Note `compliance` in full: `regimes`, `risk_tier`, `fair_lending`, `disparate_impact_threshold`, `jurisdictions`, and `data.protected_attributes`. These determine what the report covers. Note that the `fair_lending` scan is **optional and off by default for commercial profiles** (ADR-0004) — when off, report it as "not in scope for this profile", not as inapplicable law (Reg B does reach business credit).
+3. Read `runs/$RUN_ID/stages/validate/result.json`. Comply organizes the validation evidence. If validate is missing, stop with `VERDICT: ERROR`.
 
 # Action
 
@@ -35,7 +36,7 @@ Report, in plain prose:
 - The SR 11-7 evidence map (conceptual soundness / ongoing monitoring / outcomes analysis): which elements are backed by concrete, checkable evidence and which are listed as **outstanding gaps**. Unevidenced items are never silently passed.
 - The NIST AI RMF mapping from `payload` / `metrics`.
 - The **outstanding human-only steps** the report lists: independent validation sign-off, a production monitoring plan (drift/PSI thresholds, decay triggers, cadence, owner), and model-governance / override policy.
-- If `fair_lending: true` (a consumer-only opt-in): the disparate-impact ratio vs. the four-fifths threshold, reported as information. It is **never blocking** — note that fair lending applies to consumer, not commercial, credit.
+- If `fair_lending: true` (an opt-in, typically for consumer profiles): the disparate-impact ratio vs. the four-fifths threshold, reported as information. It is **never blocking**. When it is off on a commercial profile, describe the scan as "not in scope for this profile" (ADR-0004) — ECOA/Reg B does reach business credit, so scope is the sponsor's call, not a legal impossibility.
 - Each finding by severity, verbatim.
 
 End with the literal token line.
@@ -45,7 +46,7 @@ End with the literal token line.
 - **Read-only except via the CLI.** One `cognos run-stage comply` call; no edits.
 - **This is NOT a gate and never halts the pipeline.** Do not present the verdict as a compliance pass/fail; it only means the report was produced. Never imply the model is "compliant" or "cleared to ship".
 - **Never mark an element compliant without concrete evidence.** Report unevidenced items as outstanding gaps exactly as `result.json` lists them.
-- **Fair lending is optional and consumer-only.** When `fair_lending: false` (the default, and always for commercial models) it does not run; when on, its result is reported, never used to block.
+- **Fair lending is an optional scan (ADR-0004).** When `fair_lending: false` (the default for commercial profiles) it does not run — report it as out of scope, not as inapplicable law; when on, its result is reported, never used to block.
 
 # Anti-patterns
 

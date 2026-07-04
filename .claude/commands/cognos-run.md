@@ -59,6 +59,7 @@ For each stage `S` in `stages.enabled`, in order:
    - Verdict is PASS / WARN / SKIP → continue to the next stage.
    - Verdict is FAIL / OPEN_QUESTIONS / BLOCK / ERROR → apply the **mode rules** below.
 6. Non-gate stage with verdict ERROR → halt with `HALT: stage=S errored`. Non-gate FAIL/WARN → record and continue (the gates downstream will act on it).
+7. **Ideate only:** if its `result.json` payload lists `open_questions` (MD triangulation — unanswered design points), print them verbatim after the stage line. They never pause or gate the run; they are for the human sponsor, who answers them in the profile's `design:` block and re-runs. Do not answer them yourself.
 
 # Mode rules at a gate
 

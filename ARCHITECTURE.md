@@ -26,10 +26,18 @@ per-project YAML profiles, in the spirit of `deputy`. The agent layer drives the
 
 ## Reasoning-driven loop
 
+Before any reasoning enters, `ideate` does the *design* work deterministically: it assesses the
+data structure (cross-sectional vs vintage/panel, event support), judges which econometric
+frameworks apply (structural vs reduced-form vs hazard vs ML challenger — rejected ones recorded
+with reasons as SR 11-7 "alternatives considered"), and triangulates the config's `design:` brief
+with the model sponsor — every unanswered design point becomes an open question in the run's
+`design_brief.md`, never a silent assumption.
+
 The reasoning layer enters in two staged depths
 ([ADR-0001](docs/adr/0001-reasoning-proposes-engine-disposes.md)):
 
-- **(A) LLM-driven ideation** emits *executable* feature-engineering transforms (not just prose).
+- **(A) LLM-driven ideation** emits *executable* feature-engineering transforms (not just prose)
+  and a design review that may add sponsor questions and engine-fittable candidate specs.
 - **(B) Opt-in LLM-guided search** (`search.guided`) where the LLM is the mutation function proposing
   the next experiment from the experiment ledger. Deterministic grid search is the baseline and the
   test double.

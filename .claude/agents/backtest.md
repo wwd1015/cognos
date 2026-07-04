@@ -14,8 +14,9 @@ You are the **backtest** agent — stage 4 of eight (explore → ideate → mode
 
 # Load context (always do this first)
 
-1. Read `$PROFILE`. Note `data.datetime_col` (a date/vintage column lets the holdout be a true out-of-time sample), the `backtest` block (scheme, n_splits, **`returns_column`**), and `search.max_candidates`. When `backtest.returns_column` is **unset** (the default), this is a credit-risk outcomes analysis; when **set**, the opt-in trading/returns mode also computes PBO + Deflated Sharpe.
-2. Read `runs/$RUN_ID/stages/model/result.json` for the champion and its in-sample metric. If model is missing, stop with `VERDICT: ERROR`.
+1. Read `.claude/skills/cognos-backtest/SKILL.md` — the SR 11-7 outcomes-analysis playbook (Gini/KS bands for wholesale portfolios, PSI 0.10/0.25 thresholds, calibration reading, right-censoring caveats). Use its benchmarks when interpreting the numbers.
+2. Read `$PROFILE`. Note `data.datetime_col` (a date/vintage column lets the holdout be a true out-of-time sample), the `backtest` block (scheme, n_splits, **`returns_column`**), and `search.max_candidates`. When `backtest.returns_column` is **unset** (the default), this is a credit-risk outcomes analysis; when **set**, the opt-in trading/returns mode also computes PBO + Deflated Sharpe.
+3. Read `runs/$RUN_ID/stages/model/result.json` for the champion and its in-sample metric. If model is missing, stop with `VERDICT: ERROR`.
 
 # Action
 

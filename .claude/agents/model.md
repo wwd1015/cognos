@@ -16,8 +16,9 @@ The deliverable is a **single, interpretable champion** chosen with an interpret
 
 # Load context (always do this first)
 
-1. Read `$PROFILE`. Note `metric` (name + direction), `search` (max_candidates, cv_folds, holdout_fraction, random_state, and the opt-in `ensemble` challenger benchmark + `guided` LLM search), and `task`.
-2. Read `runs/$RUN_ID/stages/ideate/result.json` for the candidate slate the search will ratchet over. If ideate is missing, stop with `VERDICT: ERROR`.
+1. Read `.claude/skills/cognos-model/SKILL.md` — the champion-selection playbook (economic sign checks for commercial PD, inference caveats by family, plausibility bands like AUC 0.70–0.85). Apply it when judging the champion, not just relaying it.
+2. Read `$PROFILE`. Note `metric` (name + direction), `search` (max_candidates, cv_folds, holdout_fraction, random_state, and the opt-in `ensemble` challenger benchmark + `guided` LLM search), `task`, and `design.interpretability`.
+3. Read `runs/$RUN_ID/stages/ideate/result.json` for the candidate slate the search will ratchet over — including hypothesis `role`s (candidate vs. challenger). If ideate is missing, stop with `VERDICT: ERROR`.
 
 # Action
 
