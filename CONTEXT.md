@@ -8,8 +8,10 @@ removes humans from the loop; the determinism is what keeps the reasoning honest
 anti-hallucination mechanism).
 
 **Primary domain:** commercial model development (e.g. commercial credit-risk: facility / obligor /
-collateral), governed by **SR 11-7 model risk management**. Consumer fair-lending law (ECOA/Reg B)
-does **not** apply; see [ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md).
+collateral), governed by **SR 11-7 model risk management**. Fair-lending scans are an **optional,
+off-by-default module** for commercial profiles (report them as out of scope for the profile, not as
+inapplicable law — ECOA/Reg B does reach business credit);
+see [ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md).
 
 ## Language
 
@@ -82,6 +84,42 @@ The *analysis* (everything the deterministic engine computes) is fully, bit-repr
 no LLM. The *reasoning trajectory* (what the LLM proposed) is non-deterministic, recorded for audit,
 and mitigated by human review. The LLM is required to automate the search, never to reproduce the
 result. See [ADR-0003](docs/adr/0003-two-tier-reproducibility.md).
+
+**Design brief (MD triangulation)**:
+The sponsor's answers to the design questions that precede any algorithm — use case, horizon,
+default definition, segment, interpretability (`design:` config block). Every *unanswered* point
+becomes an explicit **open question** in ideate's `design_brief.md`, never a silent assumption.
+_Avoid_: answering a sponsor question on the sponsor's behalf.
+
+**Framework assessment (alternatives considered)**:
+Ideate's deterministic judgment of which econometric frameworks fit the data structure — structural
+(Merton) vs reduced-form PD vs discrete-time hazard vs rating migration vs ML challenger — each
+applicable / partial / **rejected with a stated reason**. The rejections are the SR 11-7
+"alternatives considered" evidence.
+
+**Discrete-time hazard family** (`hazard_logit` / `hazard_cloglog`):
+A survival model (Shumway 2001) fit by **panel-expanding obligor-periods inside the estimator**, so
+CV and the sealed holdout keep splitting at the obligor level (the survival-CV leak is impossible by
+construction). Unlocked by `data.event_time_col` — the label's *timing*, which is outcome data and
+therefore never a feature. Deliverable beyond a single-horizon PD: the **PD term structure**
+(cumulative PD per period). See [ADR-0008](docs/adr/0008-econometric-core-survival-structural-simulation.md).
+
+**Structural (Merton) engine**:
+A deterministic KMV fixed-point solver (equity value/vol + debt face → asset value/vol,
+**distance-to-default**, structural PD). **Hybrid mode** (the default use) feeds DD to the champion
+as an engineered feature, recomputed target-hidden at serve time; the pure structural PD is scored
+on the sealed holdout only as a **labelled challenger benchmark**, never the deployed model.
+_Avoid_: calling the structural PD a fitted model — it is a solver output.
+
+**Portfolio simulation (Vasicek / ASRF)**:
+Seeded one-factor Monte Carlo of the portfolio loss distribution (EL/UL/VaR/ES) plus closed-form
+Basel IRB capital, conditioned on the champion's PDs. A *report* the backtest stage emits — it never
+feeds champion selection, so the frozen substrate is untouched.
+
+**Stress scenario**:
+A named set of covariate shocks (`add`/`mul`/`set`) re-scored **deterministically** through the
+deployed scorer; reported as mean-PD / expected-loss deltas vs baseline. Shocks against unknown
+columns are surfaced, never silently ignored.
 
 ## Resolved
 

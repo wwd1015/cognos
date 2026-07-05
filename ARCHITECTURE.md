@@ -134,9 +134,9 @@ never *require* the LLM to reproduce a result — the LLM automates the search, 
   bit-reproducible offline with no LLM; the reasoning trajectory is recorded to
   `runs/<id>/reasoning/transcript.jsonl` for replay/audit and is human-gated.
 - **Primary domain is commercial** model development under SR 11-7
-  ([ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md)). Consumer fair-lending
-  (ECOA/Reg B, disparate impact, reason codes) does **not** apply and is an optional, off-by-default
-  consumer-only module (`compliance.fair_lending: false`) — not a default-pipeline feature.
+  ([ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md)). Fair-lending scans
+  are an optional, off-by-default module (`compliance.fair_lending: false`) — out of scope for a
+  commercial profile by choice, not a default-pipeline feature.
 - **Backtest = SR 11-7 outcomes analysis** ([ADR-0005](docs/adr/0005-backtesting-is-credit-risk-outcomes-analysis.md)):
   discrimination (Gini/KS), calibration (expected-vs-observed by band + ECE), and stability (PSI) on an
   **out-of-time** sample by default (`modeling/credit_metrics.py`). The holdout is time-ordered when a
@@ -157,6 +157,14 @@ never *require* the LLM to reproduce a result — the LLM automates the search, 
   prediction pipeline, so reported significances are statistically valid (no dummy-variable trap /
   astronomical condition number). Model selection uses **leakage-safe cross-validation in search + a
   sealed/out-of-time holdout** (not nested cross-validation).
+- **Econometric core: survival, structural, and simulation live in the engine**
+  ([ADR-0008](docs/adr/0008-econometric-core-survival-structural-simulation.md)): discrete-time
+  hazard families panel-expand obligor-periods **inside the estimator** so CV/holdout stay
+  obligor-level (the survival-CV leak is impossible by construction) and report a **PD term
+  structure**; the Merton structural model is a deterministic KMV **solver, not a fit** — DD feeds
+  the champion as a serve-time-recomputed feature (hybrid), with the pure structural PD kept as a
+  labelled challenger benchmark; Vasicek portfolio losses + Basel IRB capital and macro-scenario
+  stress are seeded **reports** the backtest stage emits, never selection criteria.
 - **IMPACT is optional**: the adapter prefers the real `EntityPipeline` and falls back to the
   built-in scorer transparently, recording which path ran (`used_impact`).
 - **OKF over a bespoke format**: a permissive, vendor-neutral, agent-readable markdown spec where

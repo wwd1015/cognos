@@ -38,6 +38,10 @@
   segment, interpretability): every unanswered design point becomes an explicit **open question to
   the sponsor** (plus data-driven questions: leakage confirmation, panel-column hints, low EPV) —
   never a silent assumption. Answers collapse the questions on re-run.
+- **Capability-unlock questions**: when the data supports a framework the config hasn't switched on,
+  ideate says so — event-timing columns detected → "set `data.event_time_col` for the hazard
+  families"; market observables detected → "enable the `structural:` block"; portfolio simulation
+  on Basel-default ρ/LGD → "confirm provenance"; stress enabled without scenarios → "supply the set".
 - Enumerates task-appropriate model families × feature strategies; **leakage suspects are excluded
   from the parsimonious feature strategy**; low EPV up-weights parsimonious specs.
 - Ranks hypotheses by an interpretability/parsimony heuristic; under `interpretability: required`
@@ -142,9 +146,10 @@
 - **autoforge protocol** reimplemented: `name: value` stdout parsing, experiment ledger, generic ratchet loop.
 - Typed config (Pydantic v2) with auto metric/direction resolution and YAML round-trip.
 - CLI: `run`, `run-stage`, `demo`, `init`, `explain`, `report`, `list-runs`, `agents`.
-- **Demo tasks** including the new **`commercial`** task — a commercial credit-risk model-validation showcase (SR 11-7 + OOT outcomes analysis), the flagship example (ADR-0004). The consumer fair-lending `credit` demo exercises an off-by-default module, not the primary path.
+- **Demo tasks** including **`commercial`** (SR 11-7 + OOT outcomes analysis) and **`cni`** — the flagship C&I showcase with an answered design brief, event timing (hazard families), Vasicek portfolio simulation, and two macro stress scenarios (ADR-0004, ADR-0008). The consumer fair-lending `credit` demo exercises an off-by-default module, not the primary path.
 - Python API: `run_pipeline`, `Orchestrator`, `RunContext`, `CognosConfig`.
-- Synthetic data generators (regression, classification, time series, commercial credit-risk with a vintage/date column for OOT calibration/PSI, and consumer credit-with-protected-attribute for the optional fair-lending module) for tests and demos.
+- Synthetic data generators (regression, classification, time series, commercial credit-risk with a vintage/date column for OOT calibration/PSI, a **C&I portfolio** with event timing + optional market observables + a deliberate post-outcome leak, and consumer credit-with-protected-attribute for the optional fair-lending module) for tests and demos.
+- **Worked examples**: `examples/commercial_credit/` (private middle-market arc: leakage catch → MD triangulation → full pipeline) and `examples/public_obligor_pd/` (public-obligor book: every econometric + structural + simulation capability in one run), both with captured real artifacts under `sample_output/`.
 - **Claude-Code-native agent layer**: declarative `.claude/agents/*.md`, an orchestrator slash command, PreToolUse safety hooks, per-project profiles (deputy-style).
 - **Eval harness** for autonomous runs (assert verdicts/gates per case).
 - Comprehensive test suite (unit + integration) and a runnable end-to-end example.

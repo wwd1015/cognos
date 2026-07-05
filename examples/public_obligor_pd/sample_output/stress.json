@@ -1,0 +1,41 @@
+{
+  "baseline": {
+    "mean_pd": 0.031203892011541737,
+    "expected_loss": 0.014041751405193781
+  },
+  "scenarios": [
+    {
+      "name": "adverse",
+      "shocks": {
+        "unemployment_rate": {
+          "add": 3.0
+        },
+        "gdp_growth": {
+          "add": -2.0
+        }
+      },
+      "mean_pd": 0.04443685946373037,
+      "delta_pd": 0.013232967452188632,
+      "expected_loss": 0.019996586758678665,
+      "delta_expected_loss": 0.005954835353484885,
+      "worst_decile_mean_pd": 0.21658576952083558
+    },
+    {
+      "name": "severely_adverse",
+      "shocks": {
+        "unemployment_rate": {
+          "add": 6.0
+        },
+        "gdp_growth": {
+          "set": -4.0
+        }
+      },
+      "mean_pd": 0.10072233702426171,
+      "delta_pd": 0.06951844501271998,
+      "expected_loss": 0.04532505166091777,
+      "delta_expected_loss": 0.03128330025572399,
+      "worst_decile_mean_pd": 0.41302060992569684
+    }
+  ],
+  "note": "EL as PD\u00d7LGD (lgd=0.45) per unit EAD (400 total); deterministic re-scoring"
+}

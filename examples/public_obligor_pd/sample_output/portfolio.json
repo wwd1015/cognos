@@ -1,0 +1,20 @@
+{
+  "n_obligors": 400,
+  "n_sims": 10000,
+  "lgd": 0.45,
+  "asset_correlation": "basel_formula",
+  "confidence": 0.999,
+  "expected_loss": 0.014027962500000001,
+  "unexpected_loss_std": 0.011336263754478096,
+  "var": 0.08550225000000046,
+  "expected_shortfall": 0.0977625,
+  "loss_quantiles": {
+    "0.5": 0.01125,
+    "0.9": 0.028125,
+    "0.99": 0.054000000000000006,
+    "0.999": 0.08550225000000046
+  },
+  "mc_stderr_el": 0.00011336263754478096,
+  "irb_capital_mean": 0.07101601344614146,
+  "note": "losses as a fraction of total EAD; PDs are model scores (see calibration section)"
+}

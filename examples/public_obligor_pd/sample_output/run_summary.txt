@@ -1,0 +1,16 @@
+=== COGNOS RUN SUMMARY ===
+run_id: 20260705T024717Z-3448d72
+project: public_cni_pd
+mode: autonomous
+final_verdict: WARN
+stages_run: explore ideate model backtest validate comply document review
+champion_metric: roc_auc=0.8207648026315789
+n_findings: 9
+verdict.explore: WARN
+verdict.ideate: PASS
+verdict.model: PASS
+verdict.backtest: PASS
+verdict.validate: WARN
+verdict.comply: PASS
+verdict.document: PASS
+verdict.review: PASS

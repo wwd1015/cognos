@@ -13,6 +13,10 @@ python examples/commercial_credit/run_demo.py       # add --save-sample to refre
 
 Equivalent CLI one-liner (leak pre-dropped, design pre-answered): `cognos demo --task cni`
 
+For the full econometric & structural toolkit (probit/cloglog inference, hazard term structure,
+Merton hybrid + benchmark, Vasicek portfolio, macro stress) demonstrated capability-by-capability
+on a *public*-obligor book, see [`examples/public_obligor_pd/`](../public_obligor_pd/).
+
 ## The arc
 
 1. **Explore catches the leak.** The raw pull includes `dpd_at_outcome` — days past due observed

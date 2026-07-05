@@ -32,6 +32,8 @@ Register it with `@register_stage` and add it to `stages/__init__._STAGE_MODULES
 ## Extending COGNOS
 - **New model family** → add an estimator branch in `modeling/fit.py::_estimator`, a hyperparameter
   grid in `modeling/search.py::_hp_grid`, and (if it's a defaulted family) `DEFAULT_FAMILIES`.
+  Survival, structural, and simulation extension points live in `modeling/hazard.py`,
+  `modeling/structural.py`, and `modeling/simulate.py` (design rules: ADR-0008).
 - **New metric** → add it to `modeling/metrics.py::score` and, if higher-is-better, to `MAXIMIZE`.
 - **New statistical test** → add it to `stages/stat_tests.py` with its H0, severity, and a `_safe`
   wrapper so an inapplicable test is `skipped`, never a crash.

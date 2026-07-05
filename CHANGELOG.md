@@ -42,6 +42,14 @@ prioritizing traditional/structural methods over ML-flavored items.
   `default_quarter` event timing and opt-in market observables (`include_market=True`).
 - New design questions from ideate: hazard/structural capability unlocks, asset-correlation & LGD
   provenance, missing stress scenario sets.
+- **ADR-0008** documenting the three design decisions (hazard panel-expansion inside the estimator;
+  structural model as a solver with hybrid-default use; simulation reported, never selected on);
+  CONTEXT.md glossary entries for the design brief, framework assessment, hazard family, structural
+  engine, portfolio simulation, and stress scenarios.
+- **Comprehensive showcase** `examples/public_obligor_pd/`: every econometric + structural +
+  simulation capability in one run on a public-obligor book (framework unlocks → probit/cloglog
+  inference → hazard term structure → Merton hybrid vs pure-structural benchmark → full pipeline
+  with Vasicek portfolio and macro stress), with captured real artifacts under `sample_output/`.
 
 ## [0.3.0] — 2026-07-04
 

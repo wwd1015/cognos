@@ -59,10 +59,13 @@ Python ≥ 3.11. Core deps: numpy, pandas, scikit-learn, statsmodels, scipy, pyd
 ```bash
 # End-to-end on synthetic data (no config needed):
 cognos demo --task commercial      # commercial credit, out-of-time outcomes analysis
-cognos demo --task cni             # richer C&I portfolio with an answered design brief
+cognos demo --task cni             # C&I portfolio: hazard term structure, portfolio sim, stress
 cognos demo --task regression
 # Worked commercial-risk example (leakage arc + MD triangulation + design brief):
 python examples/commercial_credit/run_demo.py
+# Comprehensive econometric/structural showcase (GLM links, hazard term structure,
+# Merton hybrid, Vasicek portfolio, macro stress) on a public-obligor book:
+python examples/public_obligor_pd/run_demo.py
 
 # Your own data:
 cognos init -o cognos.yaml         # write + edit a config template
@@ -137,14 +140,17 @@ src/cognos/
   config.py context.py artifacts.py orchestrator.py cli.py okf.py synth.py datautil.py
   brains/        heuristic (default) + optional Claude LLMBrain + ScriptedBrain (test double)
   stages/        the 8 agents + stat_tests battery
-  modeling/      metrics, fitters (+ GLMs), ratchet search, credit_metrics, backtest_stats,
+  modeling/      metrics, fitters (+ GLM links incl. probit/cloglog), ratchet search,
+                 hazard (discrete-time survival, PD term structure), structural (Merton DD solver),
+                 simulate (Vasicek portfolio + macro stress), credit_metrics, backtest_stats,
                  transforms (target-hidden), guided (LLM-guided search), ensemble
   integrations/  impact_adapter, autoforge_loop
   runtime/       score (deployment scorer; re-applies transforms; the IMPACT derived-field entry point)
 .claude/         declarative agent specs + orchestrator command + safety hooks (deputy-style)
   skills/        per-agent commercial-risk domain playbooks (cognos-<stage>/SKILL.md)
-projects/  examples/end_to_end/  examples/commercial_credit/  evals/  tests/
-docs/adr/        architecture decision records (0001-0007)
+projects/  examples/end_to_end/  examples/commercial_credit/  examples/public_obligor_pd/
+evals/  tests/
+docs/adr/        architecture decision records (0001-0008)
 CONTEXT.md       ubiquitous-language glossary
 ```
 
