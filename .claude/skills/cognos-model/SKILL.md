@@ -30,9 +30,17 @@ signs still shouldn't flip.)
 
 ## Inference quality
 
-- Coefficients/p-values come from the **full-rank (K−1 coded) inference design** — they are valid
-  for documentation only for plain OLS/logit champions. Regularized and GLM families report
-  point estimates without honest p-values; say so rather than over-claiming.
+- Coefficients/p-values come from the **full-rank (K−1 coded) inference design** — valid for plain
+  OLS/logit champions **and** for the probit/cloglog links and the hazard families (whose panel
+  GLM inference includes the period baseline-hazard effects). Regularized families report point
+  estimates without honest p-values; say so rather than over-claiming.
+- A **hazard champion** (`hazard_logit`/`hazard_cloglog`) additionally reports a `hazard` payload:
+  the horizon and the **PD term structure** (mean cumulative PD per period). Check it is monotone
+  non-decreasing and that PD(final period) is consistent with the portfolio default rate.
+- A **structural** payload means the Merton engine ran: `merton_dd` (distance-to-default) is an
+  engineered feature in the champion (hybrid mode), and `structural.benchmark` holds the
+  pure-structural PD's holdout AUC/Gini — a labelled challenger benchmark, never the deliverable.
+  Expect DD to carry a negative coefficient sign (higher DD = safer).
 - Insignificant-everything with a decent AUC suggests collinearity (ratio families share
   numerators/denominators) or too many parameters for the event count.
 

@@ -1,11 +1,11 @@
 === COGNOS RUN SUMMARY ===
-run_id: 20260704T155546Z-f630d42
+run_id: 20260705T021208Z-3deeeba
 project: cni_middle_market_pd
 mode: autonomous
 final_verdict: WARN
 stages_run: explore ideate model backtest validate comply document review
-champion_metric: roc_auc=0.8274259868421053
-n_findings: 7
+champion_metric: roc_auc=0.826891447368421
+n_findings: 8
 verdict.explore: WARN
 verdict.ideate: PASS
 verdict.model: PASS

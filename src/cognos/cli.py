@@ -28,6 +28,8 @@ data:
   features: []            # empty = all non-target/non-protected columns
   datetime_col: null      # set for timeseries / walk-forward
   protected_attributes: []  # excluded from features; used for fair-lending checks
+  event_time_col: null    # 1-based period of the event (survival); unlocks the hazard families
+  horizon_periods: null   # outcome window in periods; null = max observed event time
 
 design:                   # the sponsor's (MD's) design brief — unanswered fields become
   use_case: ""            #   open design questions in ideate's design brief, never silent
@@ -46,6 +48,21 @@ search:
   holdout_fraction: 0.2
   random_state: 42
   ensemble: true
+
+structural:               # Merton distance-to-default (needs market observables)
+  enabled: false          # when on: DD feeds the champion (hybrid) + structural PD benchmark
+  equity_value_col: null
+  equity_vol_col: null
+  debt_col: null
+
+portfolio:                # Vasicek one-factor loss simulation + Basel IRB capital (reported)
+  enabled: false
+  lgd: 0.45
+  asset_correlation: null # null = Basel IRB formula rho(PD)
+
+stress:                   # macro-scenario stress: shock covariates, re-score deterministically
+  enabled: false
+  scenarios: []           # [{name: adverse, shocks: {unemployment: {add: 3.0}}}]
 
 compliance:
   regimes: [SR11-7, NIST-AI-RMF]
@@ -190,6 +207,16 @@ def _cmd_demo(args) -> int:
                            datetime_col="vintage"),
         "cni": dict(task="classification", target="default", metric="roc_auc",
                     datetime_col="vintage", drop=["obligor_id", "dpd_at_outcome"],
+                    event_time_col="default_quarter", horizon_periods=4,
+                    portfolio={"enabled": True, "lgd": 0.45, "n_sims": 10000},
+                    stress={"enabled": True, "scenarios": [
+                        {"name": "adverse",
+                         "shocks": {"unemployment_rate": {"add": 3.0},
+                                    "gdp_growth": {"add": -2.0}}},
+                        {"name": "severely_adverse",
+                         "shocks": {"unemployment_rate": {"add": 6.0},
+                                    "gdp_growth": {"set": -4.0}}},
+                    ]},
                     design={"use_case": "origination underwriting",
                             "horizon": "12-month PD",
                             "default_definition": "90+ DPD or nonaccrual within 12 months",
@@ -203,8 +230,12 @@ def _cmd_demo(args) -> int:
         "task": p["task"],
         "data": {"path": str(csv), "format": "csv", "target": p["target"],
                  "datetime_col": p.get("datetime_col"), "protected_attributes": p.get("protected", []),
-                 "drop_columns": p.get("drop", [])},
+                 "drop_columns": p.get("drop", []),
+                 "event_time_col": p.get("event_time_col"),
+                 "horizon_periods": p.get("horizon_periods")},
         "design": p.get("design", {}),
+        "portfolio": p.get("portfolio", {}),
+        "stress": p.get("stress", {}),
         "metric": {"name": p["metric"]},
         "compliance": {"fair_lending": p.get("fair_lending", False),
                        "jurisdictions": ["US"] if args.task in ("commercial", "cni") else ["US", "EU"],

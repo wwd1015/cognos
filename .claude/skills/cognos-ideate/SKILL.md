@@ -14,11 +14,18 @@ model sponsor (the MD) instead of assuming. Use this playbook to judge whether t
 
 | Framework | When it applies | Engine support | Canonical reference |
 |---|---|---|---|
-| **Structural (Merton distance-to-default)** | Obligor has traded-market observables: equity value/volatility, liability structure. Public corporates. | Feature input only — the engine cannot fit a structural model | Merton (1974); KMV / Moody's EDF |
-| **Reduced-form PD (scorecard / GLM)** | Private/middle-market obligors: financial ratios + facility + macro covariates, binary default flag | logit, ridge_logit, lasso_logit | Altman (1968) Z-score; Ohlson (1980); Basel IRB |
-| **Discrete-time hazard (survival)** | Vintage/panel data — time-indexed observation cohorts | approximated: period-indexed logit | Shumway (2001) |
+| **Structural (Merton distance-to-default)** | Obligor has traded-market observables: equity value/volatility, debt face value. Public corporates. | **Real support via the `structural:` config block**: deterministic KMV solver → DD as a hybrid feature feeding the champion, plus a pure-structural PD challenger benchmark on the sealed holdout | Merton (1974); KMV / Moody's EDF |
+| **Reduced-form PD (scorecard / GLM)** | Private/middle-market obligors: financial ratios + facility + macro covariates, binary default flag | logit, **probit, cloglog** (statsmodels inference), ridge_logit, lasso_logit | Altman (1968) Z-score; Ohlson (1980); Basel IRB |
+| **Discrete-time hazard (survival)** | Vintage/panel data with **event timing** (`data.event_time_col`) | **Full support**: `hazard_logit` / `hazard_cloglog` — obligor-period panel expansion inside the estimator (obligor-level CV stays leakage-safe), valid panel GLM inference, **PD term structure** | Shumway (2001) |
 | **Rating-transition matrix** | Internal rating history at successive snapshots | not in engine — flag as human follow-up | CreditMetrics (1997) |
 | **ML challenger (RF/GBM)** | Always available as a predictive-ceiling benchmark; champion only if the sponsor relaxes interpretability | random_forest, gradient_boosting | SR 11-7 benchmarking; champion–challenger practice |
+
+Downstream of the model, two **simulation capabilities** connect PDs to portfolio decisions (opt-in,
+reported by backtest, never used for champion selection): **Vasicek one-factor loss simulation**
+(`portfolio:` block — EL/UL/VaR/ES + closed-form Basel IRB capital; asset correlation ρ defaults to
+the Basel formula) and **macro-scenario stress testing** (`stress:` block — CCAR-flavoured shocked
+covariates re-scored deterministically). Unanswered ρ/LGD provenance and missing scenario sets
+surface as open design questions.
 
 Judge the assessment against the data structure the stage reports: a rejected framework must have a
 concrete reason (e.g. "no market observables — private obligors"), because the rejected
@@ -26,9 +33,13 @@ alternatives become the **"alternatives considered"** section SR 11-7 documentat
 
 ## Algorithm trade-offs in regulated commercial credit
 
-- **Logit/GLM**: coefficients are the model — signs must match economic priors (leverage ↑ risk;
-  coverage, liquidity, margin, size ↓ risk; utilization ↑ risk). Valid p-values, cheap validation,
-  standard for deployment.
+- **Logit/probit/cloglog GLM**: coefficients are the model — signs must match economic priors
+  (leverage ↑ risk; coverage, liquidity, margin, size ↓ risk; utilization ↑ risk). Valid p-values,
+  cheap validation, standard for deployment. cloglog is the grouped-time proportional-hazards
+  link — prefer it when the hazard reading matters.
+- **Discrete-time hazard**: same GLM machinery on the obligor-period panel; buys a PD *term
+  structure* (PD(1)…PD(K)) — what CECL/IFRS 9 lifetime use cases actually need — at the price of
+  more parameters (period dummies) against the same event count.
 - **Regularized logit**: use when collinearity (ratio families share numerators/denominators) or
   low events-per-variable destabilizes plain logit; the price is biased coefficients — inference is
   qualified.

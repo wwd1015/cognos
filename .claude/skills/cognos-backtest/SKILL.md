@@ -46,6 +46,22 @@ Score-level PSI answers "did the scored population move?"; feature-level PSI tel
 high PSI driven by the macro covariates around a stress period is explainable; a high PSI on a
 financial ratio hints at a data-pull change.
 
+## Portfolio simulation & stress (opt-in sections)
+
+When the config enables them, the payload carries two simulation sections — read them as *reports
+conditioned on the model's PDs*, not as new model verdicts:
+
+- **`portfolio_analysis`** (Vasicek one-factor, seeded MC + closed-form IRB): EL should ≈ mean
+  PD × LGD; VaR/ES at the configured confidence are the tail; `irb_capital_mean` is the analytic
+  Basel-formula cross-check. All losses are fractions of total EAD. **Caveat to always state:**
+  PDs in are the model's scores — if the calibration section shows bias, the loss distribution
+  inherits it. The asset correlation defaults to the Basel formula; a portfolio-calibrated ρ is a
+  sponsor decision (ideate raises it as an open question).
+- **`stress_testing`**: per-scenario mean PD and EL deltas from deterministically re-scored
+  shocked covariates. Sanity: adverse macro shocks must move PD in the economically right
+  direction; a scenario shocking unknown columns is reported (`missing_columns`), never silently
+  dropped. Stress deltas only reflect covariates the champion actually uses.
+
 ## What does NOT apply here
 
 PBO and the Deflated Sharpe Ratio are **trading-strategy** overfitting statistics (opt-in trading

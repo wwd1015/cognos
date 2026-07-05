@@ -37,21 +37,32 @@ Equivalent CLI one-liner (leak pre-dropped, design pre-answered): `cognos demo -
      only** because interpretability is required;
    - a **ranked hypothesis slate** with parsimonious feature sets up-weighted (low EPV).
 
-4. **The full pipeline** runs: ratchet search → single interpretable champion (lasso-logit) with
-   the labelled ensemble challenger benchmark stated as "the price of interpretability" →
+4. **The full pipeline** runs with the econometric and simulation layers unlocked by the MD's
+   answers: `data.event_time_col` (the default quarter) adds the **discrete-time hazard families**
+   (`hazard_logit`/`hazard_cloglog`, Shumway 2001 — obligor-period panel expansion, PD term
+   structure) to the slate alongside logit/**probit/cloglog**; the ratchet picks the champion on
+   evidence, with the labelled ensemble challenger stated as "the price of interpretability" →
    **out-of-time SR 11-7 outcomes analysis** (Gini ≈ 0.48, KS ≈ 0.45, PSI ≈ 0.12 — the 2020
-   vintages moved the population, and the report says so) → independent validation → non-gating
-   readiness report → OKF white paper → docs↔code review. Captured verdicts:
+   vintages moved the population, and the report says so) → **Vasicek one-factor portfolio
+   simulation** (EL/VaR/ES + closed-form Basel IRB capital) → **macro-scenario stress** (adverse
+   and severely-adverse unemployment/GDP shocks re-scored deterministically; baseline ≈ 3.1% mean
+   PD rising to ≈ 10.2% severely adverse) → independent validation → non-gating readiness report →
+   OKF white paper → docs↔code review. Captured verdicts:
    [`sample_output/run_summary.txt`](sample_output/run_summary.txt).
+
+   (Structural Merton stays **rejected — no market observables** for this private middle-market
+   portfolio; that recorded rejection is the SR 11-7 "alternatives considered" evidence. On a
+   public-obligor book, `synth.make_cni_portfolio_dataset(include_market=True)` plus the
+   `structural:` config block turn on the distance-to-default hybrid + benchmark.)
 
 ## What each agent's enhancement contributes here
 
 | Agent | Enhanced capability on display |
 |---|---|
 | explore | post-outcome leakage patterns, event-support profiling (skill pack) |
-| ideate | data-structure assessment, framework selection, MD triangulation, EPV-aware ranking |
-| model | interpretable champion + challenger gap, economic sign checks (skill pack) |
-| backtest | OOT Gini/KS/calibration/PSI with industry thresholds (skill pack) |
+| ideate | data-structure assessment, framework selection (incl. hazard/structural unlock questions), MD triangulation, EPV-aware ranking |
+| model | traditional-regression menu (logit/probit/cloglog + discrete-time hazard with PD term structure), interpretable champion + challenger gap, economic sign checks |
+| backtest | OOT Gini/KS/calibration/PSI + Vasicek portfolio losses/IRB capital + macro stress deltas |
 | validate | independent effective challenge; leakage would have been the hard BLOCK |
 | comply | readiness report with human-only steps; fair-lending scope per ADR-0004 |
 | document | design brief + rejected frameworks become "alternatives considered" |

@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass, field
 import numpy as np
 import pandas as pd
 
-from .fit import DEFAULT_FAMILIES, Candidate, make_fit_predict
+from .fit import DEFAULT_FAMILIES, HAZARD_FAMILIES, Candidate, make_fit_predict
 from .metrics import CVResult, cv_score, is_better, metric_direction
 
 
@@ -103,9 +103,10 @@ def build_search_space(
     families: list[str] | None = None,
     max_features: int | None = None,
     random_state: int = 42,
+    hazard_meta: dict | None = None,
 ) -> list[Candidate]:
     families = families or DEFAULT_FAMILIES.get(task, DEFAULT_FAMILIES["regression"])
-    ranked = _rank_numeric_features(X, y)
+    ranked = _rank_numeric_features(X[columns], y)
     cat = [c for c in columns if c not in ranked]
     all_feats = columns
     top_k = ranked[: min(5, len(ranked))] + cat
@@ -117,8 +118,12 @@ def build_search_space(
 
     candidates: list[Candidate] = []
     for family in families:
+        if family in HAZARD_FAMILIES and not hazard_meta:
+            continue  # hazard needs event-time metadata (data.event_time_col) to be fittable
         for hp in _hp_grid(family):
             hp = {**hp, "random_state": random_state}
+            if family in HAZARD_FAMILIES:
+                hp = {**hp, **hazard_meta}
             for fs_name, feats in feature_sets:
                 if not feats:
                     continue
@@ -146,10 +151,15 @@ def ratchet_search(
     complexity_penalty: float = 0.0,
     time_budget_s: float | None = None,
     max_features: int | None = None,
+    feature_columns: list[str] | None = None,
+    hazard_meta: dict | None = None,
 ) -> SearchResult:
-    columns = list(X.columns)
+    # X may carry metadata columns (e.g. the hazard event-time column) that are never features;
+    # `feature_columns` scopes what candidates may use.
+    columns = feature_columns or list(X.columns)
     space = build_search_space(task, columns, X, y, families=families,
-                              max_features=max_features, random_state=random_state)[:max_candidates]
+                              max_features=max_features, random_state=random_state,
+                              hazard_meta=hazard_meta)[:max_candidates]
 
     direction = metric_direction(metric)
     n_total = max(1, len(columns))

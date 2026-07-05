@@ -3,6 +3,46 @@
 All notable changes to COGNOS are documented here. Format loosely follows Keep a Changelog;
 versioning is SemVer.
 
+## [0.4.0] — 2026-07-04
+
+The econometric & structural release: traditional regression depth (GLM links, discrete-time
+hazard with PD term structures) and simulation-based methods near the structural model (Merton
+distance-to-default, Vasicek portfolio losses, macro stress). Direction chosen from the
+community-survey research (`docs/research/2026-07-04-community-survey.md`) with the sponsor
+prioritizing traditional/structural methods over ML-flavored items.
+
+### Added
+- **Binary GLM links `probit` and `cloglog`** via a statsmodels-backed sklearn estimator
+  (`SMBinaryGLM`) with full statsmodels inference on the K-1 design; both join the default
+  classification slate. cloglog is the grouped-time proportional-hazards link.
+- **Discrete-time hazard families** `hazard_logit` / `hazard_cloglog` (`modeling/hazard.py`,
+  Shumway 2001): obligor-period **panel expansion inside the estimator** so CV/holdout splits stay
+  obligor-level (leakage-safe by construction); valid panel GLM inference including baseline-hazard
+  period effects; **PD term structure** in the model payload; picklable `HazardScorer` compatible
+  with the existing scorer-bundle/IMPACT serving contract. Unlocked by the new
+  `data.event_time_col` (+ `data.horizon_periods`); ideate widens the default slate and flips the
+  survival framework to fully applicable.
+- **Merton structural engine** (`modeling/structural.py`, opt-in `structural:` config block): a
+  deterministic KMV fixed-point solver (equity value/vol + debt face → asset value/vol,
+  **distance-to-default**, structural PD). Hybrid mode feeds `merton_dd` to the champion as an
+  engineered feature — recomputed target-hidden at serve time on both `FittedModel` and
+  `ScorerBundle` — and the pure structural PD is scored on the sealed holdout as a labelled
+  challenger benchmark. Ideate marks the framework "available" with an unlock question when market
+  observables exist but the block is off.
+- **Vasicek one-factor portfolio simulation** (`modeling/simulate.py`, opt-in `portfolio:` block):
+  seeded Monte Carlo loss distribution (EL/UL/VaR/ES, quantiles, MC standard error) plus
+  closed-form **Basel IRB capital** with the ρ(PD) corporate correlation formula; reported by the
+  backtest stage, never used for champion selection.
+- **Macro-scenario stress testing** (opt-in `stress:` block): scenarios shock covariates
+  (`add`/`mul`/`set`), re-score deterministically through the deployed scorer, and report mean-PD /
+  expected-loss deltas; unknown shocked columns are surfaced as findings.
+- `cognos demo --task cni` now exercises event timing, portfolio simulation, and two stress
+  scenarios; the worked example (`examples/commercial_credit/`) shows the full econometric +
+  simulation arc with refreshed captured artifacts; `synth.make_cni_portfolio_dataset` gains
+  `default_quarter` event timing and opt-in market observables (`include_market=True`).
+- New design questions from ideate: hazard/structural capability unlocks, asset-correlation & LGD
+  provenance, missing stress scenario sets.
+
 ## [0.3.0] — 2026-07-04
 
 Commercial-risk domain capabilities: ideate becomes a true *design* stage, every agent gains a

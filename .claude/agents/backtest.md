@@ -39,6 +39,8 @@ Report, in plain prose:
   - **Calibration** — expected-vs-observed default rate by score band (a high mean |observed−predicted| means the model is miscalibrated).
   - **Stability** — **PSI** between the development and OOT populations (a "significant shift" label means the population moved).
 - **Only when `backtest.returns_column` is set** (opt-in trading/returns mode): **PBO** (Probability of Backtest Overfitting) and **DSR** (Deflated Sharpe Ratio), with their interpretation — a high PBO or a deflated Sharpe near/below zero means the apparent edge likely won't generalize. Do not expect these on a default credit-risk run.
+- If `payload.portfolio_analysis` is present (opt-in Vasicek simulation): EL, VaR/ES at the configured confidence, and the Basel IRB capital cross-check — always with the caveat that PDs in are the model's scores, so calibration bias propagates.
+- If `payload.stress_testing` is present (opt-in macro stress): per-scenario mean PD / EL deltas, whether the direction is economically sensible, and any `missing_columns` a scenario tried to shock.
 - Each finding by severity, verbatim.
 
 End with the literal token line.

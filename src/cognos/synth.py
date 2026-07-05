@@ -134,7 +134,8 @@ def make_commercial_credit_dataset(n: int = 1200, seed: int = 42) -> pd.DataFram
 
 
 def make_cni_portfolio_dataset(n: int = 2000, seed: int = 7,
-                               include_leak: bool = True) -> pd.DataFrame:
+                               include_leak: bool = True,
+                               include_market: bool = False) -> pd.DataFrame:
     """A realistic C&I (commercial & industrial) loan portfolio for the commercial-risk demo.
 
     Obligor-level origination sample with quarterly vintages (2019Q1–2023Q4, so the 2020 stress
@@ -217,10 +218,26 @@ def make_cni_portfolio_dataset(n: int = 2000, seed: int = 7,
         "region": region,
         "default": default,
     })
+    if include_market:
+        # Traded-market observables for public obligors — the inputs a Merton structural model
+        # (modeling/structural.py) needs: equity value, equity volatility, and debt face value,
+        # made consistent with the accounting picture so distance-to-default carries real signal.
+        total_assets = np.exp(log_total_assets)
+        debt_face = np.clip(0.15 + 0.055 * debt_to_ebitda, 0.05, 0.85) * total_assets
+        df["equity_value"] = np.maximum(total_assets - debt_face, 0.02 * total_assets)
+        df["equity_vol"] = np.clip(0.20 + 0.045 * debt_to_ebitda - 0.5 * operating_margin
+                                   + rng.normal(0, 0.05, n), 0.08, 1.2)
+        df["debt_face"] = debt_face
     if include_leak:
         # Observed AFTER origination — belongs to the outcome window, not the information set.
         df["dpd_at_outcome"] = np.where(default == 1, rng.integers(120, 181, n),
                                         rng.integers(0, 6, n))
+    # Event timing for survival analysis: the quarter (1-4) of the 12-month window in which the
+    # default occurred; NaN for censored (non-default) obligors. This is the label's timing —
+    # set data.event_time_col so the engine excludes it from features and the hazard families
+    # (modeling/hazard.py) can consume it. Riskier quarters skew early (hazard falls with age).
+    quarter = rng.choice([1, 2, 3, 4], size=n, p=[0.35, 0.28, 0.21, 0.16])
+    df["default_quarter"] = np.where(default == 1, quarter.astype(float), np.nan)
     return df
 
 

@@ -81,6 +81,39 @@ class BacktestStage(Stage):
             "std": float(np.std(wf)) if wf else None,
         }
 
+        # --- portfolio simulation (opt-in): Vasicek loss distribution + IRB capital -
+        portfolio = None
+        if is_clf and cfg.portfolio.enabled:
+            from ..modeling.simulate import vasicek_loss_simulation
+
+            pc = cfg.portfolio
+            ead = (eval_df[pc.ead_column].to_numpy(dtype=float)
+                   if pc.ead_column and pc.ead_column in eval_df.columns else None)
+            portfolio = vasicek_loss_simulation(
+                scores, lgd=pc.lgd, ead=ead, rho=pc.asset_correlation,
+                confidence=pc.confidence, n_sims=pc.n_sims, seed=pc.seed,
+            )
+            res.add_artifact(ctx.save_json("stages/backtest/portfolio.json", portfolio))
+
+        # --- macro-scenario stress (opt-in): shock covariates, re-score -------------
+        stress = None
+        if is_clf and cfg.stress.enabled and cfg.stress.scenarios:
+            from ..modeling.simulate import stress_scenarios
+
+            ead = (eval_df[cfg.portfolio.ead_column].to_numpy(dtype=float)
+                   if cfg.portfolio.ead_column and cfg.portfolio.ead_column in eval_df.columns
+                   else None)
+            stress = stress_scenarios(eval_df, scorer_path, cfg.stress.scenarios,
+                                      lgd=cfg.portfolio.lgd, ead=ead)
+            res.add_artifact(ctx.save_json("stages/backtest/stress.json", stress))
+            for sc in stress["scenarios"]:
+                if sc.get("missing_columns"):
+                    res.add_finding(Finding(
+                        id=f"stress-missing-{sc['name']}", severity=Severity.LOW, category="stress",
+                        message=f"Scenario '{sc['name']}' shocks unknown column(s): "
+                                f"{', '.join(sc['missing_columns'])}.",
+                    ))
+
         # --- trading mode only: PBO + Deflated Sharpe -----------------------------
         trading = None
         rc = cfg.backtest.returns_column
@@ -100,6 +133,8 @@ class BacktestStage(Stage):
             "oos_metric": oos_metric,
             "oos_metric_name": metric,
             "outcomes_analysis": outcomes,
+            "portfolio_analysis": portfolio,
+            "stress_testing": stress,
             "walk_forward": walk_forward,
             "trading": trading,
             "n_trials": model.get("n_candidates_tried"),
@@ -117,6 +152,14 @@ class BacktestStage(Stage):
         if outcomes:
             bits.append(f"Gini={outcomes['gini']:.3f}, KS={outcomes['ks']:.3f}, "
                         f"PSI={outcomes['psi']:.3f} ({outcomes['psi_label']})")
+        if portfolio:
+            bits.append(f"portfolio EL={portfolio['expected_loss']:.4f}, "
+                        f"VaR{portfolio['confidence']:.3f}={portfolio['var']:.4f}")
+        if stress:
+            worst = max(stress["scenarios"], key=lambda s: s["mean_pd"], default=None)
+            if worst:
+                bits.append(f"stress worst '{worst['name']}' mean PD={worst['mean_pd']:.4f} "
+                            f"(Δ{worst['delta_pd']:+.4f})")
         res.summary = "; ".join(bits) + "."
         return res
 

@@ -59,8 +59,8 @@ def banner(title: str) -> None:
     print("=" * 72)
 
 
-def _config(csv: str, *, drop: list[str], design: dict) -> CognosConfig:
-    return CognosConfig.from_dict({
+def _config(csv: str, *, drop: list[str], design: dict, full: bool = False) -> CognosConfig:
+    raw = {
         "name": "cni_middle_market_pd",
         "description": "C&I middle-market 12-month PD (synthetic worked example)",
         "task": "classification",
@@ -72,7 +72,20 @@ def _config(csv: str, *, drop: list[str], design: dict) -> CognosConfig:
                    "ensemble": True},
         "compliance": {"regimes": ["SR11-7", "NIST-AI-RMF"], "risk_tier": "high",
                        "jurisdictions": ["US"]},
-    })
+    }
+    if full:
+        # The MD's answers also unlock the econometric layer: event timing → discrete-time hazard
+        # families with a PD term structure; plus the simulation layer — Vasicek portfolio losses
+        # and CCAR-flavoured macro stress (reported, never used for champion selection).
+        raw["data"].update({"event_time_col": "default_quarter", "horizon_periods": 4})
+        raw["portfolio"] = {"enabled": True, "lgd": 0.45, "n_sims": 10000}
+        raw["stress"] = {"enabled": True, "scenarios": [
+            {"name": "adverse",
+             "shocks": {"unemployment_rate": {"add": 3.0}, "gdp_growth": {"add": -2.0}}},
+            {"name": "severely_adverse",
+             "shocks": {"unemployment_rate": {"add": 6.0}, "gdp_growth": {"set": -4.0}}},
+        ]}
+    return CognosConfig.from_dict(raw)
 
 
 def step1_explore_catches_the_leak(workdir: Path, csv: str) -> None:
@@ -102,7 +115,7 @@ def step2_ideate_triangulates(orch: Orchestrator) -> None:
 
 def step3_full_run_with_answers(workdir: Path, csv: str):
     banner("3. THE MD ANSWERS — design brief filled, leak dropped, full pipeline")
-    cfg = _config(csv, drop=["obligor_id", "dpd_at_outcome"], design=MD_ANSWERS)
+    cfg = _config(csv, drop=["obligor_id", "dpd_at_outcome"], design=MD_ANSWERS, full=True)
     orch = Orchestrator(cfg, runs_root=str(workdir / "runs"))
     summary = orch.run()
 
@@ -133,8 +146,23 @@ def step3_full_run_with_answers(workdir: Path, csv: str):
         cb = mp["challenger_benchmark"]
         print(f"  Challenger benchmark ({cb['kind']}): {cb['benchmark_score']:.3f} vs champion "
               f"{cb['champion_single_score']:.3f} — the price of interpretability, stated.")
+    if mp.get("hazard"):
+        ts = mp["hazard"]["term_structure"]
+        print("  PD term structure (mean cumulative PD by quarter): "
+              + ", ".join(f"Q{p}={v:.3%}" for p, v in zip(ts["periods"],
+                                                          ts["mean_cumulative_pd"], strict=False)))
     print(f"  OOT outcomes ({bt['evaluation_sample']}): Gini={oa.get('gini'):.3f} "
           f"KS={oa.get('ks'):.3f} PSI={oa.get('psi'):.3f} ({oa.get('psi_label')})")
+    if bt.get("portfolio_analysis"):
+        pa = bt["portfolio_analysis"]
+        print(f"  Vasicek portfolio (LGD={pa['lgd']}): EL={pa['expected_loss']:.4f} "
+              f"VaR{pa['confidence']:.3f}={pa['var']:.4f} ES={pa['expected_shortfall']:.4f} "
+              f"| IRB K={pa['irb_capital_mean']:.4f}")
+    if bt.get("stress_testing"):
+        st = bt["stress_testing"]
+        print(f"  Macro stress (baseline mean PD={st['baseline']['mean_pd']:.3%}):")
+        for sc in st["scenarios"]:
+            print(f"    - {sc['name']}: mean PD={sc['mean_pd']:.3%} (Δ{sc['delta_pd']:+.3%})")
     print(f"  Final verdict: {summary.final_verdict.value}")
     print(f"  White paper (OKF bundle): {orch.ctx.docs_dir}")
     return orch, summary

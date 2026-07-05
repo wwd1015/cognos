@@ -5,4 +5,5 @@
 - **[design-default_definition]** What event definition labels 'default' (e.g. 90+ DPD, nonaccrual, bankruptcy)? Validation re-derives risk from this.
 - **[design-segment]** What portfolio segment does this sample represent (C&I, CRE, small business…)? Pooling heterogeneous segments biases coefficients.
 - **[data-leakage]** Explore flagged dpd_at_outcome as possible target leakage — confirm whether each is in the information set at prediction time; if not, add it to data.drop_columns and re-run.
-- **[data-epv]** Only 93 events for 13 candidate features (≈7.2 events per variable, below the ~10 rule of thumb) — confirm appetite for a short feature list, a coarser segmentation, or a longer sampling window.
+- **[data-epv]** Only 93 events for 14 candidate features (≈6.6 events per variable, below the ~10 rule of thumb) — confirm appetite for a short feature list, a coarser segmentation, or a longer sampling window.
+- **[data-event-time]** Column(s) default_quarter look like event timing — set data.event_time_col to unlock the discrete-time hazard families and a PD term structure.

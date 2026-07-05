@@ -11,11 +11,13 @@ scorer the backtest/IMPACT stage embeds as a derived field.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 
 from ..artifacts import ArtifactRef, Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..datautil import coerce_target
 from ..modeling import fit_full, greedy_ensemble, holdout_split, ratchet_search, score
+from ..modeling.fit import HAZARD_FAMILIES
 from ..modeling.metrics import metric_direction
 from ..runtime.score import save_scorer
 from . import stat_tests
@@ -34,10 +36,27 @@ class ModelStage(Stage):
         cfg = ctx.config
         df = ctx.load_dataset()
         profile = ctx.require("explore").payload
-        features = profile["features"]
+        features = list(profile["features"])
         metric = cfg.metric.name
         is_clf = cfg.task.is_classification
         is_ts = cfg.task.value == "timeseries"
+
+        # --- structural (Merton) augmentation: deterministic solver, target-hidden ---
+        structural_info, structural_spec = None, None
+        sc = cfg.structural
+        if sc.enabled and all(c and c in df.columns
+                              for c in (sc.equity_value_col, sc.equity_vol_col, sc.debt_col)):
+            from ..modeling.structural import StructuralSpec, augment_frame
+
+            structural_spec = StructuralSpec(
+                equity_value_col=sc.equity_value_col, equity_vol_col=sc.equity_vol_col,
+                debt_col=sc.debt_col, risk_free_rate=sc.risk_free_rate,
+                horizon_years=sc.horizon_years,
+            )
+            df, s_info = augment_frame(df, structural_spec)
+            if structural_spec.dd_feature not in features:
+                features.append(structural_spec.dd_feature)  # hybrid mode: DD feeds the champion
+            structural_info = {"spec": structural_spec.to_dict(), **s_info}
 
         # --- frozen substrate: seal the holdout BEFORE any search --------------------
         train_df, holdout_df = holdout_split(
@@ -51,15 +70,29 @@ class ModelStage(Stage):
         X_train = train_df[features]
         y_train = coerce_target(train_df, cfg)
 
+        # --- discrete-time hazard metadata (survival framework) ---------------------
+        # The event-time column rides along in the search frame as metadata (never a feature);
+        # hazard candidates panel-expand inside their estimator, so CV stays obligor-level.
+        etc = cfg.data.event_time_col
+        hazard_meta = None
+        X_search = X_train
+        if etc and etc in train_df.columns:
+            observed = pd.to_numeric(train_df[etc], errors="coerce")
+            horizon = int(cfg.data.horizon_periods or max(1.0, float(np.nanmax(observed.to_numpy()))
+                                                          if observed.notna().any() else 1.0))
+            hazard_meta = {"event_time_col": etc, "horizon": horizon}
+            X_search = train_df[[*features, etc]]
+
         # --- ratchet search ---------------------------------------------------------
         families = ctx.get("ideate").payload.get("families") if ctx.has("ideate") else None
         families = families or (cfg.search.model_families or None)
         sr = ratchet_search(
-            X_train, y_train, task=cfg.task.value, metric=metric, is_classification=is_clf,
+            X_search, y_train, task=cfg.task.value, metric=metric, is_classification=is_clf,
             is_timeseries=is_ts, families=families, max_candidates=cfg.search.max_candidates,
             folds=cfg.search.cv_folds, random_state=cfg.search.random_state,
             complexity_penalty=cfg.search.complexity_penalty, time_budget_s=cfg.search.time_budget_s,
             max_features=cfg.search.max_features_per_candidate,
+            feature_columns=features, hazard_meta=hazard_meta,
         )
         ctx.save_text("stages/model/ledger.tsv", sr.ledger_tsv(), kind="tsv")
 
@@ -95,7 +128,8 @@ class ModelStage(Stage):
         champion_cand, champion_cv = sr.champion, sr.champion_cv
         champion_transforms: list = []
         guided_info = None
-        if cfg.search.guided and ctx.brain.available:
+        # Guided refinement refits via the generic path; a hazard champion has its own fit contract.
+        if cfg.search.guided and ctx.brain.available and champion_cand.family not in HAZARD_FAMILIES:
             from ..modeling.guided import guided_search
 
             gr = guided_search(
@@ -112,15 +146,39 @@ class ModelStage(Stage):
 
         # --- refit champion (with any kept transforms) + statsmodels inference ------
         base_features = list(sr.champion.features)
-        if champion_transforms:
-            from ..modeling.transforms import apply_transforms
+        hazard_info = None
+        if champion_cand.family in HAZARD_FAMILIES:
+            from ..modeling.hazard import fit_full_hazard, term_structure
 
-            X_fit, _, _ = apply_transforms(X_train[base_features], champion_transforms)
-        else:
             X_fit = X_train
-        fitted = fit_full(champion_cand, X_fit, y_train, task=cfg.task.value, is_classification=is_clf)
+            fitted = fit_full_hazard(champion_cand, X_train, y_train,
+                                     event_time=train_df[etc], horizon=hazard_meta["horizon"],
+                                     task=cfg.task.value)
+            hazard_info = {
+                "horizon_periods": hazard_meta["horizon"],
+                "event_time_col": etc,
+                "term_structure": term_structure(fitted.pipeline,
+                                                 X_train[champion_cand.features]),
+            }
+        else:
+            if champion_transforms:
+                from ..modeling.transforms import apply_transforms
+
+                X_fit, _, _ = apply_transforms(X_train[base_features], champion_transforms)
+            else:
+                X_fit = X_train
+            fitted = fit_full(champion_cand, X_fit, y_train, task=cfg.task.value,
+                              is_classification=is_clf)
         fitted.transforms = champion_transforms
         fitted.base_features = base_features
+        if structural_spec is not None:
+            # Serving recomputes DD from the market observables, so the scorer's base features are
+            # the raw inputs (market columns in, engineered DD out) — mirrors the transform contract.
+            market = [structural_spec.equity_value_col, structural_spec.equity_vol_col,
+                      structural_spec.debt_col]
+            fitted.base_features = list(dict.fromkeys(
+                [f for f in base_features if f != structural_spec.dd_feature] + market))
+            fitted.structural = structural_spec.to_dict()
         diagnostics = stat_tests.run_battery(fitted, X_fit, y_train,
                                              is_classification=is_clf, is_timeseries=is_ts)
 
@@ -134,6 +192,17 @@ class ModelStage(Stage):
                 holdout_metric = score(metric, yh, (proba >= 0.5).astype(int), y_proba=proba)
             else:
                 holdout_metric = score(metric, yh, fitted.predict(Xh))
+            # Pure-structural challenger benchmark: PD = N(-DD) scored directly on the holdout —
+            # a labelled reference point, never the deployed model.
+            if structural_info is not None and is_clf and structural_spec is not None:
+                pd_struct = holdout_df[structural_spec.pd_feature].to_numpy(dtype=float)
+                auc = score("roc_auc", yh, (pd_struct >= 0.5).astype(int), y_proba=pd_struct)
+                structural_info["benchmark"] = {
+                    "kind": "pure structural Merton PD (challenger benchmark)",
+                    "deployed": False,
+                    "holdout_roc_auc": auc,
+                    "holdout_gini": 2 * auc - 1,
+                }
 
         # --- persist deployable scorer ---------------------------------------------
         scorer_path = str((ctx.models_dir / "champion_scorer.joblib").resolve())
@@ -184,6 +253,8 @@ class ModelStage(Stage):
             "feature_importances": importances,
             "diagnostics": diagnostics,
             "challenger_benchmark": challenger_benchmark,
+            "hazard": hazard_info,
+            "structural": structural_info,
             "guided": guided_info,
             "transforms": [t.to_dict() for t in champion_transforms],
             "base_features": base_features,

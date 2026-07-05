@@ -53,6 +53,11 @@ class DataConfig(BaseModel):
     datetime_col: str | None = None  # for time-series / walk-forward ordering
     drop_columns: list[str] = Field(default_factory=list)
     protected_attributes: list[str] = Field(default_factory=list)  # for fair-lending checks
+    # Discrete-time hazard (survival) support: the 1-based period in which the event occurred
+    # (NaN/0 for censored obligors). Outcome data — excluded from features like the target; it is
+    # the label's *timing*, consumed only by the hazard families (modeling/hazard.py).
+    event_time_col: str | None = None
+    horizon_periods: int | None = None  # outcome window in periods; None => max observed event time
 
 
 class DesignConfig(BaseModel):
@@ -98,6 +103,22 @@ class SearchConfig(BaseModel):
     guided_rounds: int = 6  # number of LLM-proposed experiments after the deterministic ratchet
 
 
+class StructuralConfig(BaseModel):
+    """Merton structural model support (modeling/structural.py) — needs market observables.
+
+    When enabled and the three columns exist, the engine solves for distance-to-default and adds it
+    as an engineered feature (hybrid mode), and scores the pure structural PD on the sealed holdout
+    as a labelled challenger benchmark.
+    """
+
+    enabled: bool = False
+    equity_value_col: str | None = None
+    equity_vol_col: str | None = None
+    debt_col: str | None = None
+    risk_free_rate: float = 0.03
+    horizon_years: float = 1.0
+
+
 class ComplianceConfig(BaseModel):
     regimes: list[str] = Field(default_factory=lambda: ["SR11-7", "NIST-AI-RMF"])
     risk_tier: str = "medium"  # low | medium | high — drives validation intensity
@@ -122,6 +143,32 @@ class BacktestConfig(BaseModel):
     deflate_sharpe: bool = True  # Deflated Sharpe Ratio (multiple-testing correction)
     pbo: bool = True  # Probability of Backtest Overfitting via CSCV
     returns_column: str | None = None  # if the task is a trading/return signal
+
+
+class PortfolioConfig(BaseModel):
+    """Vasicek one-factor portfolio loss simulation + Basel IRB capital (modeling/simulate.py).
+
+    Opt-in, reported by the backtest stage; never feeds champion selection. PDs in are the model's
+    scores — read them next to the calibration section of the outcomes analysis.
+    """
+
+    enabled: bool = False
+    lgd: float = 0.45  # loss given default assumption
+    ead_column: str | None = None  # exposure-at-default column; None => equal-weighted
+    asset_correlation: float | None = None  # None => Basel IRB corporate formula rho(PD)
+    confidence: float = 0.999
+    n_sims: int = 20000
+    seed: int = 42
+
+
+class StressConfig(BaseModel):
+    """Macro-scenario stress testing: shock covariates, re-score through the deployed scorer.
+
+    Each scenario: {name: str, shocks: {column: {"add": x} | {"mul": x} | {"set": x}}}.
+    """
+
+    enabled: bool = False
+    scenarios: list[dict] = Field(default_factory=list)
 
 
 class BrainConfig(BaseModel):
@@ -162,9 +209,12 @@ class CognosConfig(BaseModel):
     design: DesignConfig = Field(default_factory=DesignConfig)
     metric: MetricConfig = Field(default_factory=MetricConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
+    structural: StructuralConfig = Field(default_factory=StructuralConfig)
     compliance: ComplianceConfig = Field(default_factory=ComplianceConfig)
     impact: ImpactConfig = Field(default_factory=ImpactConfig)
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
+    portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
+    stress: StressConfig = Field(default_factory=StressConfig)
     brain: BrainConfig = Field(default_factory=BrainConfig)
     stages: StagesConfig = Field(default_factory=StagesConfig)
     runs_dir: str = "runs"

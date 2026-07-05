@@ -37,6 +37,8 @@ Report, in plain prose:
 - The verdict from the `COGNOS_STAGE: model ...` token line.
 - The **champion**: its family/spec, the cross-validated metric (`metrics.cv_mean`) and metric name, and how it compares to the rest of the ratchet — and note it is the single interpretable model that ships (the ensemble, if computed, is a labeled challenger benchmark, not the deliverable).
 - Statistical-battery results in `payload` / `metrics` (e.g. residual diagnostics, significance tests, coefficient p-values from the full-rank inference design) and any test that flagged a problem.
+- If `payload.hazard` is present (a discrete-time hazard champion): the horizon and the **PD term structure** (mean cumulative PD per period) — confirm it is monotone non-decreasing.
+- If `payload.structural` is present (Merton engine ran): note that `merton_dd` feeds the champion (hybrid mode) and report the **pure-structural challenger benchmark** (`structural.benchmark` holdout AUC/Gini) as a labelled reference, never the deliverable.
 - Each finding by severity, verbatim.
 
 End with the literal token line.

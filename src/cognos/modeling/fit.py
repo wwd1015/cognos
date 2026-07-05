@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import (
     GradientBoostingClassifier,
@@ -38,16 +39,26 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 # inference here, so they skip build_inference_design and report sklearn coef_ only.
 GLM_FAMILIES = {"poisson", "gamma", "tweedie"}
 
+# Binary-response GLM links beyond logit. Fit via a statsmodels-backed estimator (sklearn has no
+# probit/cloglog) with full statsmodels inference on the K-1 design. cloglog is the grouped-time
+# proportional-hazards link, which is why the discrete-time hazard families build on it.
+BINARY_GLM_LINKS = {"probit", "cloglog"}
+
+# Discrete-time hazard families (Shumway 2001): the obligor frame is panel-expanded inside the
+# estimator, so CV splits stay at the obligor level (leakage-safe). See modeling/hazard.py.
+HAZARD_FAMILIES = {"hazard_logit", "hazard_cloglog"}
+
 # family -> (is_linear, needs_scaling, is_classifier-capable). GLMs are linear for scaling/predict.
 LINEAR_FAMILIES = {
-    "ols", "ridge", "lasso", "elasticnet", "logit", "ridge_logit", "lasso_logit", *GLM_FAMILIES
+    "ols", "ridge", "lasso", "elasticnet", "logit", "ridge_logit", "lasso_logit",
+    *GLM_FAMILIES, *BINARY_GLM_LINKS, *HAZARD_FAMILIES,
 }
 
 DEFAULT_FAMILIES = {
     "regression": ["ols", "ridge", "lasso", "elasticnet"],
     "glm_regression": ["poisson", "gamma", "tweedie", "ols", "ridge"],
     "timeseries": ["ols", "ridge", "lasso"],
-    "classification": ["logit", "ridge_logit", "lasso_logit"],
+    "classification": ["logit", "probit", "cloglog", "ridge_logit", "lasso_logit"],
     "ml_regression": ["random_forest", "gradient_boosting"],
     "ml_classification": ["random_forest", "gradient_boosting"],
 }
@@ -79,6 +90,47 @@ class Candidate:
         }
 
 
+class SMBinaryGLM(ClassifierMixin, BaseEstimator):
+    """sklearn-compatible binary GLM with a statsmodels backend (probit / cloglog links).
+
+    sklearn has no probit or complementary-log-log classifier; statsmodels does, with proper IRLS
+    fitting. This thin wrapper exposes fit/predict_proba/predict so the estimator drops into the
+    existing leakage-safe CV pipeline (BaseEstimator supplies clone/params/tags plumbing).
+    """
+
+    def __init__(self, link: str = "probit", maxiter: int = 200):
+        self.link = link
+        self.maxiter = maxiter
+
+    @staticmethod
+    def _family(link: str):
+        import statsmodels.api as sm
+
+        links = {"probit": sm.families.links.Probit(), "cloglog": sm.families.links.CLogLog(),
+                 "logit": sm.families.links.Logit()}
+        return sm.genmod.families.Binomial(link=links[link])
+
+    def fit(self, X, y) -> SMBinaryGLM:
+        import statsmodels.api as sm
+
+        Xd = sm.add_constant(np.asarray(X, dtype=float), has_constant="add")
+        self.result_ = sm.GLM(np.asarray(y, dtype=float), Xd, family=self._family(self.link)).fit(
+            maxiter=self.maxiter)
+        self.classes_ = np.array([0, 1])
+        self.coef_ = np.asarray(self.result_.params[1:]).reshape(1, -1)  # excl. intercept
+        return self
+
+    def predict_proba(self, X) -> np.ndarray:
+        import statsmodels.api as sm
+
+        Xd = sm.add_constant(np.asarray(X, dtype=float), has_constant="add")
+        p = np.clip(np.asarray(self.result_.predict(Xd), dtype=float), 1e-9, 1 - 1e-9)
+        return np.column_stack([1 - p, p])
+
+    def predict(self, X) -> np.ndarray:
+        return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
+
+
 def _estimator(family: str, is_classification: bool, hp: dict[str, Any]):
     rs = hp.get("random_state", 42)
     if family == "ols":
@@ -98,6 +150,8 @@ def _estimator(family: str, is_classification: bool, hp: dict[str, Any]):
         return TweedieRegressor(power=hp.get("power", 1.5), alpha=hp.get("alpha", 1.0), max_iter=300)
     if family == "logit":
         return LogisticRegression(C=1e6, max_iter=2000)
+    if family in BINARY_GLM_LINKS:
+        return SMBinaryGLM(link=family, maxiter=hp.get("maxiter", 200))
     if family == "ridge_logit":
         return LogisticRegression(C=hp.get("C", 1.0), penalty="l2", max_iter=2000)
     if family == "lasso_logit":
@@ -126,6 +180,10 @@ def make_preprocessor(X: pd.DataFrame, scale: bool) -> ColumnTransformer:
 
 def make_fit_predict(candidate: Candidate, *, is_classification: bool) -> Callable:
     """Return ``fit_predict(X_train, y_train) -> predict`` for leakage-safe CV (see metrics.cv_score)."""
+    if candidate.family in HAZARD_FAMILIES:
+        from .hazard import hazard_fit_predict
+
+        return hazard_fit_predict(candidate)
 
     def fit_predict(X_train: pd.DataFrame, y_train: np.ndarray):
         Xf = X_train[candidate.features]
@@ -162,6 +220,7 @@ class FittedModel:
     residuals: np.ndarray | None = None
     transforms: list = field(default_factory=list)  # list[TransformSpec] LLM-authored, target-hidden
     base_features: list[str] | None = None  # original columns needed to recompute the transforms
+    structural: dict | None = None  # StructuralSpec dict; Merton DD recomputed at predict/serve
 
     @property
     def model_id(self) -> str:
@@ -169,12 +228,21 @@ class FittedModel:
 
     def _augment(self, X: pd.DataFrame) -> pd.DataFrame:
         """Recompute engineered features (target-hidden) so predict matches how the model was fit."""
+        frame = X
+        if self.structural:
+            from .structural import StructuralSpec, augment_frame
+
+            spec = StructuralSpec.from_dict(self.structural)
+            market = (spec.equity_value_col, spec.equity_vol_col, spec.debt_col)
+            if spec.dd_feature not in frame.columns and all(c in frame.columns for c in market):
+                frame, _ = augment_frame(frame, spec)
         if not self.transforms:
-            return X
+            return frame
         from .transforms import apply_transforms
 
         base = self.base_features or self.raw_features
-        aug, _, _ = apply_transforms(X[base], list(self.transforms))
+        cols = [c for c in dict.fromkeys([*base, *self.raw_features]) if c in frame.columns]
+        aug, _, _ = apply_transforms(frame[cols], list(self.transforms))
         return aug
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
@@ -256,13 +324,18 @@ def fit_full(candidate: Candidate, X: pd.DataFrame, y: np.ndarray, *, task: str,
     )
 
     # GLMs are linear (scaled + sklearn-predicted) but have no statsmodels OLS/Logit inference here;
-    # they report sklearn coef_ via FittedModel.coefficients() instead.
+    # they report sklearn coef_ via FittedModel.coefficients() instead. Hazard families never reach
+    # this function — the model stage fits them via modeling.hazard.fit_full_hazard.
     if candidate.is_linear and candidate.family not in GLM_FAMILIES:
         try:
             design_df = build_inference_design(Xf)  # full-rank K-1 design (valid p-values)
             yv = np.asarray(y).astype(float)
             if is_classification:
-                res = sm.Logit(yv, design_df).fit(disp=0, maxiter=200)
+                if candidate.family in BINARY_GLM_LINKS:
+                    res = sm.GLM(yv, design_df,
+                                 family=SMBinaryGLM._family(candidate.family)).fit(maxiter=200)
+                else:
+                    res = sm.Logit(yv, design_df).fit(disp=0, maxiter=200)
                 fitted.residuals = yv - np.asarray(res.predict(design_df))
             else:
                 res = sm.OLS(yv, design_df).fit()

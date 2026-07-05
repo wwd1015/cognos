@@ -28,15 +28,25 @@ class ScorerBundle:
     model_id: str = "model"
     transforms: list[dict] = field(default_factory=list)  # [{name, expr}] LLM-authored features
     base_features: list[str] | None = None  # original columns needed to recompute transforms
+    structural: dict | None = None  # StructuralSpec dict; Merton DD recomputed at serve time
 
     def _augment(self, df: pd.DataFrame) -> pd.DataFrame:
         """Recompute engineered features (target-hidden) so serving matches training exactly."""
+        frame = df
+        if self.structural:
+            from ..modeling.structural import StructuralSpec, augment_frame
+
+            spec = StructuralSpec.from_dict(self.structural)
+            market = (spec.equity_value_col, spec.equity_vol_col, spec.debt_col)
+            if spec.dd_feature not in frame.columns and all(c in frame.columns for c in market):
+                frame, _ = augment_frame(frame, spec)
         if not self.transforms:
-            return df
+            return frame
         from ..modeling.transforms import TransformSpec, apply_transforms
 
         base = self.base_features or self.raw_features
-        aug, _, _ = apply_transforms(df[base], [TransformSpec(**t) for t in self.transforms])
+        cols = [c for c in dict.fromkeys([*base, *self.raw_features]) if c in frame.columns]
+        aug, _, _ = apply_transforms(frame[cols], [TransformSpec(**t) for t in self.transforms])
         return aug
 
     def score_frame(self, df: pd.DataFrame) -> np.ndarray:
@@ -56,6 +66,7 @@ def save_scorer(path: str, fitted) -> str:
         model_id=fitted.model_id,
         transforms=transforms,
         base_features=list(fitted.base_features) if getattr(fitted, "base_features", None) else None,
+        structural=getattr(fitted, "structural", None),
     )
     joblib.dump(bundle, path)
     return path

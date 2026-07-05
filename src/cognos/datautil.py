@@ -19,6 +19,8 @@ def select_features(df: pd.DataFrame, config: CognosConfig) -> list[str]:
     exclude = {dc.target, *dc.drop_columns, *dc.protected_attributes}
     if dc.datetime_col:
         exclude.add(dc.datetime_col)
+    if dc.event_time_col:
+        exclude.add(dc.event_time_col)  # event timing is outcome data, never a feature
     if dc.features:
         return [c for c in dc.features if c in df.columns and c not in exclude]
     return [c for c in df.columns if c not in exclude]

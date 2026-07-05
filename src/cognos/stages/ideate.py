@@ -39,7 +39,9 @@ def _parse_json(text: str) -> dict:
 
 # Lower interpretability rank = more interpretable / preferred for regulated use.
 _INTERPRETABILITY = {
-    "ols": 0.95, "logit": 0.95, "ridge": 0.85, "lasso": 0.88, "elasticnet": 0.83,
+    "ols": 0.95, "logit": 0.95, "probit": 0.93, "cloglog": 0.92,
+    "hazard_logit": 0.9, "hazard_cloglog": 0.9,
+    "ridge": 0.85, "lasso": 0.88, "elasticnet": 0.83,
     "ridge_logit": 0.85, "lasso_logit": 0.88, "poisson": 0.9, "gamma": 0.9, "tweedie": 0.87,
     "random_forest": 0.45, "gradient_boosting": 0.4,
 }
@@ -57,12 +59,16 @@ _DATE_HINTS = ("date", "vintage", "asof", "as_of", "cohort", "snapshot", "period
 _EPV_FLOOR = 10.0
 
 
-def _engine_families(task_value: str, is_classification: bool) -> list[str]:
+def _engine_families(cfg: CognosConfig) -> list[str]:
     """Every family the engine can fit for this task — the LLM's proposal space, which may be
     wider than the deterministic slate (e.g. trees when the regulated default excludes them)."""
-    if is_classification:
-        return ["logit", "ridge_logit", "lasso_logit", "random_forest", "gradient_boosting"]
-    if task_value == "timeseries":
+    if cfg.task.is_classification:
+        fams = ["logit", "probit", "cloglog", "ridge_logit", "lasso_logit",
+                "random_forest", "gradient_boosting"]
+        if cfg.data.event_time_col:  # hazard families need event timing to be fittable
+            fams += ["hazard_logit", "hazard_cloglog"]
+        return fams
+    if cfg.task.value == "timeseries":
         return ["ols", "ridge", "lasso"]
     return ["ols", "ridge", "lasso", "elasticnet", "poisson", "gamma", "tweedie",
             "random_forest", "gradient_boosting"]
@@ -128,30 +134,42 @@ def _framework_assessment(cfg: CognosConfig, profile: dict, structure: dict) -> 
             "reference": "Altman (1968); Ohlson (1980); Basel IRB PD; SR 11-7",
         })
         panel = structure["shape"] == "panel"
+        has_event_time = bool(cfg.data.event_time_col)
         frameworks.append({
             "framework": "discrete_time_hazard",
             "label": "Discrete-time hazard (survival)",
-            "applicable": "partial" if panel else False,
-            "role": "candidate" if panel else "rejected",
-            "reason": ("Time-indexed cohorts present — a period-indexed logit reads as a "
-                       "discrete-time hazard; full survival machinery (Cox, time-varying "
-                       "covariates) is outside the engine." if panel else
-                       "No datetime column — a hazard framework needs time-indexed observations "
-                       "(set data.datetime_col if this sample has vintages/snapshots)."),
-            "engine_families": ["logit"] if panel else [],
+            "applicable": True if has_event_time else ("partial" if panel else False),
+            "role": "candidate" if (has_event_time or panel) else "rejected",
+            "reason": ("Event timing present (data.event_time_col) — the engine panel-expands "
+                       "obligor-periods and fits a full discrete-time hazard (logit or cloglog "
+                       "grouped-time PH link) with a PD term structure." if has_event_time else
+                       ("Time-indexed cohorts present — a period-indexed logit reads as a "
+                        "discrete-time hazard; set data.event_time_col (default period per "
+                        "obligor) to unlock the full hazard families and PD term structure."
+                        if panel else
+                        "No datetime column — a hazard framework needs time-indexed observations "
+                        "(set data.datetime_col if this sample has vintages/snapshots).")),
+            "engine_families": (["hazard_logit", "hazard_cloglog"] if has_event_time
+                                else (["logit"] if panel else [])),
             "reference": "Shumway (2001) hazard bankruptcy model",
         })
         market_cols = _match_hints(feats, _MARKET_HINTS)
+        structural_on = bool(cfg.structural.enabled) and bool(market_cols)
         frameworks.append({
             "framework": "structural_merton",
             "label": "Structural (Merton distance-to-default)",
             "applicable": bool(market_cols),
-            "role": "candidate" if market_cols else "rejected",
-            "reason": (f"Market observables detected ({', '.join(market_cols)}) — a "
-                       "distance-to-default input is feasible." if market_cols else
-                       "Requires traded-market observables (equity value/volatility, liability "
-                       "structure) to compute distance-to-default; none present — typical for "
-                       "private middle-market obligors."),
+            "role": "candidate" if structural_on else ("available" if market_cols else "rejected"),
+            "reason": ((f"Market observables detected ({', '.join(market_cols)}); the structural: "
+                        "config block is enabled — the engine solves for distance-to-default, "
+                        "feeds it to the champion (hybrid), and scores the pure structural PD as "
+                        "a challenger benchmark.") if structural_on else
+                       (f"Market observables detected ({', '.join(market_cols)}) — enable the "
+                        "structural: config block to compute distance-to-default (hybrid feature "
+                        "+ benchmark)." if market_cols else
+                        "Requires traded-market observables (equity value/volatility, liability "
+                        "structure) to compute distance-to-default; none present — typical for "
+                        "private middle-market obligors.")),
             "engine_families": [],
             "reference": "Merton (1974); KMV/Moody's EDF",
         })
@@ -244,6 +262,34 @@ def _open_questions(cfg: CognosConfig, profile: dict, structure: dict) -> list[d
                               f"candidate features (≈{epv} events per variable, below the ~10 rule "
                               "of thumb) — confirm appetite for a short feature list, a coarser "
                               "segmentation, or a longer sampling window."})
+
+    # Framework-unlock questions: capabilities the data supports but the config has not switched on.
+    if cfg.task.is_classification and not cfg.data.event_time_col:
+        timing = _match_hints(list(profile.get("dtypes", {}).keys()),
+                              ("default_quarter", "default_month", "event_time",
+                               "time_to_default", "months_to_default"))
+        if timing:
+            q.append({"id": "data-event-time", "source": "data",
+                      "question": f"Column(s) {', '.join(timing)} look like event timing — set "
+                                  "data.event_time_col to unlock the discrete-time hazard "
+                                  "families and a PD term structure."})
+    if cfg.task.is_classification and not cfg.structural.enabled:
+        market = _match_hints(profile.get("features", []), _MARKET_HINTS)
+        if market:
+            q.append({"id": "data-structural", "source": "data",
+                      "question": f"Market observables detected ({', '.join(market)}) — enable "
+                                  "the structural: config block to compute Merton "
+                                  "distance-to-default (hybrid feature + structural benchmark)."})
+    if cfg.portfolio.enabled and cfg.portfolio.asset_correlation is None:
+        q.append({"id": "design-asset-correlation", "source": "design-brief",
+                  "question": f"Portfolio simulation uses the Basel IRB asset-correlation formula "
+                              f"and LGD={cfg.portfolio.lgd} — confirm both against portfolio "
+                              "evidence or supply calibrated values."})
+    if cfg.stress.enabled and not cfg.stress.scenarios:
+        q.append({"id": "design-scenarios", "source": "design-brief",
+                  "question": "Stress testing is enabled but no scenarios are defined — supply "
+                              "the scenario set (e.g. baseline/adverse/severely adverse macro "
+                              "shocks) in stress.scenarios."})
     return q[:8]
 
 
@@ -263,6 +309,11 @@ class IdeateStage(Stage):
         families = list(cfg.search.model_families or DEFAULT_FAMILIES.get(
             cfg.task.value, DEFAULT_FAMILIES["regression"]
         ))
+        # Event timing unlocks the survival framework: add the hazard families to the default
+        # slate (an explicit search.model_families list is respected as-is).
+        if (not cfg.search.model_families and cfg.task.is_classification
+                and cfg.data.event_time_col):
+            families += [f for f in ("hazard_logit", "hazard_cloglog") if f not in families]
         # Under a hard/soft interpretability constraint the ratchet should spend its budget on the
         # defensible families first; the search honors this ordering when the budget binds.
         if cfg.design.interpretability in ("required", "preferred"):
@@ -379,7 +430,7 @@ class IdeateStage(Stage):
         if family in _TREE_FAMILIES:
             return "ml_challenger"
         if cfg.task.is_classification:
-            return "discrete_time_hazard" if structure["shape"] == "panel" else "reduced_form_pd"
+            return "discrete_time_hazard" if family.startswith("hazard_") else "reduced_form_pd"
         if cfg.task.value == "timeseries":
             return "reduced_form_forecast"
         return "reduced_form_glm"
@@ -393,6 +444,15 @@ class IdeateStage(Stage):
             if family == "logit" and structure["shape"] == "panel":
                 base += " On vintage-indexed data this reads as a discrete-time hazard (Shumway 2001)."
             return base
+        if family in ("probit", "cloglog"):
+            note = (" cloglog is the grouped-time proportional-hazards link." if family == "cloglog"
+                    else "")
+            return (f"Binary GLM with the {family} link {feat_txt}; statsmodels inference with "
+                    f"valid p-values.{note}")
+        if family.startswith("hazard_"):
+            link = family.split("_", 1)[1]
+            return (f"Discrete-time hazard ({link} link) on the obligor-period panel {feat_txt} — "
+                    "PD term structure over the outcome window (Shumway 2001).")
         if family in ("ridge", "lasso", "elasticnet", "ridge_logit", "lasso_logit"):
             return f"Regularized linear ({family}) {feat_txt} to control variance/collinearity."
         if family in ("poisson", "gamma", "tweedie"):
@@ -490,7 +550,7 @@ class IdeateStage(Stage):
         decides on evidence. Extra questions are appended verbatim (questions to a human, not
         recorded facts).
         """
-        allowed = _engine_families(ctx.config.task.value, ctx.config.task.is_classification)
+        allowed = _engine_families(ctx.config)
         prompt = (
             "You are COGNOS's ideation agent reviewing a model design brief for a commercial-risk "
             "model. Given the data structure, the framework assessment, and the open questions, "

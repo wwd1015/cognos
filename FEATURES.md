@@ -53,7 +53,20 @@
 - **Ratchet search** (accept-if-better-else-discard) with an experiment ledger (`results.tsv`-style), cheap/simple candidates first, candidate + optional wall-clock budgets.
 - **Leakage-safe cross-validation in search + a sealed/out-of-time holdout** — all preprocessing fit inside training folds only; selection is validated against a holdout the search cannot touch.
 - **Frozen substrate**: sealed holdout + metric definitions the search cannot edit (anti-reward-hacking).
-- Traditional statistical models (OLS, Ridge, Lasso, ElasticNet, Logit, regularized logit) **with statsmodels inference** (coefficients, p-values, residuals) — *and* ML models (Random Forest, Gradient Boosting) with feature importances. Configurable for either.
+- Traditional statistical models (OLS, Ridge, Lasso, ElasticNet, Logit, regularized logit,
+  **probit and cloglog binary GLM links** via a statsmodels-backed estimator) **with statsmodels
+  inference** (coefficients, p-values, residuals) — *and* ML models (Random Forest, Gradient
+  Boosting) with feature importances. Configurable for either.
+- **Discrete-time hazard (survival) families** (`hazard_logit`, `hazard_cloglog`; Shumway 2001):
+  obligor-period **panel expansion inside the estimator** (CV and holdout stay obligor-level —
+  leakage-safe by construction), valid panel GLM inference including the baseline-hazard period
+  effects, a **PD term structure** artifact, and a picklable `HazardScorer` that serves cumulative
+  PD through the standard scorer bundle. Unlocked by `data.event_time_col`.
+- **Merton structural engine** (`modeling/structural.py`, opt-in `structural:` block): a
+  deterministic KMV fixed-point solver maps equity value/vol + debt face value → asset value/vol,
+  **distance-to-default**, and structural PD. Hybrid mode feeds DD to the champion as an
+  engineered feature (recomputed target-hidden at serve time, like LLM transforms); the pure
+  structural PD is scored on the sealed holdout as a labelled challenger benchmark.
 - **Opt-in GLM / econometric regressors**: Poisson, Gamma, Tweedie families.
 - **Valid coefficient inference** (ADR/grilling Q6): statsmodels coefficients/p-values come from a separate **full-rank K-1 (drop-first) inference design** (`build_inference_design`), decoupled from the all-K prediction pipeline, so reported significances are statistically valid (no dummy-variable trap / astronomical condition number).
 - **Single interpretable champion by default** (ADR-0007): the deployed model is always one interpretable champion (interpretability/parsimony preference). The Caruana ensemble is **not** a silent default — it is an optional, labelled **challenger / predictive-ceiling benchmark** (`search.ensemble`, off by default), never silently treated as the deliverable.
@@ -75,6 +88,15 @@
 - **Out-of-time holdout**: the holdout is time-ordered (train on older vintages, evaluate on newer) when a datetime/vintage column is configured, not a random split.
 - **Real IMPACT integration**: emits an `EntityConfig` YAML embedding the model as a derived field (`cognos.runtime.score.score_row`) and runs `EntityPipeline` to produce a standardized scored feature table (predicted score, actual outcome, segment, time) — the natural input to the outcomes metrics.
 - Transparent **built-in fallback** when IMPACT is not installed (records `used_impact`).
+- **Opt-in Vasicek portfolio simulation** (`portfolio:` block, `modeling/simulate.py`): seeded
+  one-factor Monte Carlo of the portfolio loss distribution — EL, UL, VaR/ES at the configured
+  confidence, loss quantiles, MC standard error — plus the **closed-form Basel IRB capital** K as
+  the analytic cross-check. Asset correlation defaults to the Basel IRB corporate formula ρ(PD);
+  reported next to the calibration section (PDs in are model scores), never used for selection.
+- **Opt-in macro-scenario stress testing** (`stress:` block): CCAR-flavoured scenarios shock the
+  champion's covariates (`add`/`mul`/`set`), re-score **deterministically** through the deployed
+  scorer, and report per-scenario mean-PD and expected-loss deltas; unknown shocked columns are
+  reported, never silently ignored.
 - **Opt-in trading/returns mode** (`backtest.returns_column`): **Probability of Backtest Overfitting** (PBO via Combinatorially-Symmetric CV) and **Deflated Sharpe Ratio** + Probabilistic Sharpe Ratio. These presume a returns series and are **not** run on credit-risk models.
 - Walk-forward stability of the champion.
 
