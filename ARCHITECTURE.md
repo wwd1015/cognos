@@ -165,6 +165,14 @@ never *require* the LLM to reproduce a result — the LLM automates the search, 
   the champion as a serve-time-recomputed feature (hybrid), with the pure structural PD kept as a
   labelled challenger benchmark; Vasicek portfolio losses + Basel IRB capital and macro-scenario
   stress are seeded **reports** the backtest stage emits, never selection criteria.
+- **Rating migration is a fitted engine layer**
+  ([ADR-0009](docs/adr/0009-rating-migration-external-agency-data.md)): the cohort transition
+  matrix is estimated on the **training partition only** (NR-adjusted, Laplace-smoothed,
+  PAVA rank-ordered with adjustments reported); the rating-implied horizon PD replaces the raw
+  rating as the champion's serve-time-recomputed hybrid feature, the pure-migration PD is a
+  sealed-holdout challenger benchmark, and the matrix-power term structure + by-rating
+  expected-loss forecast (pooled and regime-conditioned) are **reports** — the CECL/stress
+  deliverable, never selection criteria.
 - **IMPACT is optional**: the adapter prefers the real `EntityPipeline` and falls back to the
   built-in scorer transparently, recording which path ran (`used_impact`).
 - **OKF over a bespoke format**: a permissive, vendor-neutral, agent-readable markdown spec where

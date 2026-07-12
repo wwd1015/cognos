@@ -21,6 +21,8 @@ def select_features(df: pd.DataFrame, config: CognosConfig) -> list[str]:
         exclude.add(dc.datetime_col)
     if dc.event_time_col:
         exclude.add(dc.event_time_col)  # event timing is outcome data, never a feature
+    if config.migration.next_rating_col:
+        exclude.add(config.migration.next_rating_col)  # end-of-window rating is outcome data
     if dc.features:
         return [c for c in dc.features if c in df.columns and c not in exclude]
     return [c for c in df.columns if c not in exclude]

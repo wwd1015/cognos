@@ -10,7 +10,7 @@ from .artifacts import Finding, RunSummary, Severity, StageResult, Verdict
 from .config import CognosConfig
 from .context import RunContext
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "CognosConfig",

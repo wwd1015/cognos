@@ -111,6 +111,21 @@ as an engineered feature, recomputed target-hidden at serve time; the pure struc
 on the sealed holdout only as a **labelled challenger benchmark**, never the deployed model.
 _Avoid_: calling the structural PD a fitted model — it is a solver output.
 
+**Rating-migration engine** (`migration:` block):
+A cohort-method **transition matrix** estimated on the training partition only (it is a *fitted*
+model, unlike the Merton solver, so it must never see the sealed holdout), with the standard
+agency-data statistics: **NR adjustment** (withdrawn ratings out of the row denominator), Laplace
+smoothing, and **weighted-PAVA rank-ordering** of the default column (adjustments reported, never
+silent). **Hybrid mode** swaps the raw rating for the horizon cumulative PD it implies
+(`migration_pd`, recomputed target-hidden at serve time — keeping both would be perfectly
+collinear); the pure-migration PD is a sealed-holdout **labelled challenger benchmark**. Reports:
+matrix-power **cumulative PD term structure**, regime-**conditional matrices**
+(`condition_col`), and the by-rating **expected-loss forecast** (EAD × LGD × cumPD). The typical
+estimation sample is a long **external agency history** (S&P CreditPro-style) when the internal
+rating history is too short — a decision ideate itself evidences (EPV finding + unlock question).
+See [ADR-0009](docs/adr/0009-rating-migration-external-agency-data.md).
+_Avoid_: estimating the matrix on the full frame — that leaks the holdout into the benchmark.
+
 **Portfolio simulation (Vasicek / ASRF)**:
 Seeded one-factor Monte Carlo of the portfolio loss distribution (EL/UL/VaR/ES) plus closed-form
 Basel IRB capital, conditioned on the champion's PDs. A *report* the backtest stage emits — it never

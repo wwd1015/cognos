@@ -63,6 +63,56 @@ class ModelStage(Stage):
             df, holdout_fraction=cfg.search.holdout_fraction,
             datetime_col=cfg.data.datetime_col, random_state=cfg.search.random_state,
         )
+
+        # --- rating-migration augmentation: matrix FITTED on the training partition --
+        # Unlike the deterministic Merton solver above, the transition matrix is estimated, so it
+        # must never see the sealed holdout. The horizon PD it implies replaces the raw rating as
+        # the champion's feature (they are exact functions of each other — keeping both would make
+        # the K-1 inference design perfectly collinear).
+        migration_info, migration_spec, migration_model = None, None, None
+        migration_findings: list[Finding] = []
+        mc = cfg.migration
+        if (mc.enabled and mc.rating_col and mc.rating_col in df.columns
+                and mc.next_rating_col and mc.next_rating_col in df.columns):
+            from ..modeling.migration import (
+                MigrationSpec,
+                fit_migration,
+                infer_scale,
+            )
+            from ..modeling.migration import (
+                augment_frame as migration_augment,
+            )
+
+            scale = list(mc.rating_scale) or infer_scale(
+                train_df[mc.rating_col], train_df[mc.next_rating_col],
+                default_state=mc.default_state, withdrawn_states=tuple(mc.withdrawn_states))
+            migration_spec = MigrationSpec(
+                rating_col=mc.rating_col, next_rating_col=mc.next_rating_col, scale=scale,
+                default_state=mc.default_state, withdrawn_states=list(mc.withdrawn_states),
+                horizon_periods=mc.horizon_periods, smoothing=mc.smoothing,
+                monotone_pd=mc.monotone_pd,
+            )
+            migration_model = fit_migration(train_df, migration_spec,
+                                            condition_col=mc.condition_col)
+            train_df, m_info = migration_augment(train_df, migration_model)
+            if len(holdout_df):
+                holdout_df, _ = migration_augment(holdout_df, migration_model)
+            features = [f for f in features if f != mc.rating_col]
+            if migration_spec.pd_feature not in features:
+                features.append(migration_spec.pd_feature)  # hybrid mode: migration PD feeds the champion
+            migration_info = {
+                "spec": migration_spec.to_dict(),
+                "scale_source": "configured" if mc.rating_scale else "inferred",
+                **m_info,
+                "estimate": migration_model["estimate"],
+                "term_structure": migration_model["term_structure"],
+                "pd_map": migration_model["pd_map"],
+                "condition_col": migration_model["condition_col"],
+                "conditional": {k: {kk: vv for kk, vv in v.items() if kk != "matrix"}
+                                for k, v in migration_model["conditional"].items()},
+            }
+            migration_findings = self._check_migration(migration_model)
+
         ctx.save_df("data/train.parquet", train_df)
         if len(holdout_df):
             ctx.save_df("data/holdout.parquet", holdout_df)
@@ -179,6 +229,13 @@ class ModelStage(Stage):
             fitted.base_features = list(dict.fromkeys(
                 [f for f in base_features if f != structural_spec.dd_feature] + market))
             fitted.structural = structural_spec.to_dict()
+        if migration_model is not None and migration_spec is not None:
+            # Serving recomputes migration_pd from the rating column via the fitted matrix, so the
+            # scorer's base features carry the raw rating in and the engineered PD out.
+            current = list(fitted.base_features or base_features)
+            fitted.base_features = list(dict.fromkeys(
+                [f for f in current if f != migration_spec.pd_feature] + [migration_spec.rating_col]))
+            fitted.migration = {k: migration_model[k] for k in ("spec", "pd_map", "fill")}
         diagnostics = stat_tests.run_battery(fitted, X_fit, y_train,
                                              is_classification=is_clf, is_timeseries=is_ts)
 
@@ -203,6 +260,31 @@ class ModelStage(Stage):
                     "holdout_roc_auc": auc,
                     "holdout_gini": 2 * auc - 1,
                 }
+            # Pure-migration challenger benchmark: the rating-implied PD scored directly on the
+            # sealed holdout — how far the agency matrix alone gets you, never the deployed model.
+            if migration_info is not None and is_clf and migration_spec is not None:
+                pd_mig = holdout_df[migration_spec.pd_feature].to_numpy(dtype=float)
+                auc = score("roc_auc", yh, (pd_mig >= 0.5).astype(int), y_proba=pd_mig)
+                migration_info["benchmark"] = {
+                    "kind": "pure rating-migration PD (challenger benchmark)",
+                    "deployed": False,
+                    "holdout_roc_auc": auc,
+                    "holdout_gini": 2 * auc - 1,
+                }
+
+        # --- migration expected-loss forecast (reported; never feeds selection) -----
+        if migration_model is not None and migration_spec is not None:
+            from ..modeling.migration import expected_loss_forecast
+
+            # Forecast on the out-of-time book when one exists (the closest thing to the current
+            # portfolio); otherwise the training book.
+            book = holdout_df if len(holdout_df) else train_df
+            ead = (book[mc.ead_column].to_numpy(dtype=float)
+                   if mc.ead_column and mc.ead_column in book.columns else None)
+            migration_info["loss_forecast"] = expected_loss_forecast(
+                book[migration_spec.rating_col], migration_model, lgd=mc.lgd, ead=ead)
+            migration_info["loss_forecast"]["book"] = ("out_of_time_holdout" if len(holdout_df)
+                                                       else "training")
 
         # --- persist deployable scorer ---------------------------------------------
         scorer_path = str((ctx.models_dir / "champion_scorer.joblib").resolve())
@@ -220,6 +302,8 @@ class ModelStage(Stage):
         res.add_artifact(ctx.save_json("stages/model/diagnostics.json", diagnostics))
 
         # --- findings ---------------------------------------------------------------
+        for f in migration_findings:
+            res.add_finding(f)
         for t in diagnostics["failed_tests"]:
             test = next(x for x in diagnostics["tests"] if x["name"] == t)
             res.add_finding(Finding(id=f"diag-{t}", severity=Severity(test["severity"]),
@@ -255,6 +339,7 @@ class ModelStage(Stage):
             "challenger_benchmark": challenger_benchmark,
             "hazard": hazard_info,
             "structural": structural_info,
+            "migration": migration_info,
             "guided": guided_info,
             "transforms": [t.to_dict() for t in champion_transforms],
             "base_features": base_features,
@@ -264,6 +349,8 @@ class ModelStage(Stage):
             "n_train": int(len(train_df)),
             "n_holdout": int(len(holdout_df)),
         }
+        if migration_info is not None:
+            res.add_artifact(ctx.save_json("stages/model/migration.json", migration_info))
         res.add_artifact(ctx.save_json("stages/model/summary.json", payload))
         res.payload = payload
         res.metrics = {"cv_mean": champion_cv.mean, "cv_std": champion_cv.std,
@@ -283,6 +370,49 @@ class ModelStage(Stage):
             f"diagnostics {diagnostics['n_passed']}/{diagnostics['n_run']} passed."
         )
         return res
+
+    @staticmethod
+    def _check_migration(model: dict) -> list[Finding]:
+        """Rank-order and support diagnostics on the fitted transition matrix (never a crash)."""
+        est = model["estimate"]
+        diag = est["diagnostics"]
+        findings: list[Finding] = []
+        if not diag["default_col_monotone"]:
+            findings.append(Finding(
+                id="migration-rank-order", severity=Severity.MEDIUM, category="migration",
+                message="Estimated one-period PDs are not monotone across the rating scale — the "
+                        "matrix does not rank-order (thin rows, a wrong scale order, or a mixed "
+                        "sample).",
+                suggestion="Check migration.rating_scale ordering and per-row support; consider "
+                           "pooling adjacent grades, a longer history, or migration.monotone_pd.",
+            ))
+        elif diag.get("monotonized_rows"):
+            findings.append(Finding(
+                id="migration-monotonized", severity=Severity.LOW, category="migration",
+                message=f"Raw default-column estimates violated rank order at grade(s) "
+                        f"{', '.join(diag['monotonized_rows'])} (small-sample artifact); PDs were "
+                        "monotonized via weighted PAVA — raw and adjusted values are in the run "
+                        "record.",
+                suggestion="Expected with sparse high-grade defaults; document the adjustment in "
+                           "the matrix-estimation section.",
+            ))
+        if diag["thin_rows"]:
+            findings.append(Finding(
+                id="migration-thin-rows", severity=Severity.LOW, category="migration",
+                message=f"Rating grade(s) {', '.join(diag['thin_rows'])} have fewer than 30 "
+                        "observed transitions — their row of the matrix leans on smoothing.",
+                suggestion="Pool thin grades or extend the history window.",
+            ))
+        if est["withdrawn_share"] > 0.25:
+            findings.append(Finding(
+                id="migration-withdrawn", severity=Severity.LOW, category="migration",
+                message=f"{est['withdrawn_share']:.0%} of transitions end in a withdrawn rating "
+                        "(NR-adjusted out of the denominator) — a high share can bias the matrix "
+                        "if withdrawal correlates with credit state.",
+                suggestion="Document the NR treatment; consider a withdrawal-adjusted robustness "
+                           "check.",
+            ))
+        return findings
 
     @staticmethod
     def _save_oof_perf(ctx: RunContext, sr, y_train, is_clf: bool) -> str:

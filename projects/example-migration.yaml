@@ -1,0 +1,89 @@
+# example-migration.yaml — a COGNOS project profile for corporate loss forecasting
+# via rating migration on external agency (S&P CreditPro-style) data.
+#
+# The engagement this profile encodes: the bank's internal rating history is too
+# short to calibrate a through-the-cycle transition matrix (the engine will say so
+# itself — run explore+ideate on a 5-year internal extract and read the EPV
+# finding), so the matrix is estimated on a licensed long-run agency panel mapped
+# to the internal master scale. The rating-implied horizon PD feeds the champion
+# as a hybrid feature; the pure-migration PD is a sealed-holdout challenger
+# benchmark; the by-rating expected-loss forecast (pooled + regime-conditioned)
+# is the deliverable. Design decisions: docs/adr/0009.
+#
+# Data: a synthetic S&P-style panel stands in for the licensed extract (which
+# cannot ship in a repo). Generate it with:
+#     cognos demo --task migration --runs-dir runs
+# (writes <runs-dir>/_demo_data/migration.csv), or in Python:
+#     from cognos import synth
+#     synth.make_rating_migration_dataset().to_csv("runs/_demo_data/migration.csv", index=False)
+# The full worked walkthrough lives in examples/rating_migration_loss/.
+
+name: example_migration
+description: "Corporate loss forecasting via rating migration on S&P-style agency data."
+task: classification
+mode: autonomous
+
+data:
+  path: runs/_demo_data/migration.csv
+  format: csv
+  target: default
+  features: []
+  datetime_col: asof            # annual cohorts 1981-2023 => out-of-time holdout
+  drop_columns: [obligor_id, regime, ead]   # ids/exposure are not risk drivers;
+                                # regime is consumed by migration.condition_col
+
+design:
+  use_case: "portfolio loss forecasting for CECL provisioning and enterprise stress testing"
+  horizon: "1-year default, extended to a 3-year cumulative term structure via matrix powers"
+  default_definition: "agency default state D (payment default, distressed exchange, bankruptcy)"
+  segment: "large corporate (agency-rated universe, mapped to the internal master scale)"
+  interpretability: required
+  notes: "Internal history (2019+) too short for a TTC matrix; licensed agency data carries the
+    long-run default experience. Expected signs: leverage up-risk; coverage, margin, size down-risk."
+
+metric:
+  name: roc_auc
+
+search:
+  max_candidates: 12
+  cv_folds: 5
+  holdout_fraction: 0.2
+  random_state: 42
+
+migration:
+  enabled: true
+  rating_col: rating
+  next_rating_col: next_rating  # end-of-window rating: outcome data, never a feature
+  rating_scale: [AAA, AA, A, BBB, BB, B, CCC]
+  default_state: D
+  withdrawn_states: [NR]        # NR-adjusted out of the row denominator
+  horizon_periods: 3            # 3-year cumulative PD / EL via matrix powers
+  monotone_pd: true             # weighted-PAVA rank-ordering (adjustments reported)
+  condition_col: regime         # expansion/recession conditional matrices (stress axis)
+  lgd: 0.40
+  ead_column: ead
+
+portfolio:
+  enabled: true
+  lgd: 0.40
+  ead_column: ead
+  n_sims: 10000
+
+stress:
+  enabled: true
+  scenarios:
+    - name: adverse
+      shocks: { unemployment_rate: { add: 3.0 } }
+    - name: severely_adverse
+      shocks: { unemployment_rate: { add: 6.0 } }
+
+compliance:
+  regimes: [SR11-7, NIST-AI-RMF]
+  risk_tier: high
+  fair_lending: false           # commercial credit: no consumer protected attributes
+  jurisdictions: [US]
+
+stages:
+  enabled: [explore, ideate, model, backtest, validate, comply, document, review]
+  gates: [validate, review]
+  halt_on_block: true

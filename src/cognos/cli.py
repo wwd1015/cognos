@@ -55,6 +55,19 @@ structural:               # Merton distance-to-default (needs market observables
   equity_vol_col: null
   debt_col: null
 
+migration:                # rating-transition matrix (needs a rating history)
+  enabled: false          # when on: rating-implied PD feeds the champion (hybrid) +
+  rating_col: null        #   pure-migration benchmark + by-rating expected-loss forecast
+  next_rating_col: null   # rating at the END of the outcome window (outcome data, never a feature)
+  rating_scale: []        # best -> worst excl. default; empty = inferred from default rates
+  default_state: D
+  withdrawn_states: [NR]  # transitions to these are NR-adjusted out of the denominator
+  horizon_periods: 1      # loss-forecast horizon in rating periods (matrix powers)
+  monotone_pd: true       # PAVA-monotonize the default column (rank-order by construction)
+  condition_col: null     # e.g. a macro-regime column -> conditional (downturn) matrices
+  lgd: 0.45
+  ead_column: null
+
 portfolio:                # Vasicek one-factor loss simulation + Basel IRB capital (reported)
   enabled: false
   lgd: 0.45
@@ -222,6 +235,25 @@ def _cmd_demo(args) -> int:
                             "default_definition": "90+ DPD or nonaccrual within 12 months",
                             "segment": "C&I middle-market",
                             "interpretability": "required"}),
+        "migration": dict(task="classification", target="default", metric="roc_auc",
+                          datetime_col="asof", drop=["obligor_id", "regime", "ead"],
+                          migration={"enabled": True, "rating_col": "rating",
+                                     "next_rating_col": "next_rating",
+                                     "rating_scale": ["AAA", "AA", "A", "BBB", "BB", "B", "CCC"],
+                                     "condition_col": "regime", "lgd": 0.40,
+                                     "ead_column": "ead"},
+                          portfolio={"enabled": True, "lgd": 0.40, "ead_column": "ead",
+                                     "n_sims": 10000},
+                          stress={"enabled": True, "scenarios": [
+                              {"name": "adverse",
+                               "shocks": {"unemployment_rate": {"add": 3.0}}},
+                          ]},
+                          design={"use_case": "loss forecasting (CECL / stress testing)",
+                                  "horizon": "1-year default, multi-year via matrix powers",
+                                  "default_definition": "agency default state D "
+                                                        "(payment default / bankruptcy)",
+                                  "segment": "large corporate (agency-rated universe)",
+                                  "interpretability": "required"}),
     }
     p = presets[args.task]
     raw = {
@@ -234,12 +266,15 @@ def _cmd_demo(args) -> int:
                  "event_time_col": p.get("event_time_col"),
                  "horizon_periods": p.get("horizon_periods")},
         "design": p.get("design", {}),
+        "migration": p.get("migration", {}),
         "portfolio": p.get("portfolio", {}),
         "stress": p.get("stress", {}),
         "metric": {"name": p["metric"]},
         "compliance": {"fair_lending": p.get("fair_lending", False),
-                       "jurisdictions": ["US"] if args.task in ("commercial", "cni") else ["US", "EU"],
-                       "risk_tier": "high" if args.task in ("credit", "commercial", "cni") else "medium"},
+                       "jurisdictions": ["US"] if args.task in ("commercial", "cni", "migration")
+                       else ["US", "EU"],
+                       "risk_tier": "high" if args.task in ("credit", "commercial", "cni",
+                                                            "migration") else "medium"},
     }
     cfg = CognosConfig.from_dict(raw)
     orch = Orchestrator(cfg, runs_root=str(runs_dir))
@@ -292,7 +327,7 @@ def build_parser() -> argparse.ArgumentParser:
     pd = sub.add_parser("demo", help="run an end-to-end demo on synthetic data")
     pd.add_argument("--task", default="regression",
                     choices=["regression", "classification", "timeseries", "credit", "commercial",
-                             "cni"])
+                             "cni", "migration"])
     pd.add_argument("--runs-dir", default=None)
     pd.set_defaults(func=_cmd_demo)
 

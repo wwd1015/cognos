@@ -174,16 +174,26 @@ def _framework_assessment(cfg: CognosConfig, profile: dict, structure: dict) -> 
             "reference": "Merton (1974); KMV/Moody's EDF",
         })
         rating_cols = _match_hints(all_cols, _RATING_HINTS)
+        migration_on = bool(cfg.migration.enabled) and bool(rating_cols)
         frameworks.append({
             "framework": "transition_matrix",
             "label": "Rating-transition matrix (migration)",
             "applicable": bool(rating_cols),
-            "role": "candidate" if rating_cols else "rejected",
-            "reason": (f"Rating columns detected ({', '.join(rating_cols)})." if rating_cols else
-                       "Requires an internal rating history (grade at successive snapshots); "
-                       "none present."),
+            "role": "candidate" if migration_on else ("available" if rating_cols else "rejected"),
+            "reason": ((f"Rating columns detected ({', '.join(rating_cols)}); the migration: "
+                        "config block is enabled — the engine estimates a cohort transition "
+                        "matrix on the training partition (NR-adjusted), feeds the rating-implied "
+                        "horizon PD to the champion (hybrid), scores the pure-migration PD as a "
+                        "challenger benchmark, and reports a by-rating expected-loss forecast.")
+                       if migration_on else
+                       (f"Rating columns detected ({', '.join(rating_cols)}) — enable the "
+                        "migration: config block (rating_col + next_rating_col) to estimate a "
+                        "transition matrix (hybrid feature + benchmark + loss forecast)."
+                        if rating_cols else
+                        "Requires a rating history (grade at successive snapshots, e.g. an "
+                        "internal grade or agency rating panel); none present.")),
             "engine_families": [],
-            "reference": "CreditMetrics (1997); rating-migration practice",
+            "reference": "CreditMetrics (1997); S&P CreditPro rating-migration practice",
         })
     elif cfg.task.value == "timeseries":
         frameworks.append({
@@ -280,6 +290,16 @@ def _open_questions(cfg: CognosConfig, profile: dict, structure: dict) -> list[d
                       "question": f"Market observables detected ({', '.join(market)}) — enable "
                                   "the structural: config block to compute Merton "
                                   "distance-to-default (hybrid feature + structural benchmark)."})
+    if cfg.task.is_classification and not cfg.migration.enabled:
+        ratingish = _match_hints(list(profile.get("dtypes", {}).keys()), _RATING_HINTS)
+        ratingish = [c for c in ratingish if c != cfg.data.target]
+        if ratingish:
+            q.append({"id": "data-migration", "source": "data",
+                      "question": f"Rating column(s) detected ({', '.join(ratingish)}) — enable "
+                                  "the migration: config block (rating_col + next_rating_col) to "
+                                  "estimate a rating-transition matrix: rating-implied PD as a "
+                                  "hybrid feature, a pure-migration challenger benchmark, and a "
+                                  "by-rating expected-loss forecast."})
     if cfg.portfolio.enabled and cfg.portfolio.asset_correlation is None:
         q.append({"id": "design-asset-correlation", "source": "design-brief",
                   "question": f"Portfolio simulation uses the Basel IRB asset-correlation formula "

@@ -60,12 +60,16 @@ Python ≥ 3.11. Core deps: numpy, pandas, scikit-learn, statsmodels, scipy, pyd
 # End-to-end on synthetic data (no config needed):
 cognos demo --task commercial      # commercial credit, out-of-time outcomes analysis
 cognos demo --task cni             # C&I portfolio: hazard term structure, portfolio sim, stress
+cognos demo --task migration       # rating-migration loss forecast on S&P-style agency data
 cognos demo --task regression
 # Worked commercial-risk example (leakage arc + MD triangulation + design brief):
 python examples/commercial_credit/run_demo.py
 # Comprehensive econometric/structural showcase (GLM links, hazard term structure,
 # Merton hybrid, Vasicek portfolio, macro stress) on a public-obligor book:
 python examples/public_obligor_pd/run_demo.py
+# Comprehensive rating-migration loss-forecast engagement (internal history too short ->
+# S&P-style agency data -> transition matrix, term structure, EL forecast, all 8 stages):
+python examples/rating_migration_loss/run_demo.py
 
 # Your own data:
 cognos init -o cognos.yaml         # write + edit a config template
@@ -142,6 +146,7 @@ src/cognos/
   stages/        the 8 agents + stat_tests battery
   modeling/      metrics, fitters (+ GLM links incl. probit/cloglog), ratchet search,
                  hazard (discrete-time survival, PD term structure), structural (Merton DD solver),
+                 migration (rating-transition matrix, term structure, EL forecast),
                  simulate (Vasicek portfolio + macro stress), credit_metrics, backtest_stats,
                  transforms (target-hidden), guided (LLM-guided search), ensemble
   integrations/  impact_adapter, autoforge_loop
@@ -149,8 +154,9 @@ src/cognos/
 .claude/         declarative agent specs + orchestrator command + safety hooks (deputy-style)
   skills/        per-agent commercial-risk domain playbooks (cognos-<stage>/SKILL.md)
 projects/  examples/end_to_end/  examples/commercial_credit/  examples/public_obligor_pd/
+examples/rating_migration_loss/
 evals/  tests/
-docs/adr/        architecture decision records (0001-0008)
+docs/adr/        architecture decision records (0001-0009)
 CONTEXT.md       ubiquitous-language glossary
 ```
 

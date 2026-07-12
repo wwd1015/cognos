@@ -29,6 +29,7 @@ class ScorerBundle:
     transforms: list[dict] = field(default_factory=list)  # [{name, expr}] LLM-authored features
     base_features: list[str] | None = None  # original columns needed to recompute transforms
     structural: dict | None = None  # StructuralSpec dict; Merton DD recomputed at serve time
+    migration: dict | None = None  # fitted migration model dict; migration_pd recomputed at serve
 
     def _augment(self, df: pd.DataFrame) -> pd.DataFrame:
         """Recompute engineered features (target-hidden) so serving matches training exactly."""
@@ -40,6 +41,13 @@ class ScorerBundle:
             market = (spec.equity_value_col, spec.equity_vol_col, spec.debt_col)
             if spec.dd_feature not in frame.columns and all(c in frame.columns for c in market):
                 frame, _ = augment_frame(frame, spec)
+        if self.migration:
+            from ..modeling.migration import MigrationSpec
+            from ..modeling.migration import augment_frame as migration_augment
+
+            mspec = MigrationSpec.from_dict(self.migration["spec"])
+            if mspec.pd_feature not in frame.columns and mspec.rating_col in frame.columns:
+                frame, _ = migration_augment(frame, self.migration)
         if not self.transforms:
             return frame
         from ..modeling.transforms import TransformSpec, apply_transforms
@@ -67,6 +75,7 @@ def save_scorer(path: str, fitted) -> str:
         transforms=transforms,
         base_features=list(fitted.base_features) if getattr(fitted, "base_features", None) else None,
         structural=getattr(fitted, "structural", None),
+        migration=getattr(fitted, "migration", None),
     )
     joblib.dump(bundle, path)
     return path

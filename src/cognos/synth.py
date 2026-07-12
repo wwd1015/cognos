@@ -241,6 +241,156 @@ def make_cni_portfolio_dataset(n: int = 2000, seed: int = 7,
     return df
 
 
+# One-year corporate rating-transition rates (%), rows = from-rating, columns =
+# AAA AA A BBB BB B CCC D NR. Calibrated to the shape of the published S&P Global long-run
+# (1981-2023) averages — sticky diagonals, one-notch-dominant migration, near-zero
+# investment-grade default rates, a ~26% CCC default rate, and an NR (withdrawn) share that
+# grows as ratings worsen. Synthetic stand-in for licensed CreditPro-style data; rows are
+# renormalized to sum to exactly 1 at load.
+_AGENCY_TRANSITIONS = {
+    "AAA": [87.0, 9.0, 0.5, 0.05, 0.06, 0.03, 0.05, 0.00, 3.31],
+    "AA":  [0.5, 87.2, 7.6, 0.5, 0.05, 0.06, 0.02, 0.02, 4.05],
+    "A":   [0.03, 1.6, 88.4, 4.9, 0.3, 0.10, 0.02, 0.05, 4.60],
+    "BBB": [0.00, 0.09, 3.3, 86.1, 3.3, 0.4, 0.10, 0.15, 6.56],
+    "BB":  [0.01, 0.03, 0.1, 4.6, 77.7, 6.3, 0.5, 0.60, 10.16],
+    "B":   [0.00, 0.02, 0.06, 0.15, 4.4, 74.1, 4.4, 3.20, 13.67],
+    "CCC": [0.00, 0.00, 0.10, 0.20, 0.6, 13.4, 43.1, 26.60, 16.00],
+}
+_AGENCY_SCALE = ["AAA", "AA", "A", "BBB", "BB", "B", "CCC"]
+_RECESSION_YEARS = {1982, 1990, 1991, 2001, 2002, 2008, 2009, 2020}
+
+
+def make_rating_migration_dataset(n_obligors: int = 450, start_year: int = 1981,
+                                  end_year: int = 2023, seed: int = 42,
+                                  book: str = "agency") -> pd.DataFrame:
+    """S&P-style corporate obligor-year rating panel for migration / loss-forecast modeling.
+
+    One row per obligor-year: the rating at the observation point (``rating``), obligor
+    fundamentals consistent with that rating (Compustat-style, so a hybrid model has signal beyond
+    the letter grade), the macro environment, exposure (``ead``), and the outcome — the rating one
+    year later (``next_rating``, which may be the default state ``D`` or a withdrawal ``NR``) and
+    the ``default`` flag. Transitions are drawn from a long-run average matrix shaped like the
+    published S&P Global corporate averages, tilted by the macro regime (recession years default
+    and downgrade more, upgrade less) and by obligor fundamentals (a levered, low-coverage obligor
+    is more likely to migrate down *within* its grade — this is the signal a hybrid champion adds
+    over the pure matrix). Defaulted and withdrawn obligors exit; fresh entrants keep the panel
+    balanced. Deterministic given the seed.
+
+    ``book="agency"`` mimics the rated public universe (fuller high-grade mix; use a long window
+    like 1981-2023). ``book="bank"`` mimics an internal commercial book (speculative-grade-heavy;
+    pair with a short window to reproduce the "internal history is too short" problem).
+    """
+    rng = np.random.default_rng(seed)
+    scale = _AGENCY_SCALE
+    base = np.array([_AGENCY_TRANSITIONS[s] for s in scale], dtype=float)
+    base = base / base.sum(axis=1, keepdims=True)
+    n_states = base.shape[1]  # 7 live + D + NR
+    entry_mix = (np.array([0.03, 0.09, 0.18, 0.27, 0.22, 0.16, 0.05]) if book == "agency"
+                 else np.array([0.005, 0.03, 0.11, 0.26, 0.30, 0.235, 0.06]))
+    entry_mix = entry_mix / entry_mix.sum()
+    sectors = np.array(["manufacturing", "services", "retail_trade", "energy",
+                        "healthcare", "utilities"])
+
+    years = list(range(int(start_year), int(end_year) + 1))
+    # Macro series: one unemployment print per year, elevated in recession years.
+    unemployment = {y: float(np.clip(rng.normal(9.0 if y in _RECESSION_YEARS else 5.0, 0.7),
+                                     3.0, 14.0)) for y in years}
+
+    next_id = 0
+
+    def _new_obligors(k: int) -> dict:
+        nonlocal next_id
+        ids = [f"OBL{100000 + next_id + i}" for i in range(k)]
+        next_id += k
+        return {
+            "id": ids,
+            "rating_idx": rng.choice(len(scale), size=k, p=entry_mix),
+            "quality": rng.normal(0, 1, k),  # persistent within-grade credit quality
+            "sector": rng.choice(sectors, size=k),
+            "size": rng.normal(0, 1, k),  # persistent size factor
+        }
+
+    pool = _new_obligors(n_obligors)
+    rows: list[dict] = []
+    for year in years:
+        k = len(pool["id"])
+        q = pool["rating_idx"].astype(float)  # 0=AAA ... 6=CCC
+        u = pool["quality"]
+        eps = rng.normal(0, 1, k)
+        # Fundamentals anchored to the grade, blurred by persistent quality + noise.
+        debt_to_ebitda = np.clip(1.0 + 0.75 * q + 0.55 * u + rng.normal(0, 0.5, k), 0.1, 12.0)
+        interest_coverage = np.clip(13.0 - 1.5 * q - 1.3 * u + rng.normal(0, 1.3, k), 0.2, 30.0)
+        operating_margin = np.clip(0.17 - 0.015 * q - 0.020 * u + rng.normal(0, 0.04, k),
+                                   -0.30, 0.45)
+        log_total_assets = 21.0 - 0.5 * q + 0.9 * pool["size"] + rng.normal(0, 0.4, k)
+        ead = np.exp(rng.normal(17.5 - 0.25 * q + 0.7 * pool["size"], 0.6))
+
+        # Idiosyncratic migration tilt: worse-than-grade fundamentals push transitions down.
+        z = np.clip(0.75 * u + 0.55 * eps, -3.0, 3.0)
+        recession = year in _RECESSION_YEARS
+
+        next_idx = np.empty(k, dtype=int)
+        for i_rating in range(len(scale)):
+            mask = pool["rating_idx"] == i_rating
+            m = int(mask.sum())
+            if not m:
+                continue
+            probs = np.tile(base[i_rating], (m, 1))
+            zi = z[mask]
+            down = np.arange(n_states - 2) > i_rating  # worse live grades
+            up = np.arange(n_states - 2) < i_rating
+            mult = np.ones((m, n_states))
+            mult[:, :-2][:, down] *= np.exp(0.30 * zi)[:, None]
+            mult[:, :-2][:, up] *= np.exp(-0.30 * zi)[:, None]
+            mult[:, -2] *= np.exp(0.85 * zi)  # default column
+            if recession:
+                mult[:, :-2][:, down] *= 1.7
+                mult[:, :-2][:, up] *= 0.55
+                mult[:, -2] *= 2.3
+            probs *= mult
+            probs /= probs.sum(axis=1, keepdims=True)
+            cum = probs.cumsum(axis=1)
+            draw = rng.uniform(size=m)[:, None]
+            next_idx[mask] = (draw > cum).sum(axis=1)
+
+        next_state = np.array([*scale, "D", "NR"], dtype=object)[next_idx]
+        rows.extend({
+            "obligor_id": pool["id"][i],
+            "asof": pd.Timestamp(year, 1, 1),
+            "rating": scale[pool["rating_idx"][i]],
+            "debt_to_ebitda": debt_to_ebitda[i],
+            "interest_coverage": interest_coverage[i],
+            "operating_margin": operating_margin[i],
+            "log_total_assets": log_total_assets[i],
+            "sector": pool["sector"][i],
+            "unemployment_rate": unemployment[year],
+            "regime": "recession" if recession else "expansion",
+            "ead": ead[i],
+            "next_rating": next_state[i],
+            "default": int(next_state[i] == "D"),
+        } for i in range(k))
+
+        # Survivors carry their new grade into the next year; exits are replaced by entrants.
+        survive = next_idx < len(scale)
+        pool = {
+            "id": [pool["id"][i] for i in range(k) if survive[i]],
+            "rating_idx": next_idx[survive],
+            "quality": np.clip(pool["quality"][survive] + rng.normal(0, 0.25, int(survive.sum())),
+                               -3.0, 3.0),
+            "sector": pool["sector"][survive],
+            "size": pool["size"][survive],
+        }
+        n_exit = k - int(survive.sum())
+        if n_exit and year != years[-1]:
+            fresh = _new_obligors(n_exit)
+            pool = {key: (np.concatenate([pool[key], fresh[key]])
+                          if isinstance(pool[key], np.ndarray)
+                          else [*pool[key], *fresh[key]])
+                    for key in pool}
+
+    return pd.DataFrame(rows)
+
+
 GENERATORS = {
     "regression": make_regression_dataset,
     "classification": make_classification_dataset,
@@ -248,4 +398,5 @@ GENERATORS = {
     "credit": make_credit_dataset,
     "commercial": make_commercial_credit_dataset,
     "cni": make_cni_portfolio_dataset,
+    "migration": make_rating_migration_dataset,
 }

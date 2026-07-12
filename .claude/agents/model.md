@@ -39,6 +39,7 @@ Report, in plain prose:
 - Statistical-battery results in `payload` / `metrics` (e.g. residual diagnostics, significance tests, coefficient p-values from the full-rank inference design) and any test that flagged a problem.
 - If `payload.hazard` is present (a discrete-time hazard champion): the horizon and the **PD term structure** (mean cumulative PD per period) — confirm it is monotone non-decreasing.
 - If `payload.structural` is present (Merton engine ran): note that `merton_dd` feeds the champion (hybrid mode) and report the **pure-structural challenger benchmark** (`structural.benchmark` holdout AUC/Gini) as a labelled reference, never the deliverable.
+- If `payload.migration` is present (rating-transition engine ran): note that `migration_pd` replaced the raw rating in the champion's features (hybrid mode), report the **pure-migration challenger benchmark** (`migration.benchmark` holdout AUC/Gini) as a labelled reference, confirm the matrix **rank-orders** (`migration.estimate.diagnostics.default_col_monotone`, mentioning any PAVA-adjusted grades), and summarize the **expected-loss forecast** (`migration.loss_forecast`: pooled EL rate plus the regime-conditioned rates when present).
 - Each finding by severity, verbatim.
 
 End with the literal token line.

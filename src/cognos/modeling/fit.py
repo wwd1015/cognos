@@ -221,6 +221,7 @@ class FittedModel:
     transforms: list = field(default_factory=list)  # list[TransformSpec] LLM-authored, target-hidden
     base_features: list[str] | None = None  # original columns needed to recompute the transforms
     structural: dict | None = None  # StructuralSpec dict; Merton DD recomputed at predict/serve
+    migration: dict | None = None  # fitted migration model dict; migration_pd recomputed at serve
 
     @property
     def model_id(self) -> str:
@@ -236,6 +237,13 @@ class FittedModel:
             market = (spec.equity_value_col, spec.equity_vol_col, spec.debt_col)
             if spec.dd_feature not in frame.columns and all(c in frame.columns for c in market):
                 frame, _ = augment_frame(frame, spec)
+        if self.migration:
+            from .migration import MigrationSpec
+            from .migration import augment_frame as migration_augment
+
+            mspec = MigrationSpec.from_dict(self.migration["spec"])
+            if mspec.pd_feature not in frame.columns and mspec.rating_col in frame.columns:
+                frame, _ = migration_augment(frame, self.migration)
         if not self.transforms:
             return frame
         from .transforms import apply_transforms

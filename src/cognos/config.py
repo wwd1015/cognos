@@ -119,6 +119,32 @@ class StructuralConfig(BaseModel):
     horizon_years: float = 1.0
 
 
+class MigrationConfig(BaseModel):
+    """Rating-transition (migration) support (modeling/migration.py) — needs a rating history.
+
+    When enabled and the rating/next-rating columns exist, the model stage estimates a cohort
+    transition matrix on the training partition (NR-adjusted, Laplace-smoothed), swaps the raw
+    rating for the horizon cumulative PD it implies (``migration_pd``, the hybrid feature), scores
+    the pure-migration PD on the sealed holdout as a labelled challenger benchmark, and reports a
+    by-rating expected-loss forecast. ``next_rating_col`` is outcome data — like the target, it is
+    never a feature.
+    """
+
+    enabled: bool = False
+    rating_col: str | None = None  # rating at the observation point (in the information set)
+    next_rating_col: str | None = None  # rating at the end of the outcome window (outcome data)
+    rating_scale: list[str] = Field(default_factory=list)  # best -> worst, excluding the default
+    # state; empty => inferred from observed default rates (reported in the run record)
+    default_state: str = "D"
+    withdrawn_states: list[str] = Field(default_factory=lambda: ["NR"])  # denominator-adjusted
+    horizon_periods: int = 1  # loss-forecast horizon in rating periods (matrix powers)
+    smoothing: float = 0.5  # Laplace prior count per cell
+    monotone_pd: bool = True  # PAVA-monotonize the default column (reported when it adjusts)
+    condition_col: str | None = None  # e.g. macro-regime column -> conditional matrices (stress)
+    lgd: float = 0.45  # loss-given-default for the expected-loss forecast
+    ead_column: str | None = None  # exposure-at-default column; None => equal-weighted
+
+
 class ComplianceConfig(BaseModel):
     regimes: list[str] = Field(default_factory=lambda: ["SR11-7", "NIST-AI-RMF"])
     risk_tier: str = "medium"  # low | medium | high — drives validation intensity
@@ -210,6 +236,7 @@ class CognosConfig(BaseModel):
     metric: MetricConfig = Field(default_factory=MetricConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     structural: StructuralConfig = Field(default_factory=StructuralConfig)
+    migration: MigrationConfig = Field(default_factory=MigrationConfig)
     compliance: ComplianceConfig = Field(default_factory=ComplianceConfig)
     impact: ImpactConfig = Field(default_factory=ImpactConfig)
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)

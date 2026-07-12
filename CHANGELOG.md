@@ -3,6 +3,46 @@
 All notable changes to COGNOS are documented here. Format loosely follows Keep a Changelog;
 versioning is SemVer.
 
+## [0.5.0] — 2026-07-12
+
+The rating-migration release: the loss-forecasting framework corporate banks actually use when the
+internal default history is too short — estimate a transition matrix on a long external agency
+(S&P CreditPro-style) history and let it carry the long-run default experience. Design decisions in
+ADR-0009; the full engagement is demonstrated end-to-end in `examples/rating_migration_loss/`.
+
+### Added
+- **Rating-migration engine** (`modeling/migration.py`, opt-in `migration:` config block): a
+  cohort-method one-period transition matrix **fitted on the training partition only** (the matrix
+  is a fitted model, unlike the deterministic Merton solver, so it must never see the sealed
+  holdout), with the standard agency-data statistics — **NR (withdrawn-rating) denominator
+  adjustment**, Laplace smoothing, and **weighted-PAVA rank-ordering** of the default column with
+  raw-vs-adjusted reported as a finding. Hybrid mode swaps the raw rating for the horizon
+  cumulative PD it implies (`migration_pd`), recomputed target-hidden at serve time on both
+  `FittedModel` and `ScorerBundle`; the pure-migration PD is scored on the sealed out-of-time
+  holdout as a labelled challenger benchmark (`migration.benchmark`, `deployed: false`).
+- **Cumulative PD term structure via matrix powers** (absorbing default) and a by-rating
+  **expected-loss forecast** (EAD × LGD × cumPD at the horizon) on the out-of-time book, under the
+  pooled (through-the-cycle) matrix and per-regime **conditional matrices**
+  (`migration.condition_col`) — the baseline/downturn split CECL and stress reviewers ask for.
+  Both are reports; neither feeds champion selection.
+- **`next_rating_col` is outcome data**: excluded from model features exactly like the target and
+  `event_time_col` (datautil).
+- **Ideate is migration-aware**: the transition-matrix framework entry is config-aware
+  (rejected → available → candidate with stated reasons) and a `data-migration` unlock question
+  fires when rating columns exist unconfigured.
+- **Synthetic S&P-style agency panel** (`synth.make_rating_migration_dataset`): obligor-year
+  rating histories calibrated to the shape of the published S&P long-run (1981–2023) averages,
+  with regime-tilted recessions, within-grade fundamental signal, NR withdrawals, and EAD; a
+  `book="bank"` short-history variant reproduces the "internal data is too short" problem.
+- **`cognos demo --task migration`** preset and the `migration:` block in the `cognos init`
+  template.
+- **Comprehensive worked example** `examples/rating_migration_loss/`: internal-data insufficiency
+  (machine-generated EPV/short-history evidence) → framework unlock on the agency panel → full
+  eight-stage run with the matrix, term structure, champion-vs-matrix benchmark, EL forecast,
+  Vasicek portfolio, macro stress, and both gates — with captured artifacts in `sample_output/`.
+- **ADR-0009** — rating migration is a fitted engine layer; external agency data is a designed
+  decision.
+
 ## [0.4.0] — 2026-07-04
 
 The econometric & structural release: traditional regression depth (GLM links, discrete-time
