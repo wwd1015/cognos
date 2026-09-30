@@ -137,7 +137,7 @@ def _run_via_impact(df, model_path, raw_features, work_dir, entity_name, pk) -> 
         source_path=source_path, model_path=str(model_path),
     )
     config_path = str(work_dir / "impact_entity.yaml")
-    with open(config_path, "w") as fh:
+    with open(config_path, "w", encoding="utf-8") as fh:
         yaml.safe_dump(cfg, fh, sort_keys=False)
 
     result = EntityPipeline(config_path).run(mode="dataframe")

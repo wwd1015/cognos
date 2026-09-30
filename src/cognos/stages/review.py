@@ -106,7 +106,7 @@ class ReviewStage(Stage):
                     ))
                     continue
                 if symbol:
-                    syms = _symbols(fpath.read_text())
+                    syms = _symbols(fpath.read_text(encoding="utf-8"))
                     if symbol not in syms:
                         missing_symbols.append(anchor)
                         res.add_finding(Finding(

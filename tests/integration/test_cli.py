@@ -8,7 +8,7 @@ from cognos.cli import main
 def test_cli_init_writes_template(tmp_path):
     out = tmp_path / "cognos.yaml"
     assert main(["init", "-o", str(out)]) == 0
-    assert out.exists() and "task:" in out.read_text()
+    assert out.exists() and "task:" in out.read_text(encoding="utf-8")
 
 
 def test_cli_agents_lists_eight():
@@ -29,8 +29,8 @@ def test_cli_explain_and_report(tmp_path):
     from cognos import synth
     data = tmp_path / "data.csv"
     synth.make_regression_dataset(n=120).to_csv(data, index=False)
-    text = cfg.read_text().replace("path: data.csv", f"path: {data}").replace("max_candidates: 24", "max_candidates: 6")
-    cfg.write_text(text)
+    text = cfg.read_text(encoding="utf-8").replace("path: data.csv", f"path: {data}").replace("max_candidates: 24", "max_candidates: 6")
+    cfg.write_text(text, encoding="utf-8")
     assert main(["explain", "--config", str(cfg)]) == 0
     assert main(["run", "--config", str(cfg), "--runs-dir", str(tmp_path / "runs")]) in (0, 2)
     run_id = next((tmp_path / "runs").glob("2*")).name

@@ -104,18 +104,18 @@ class RunContext:
     def save_json(self, relpath: str, obj: Any) -> ArtifactRef:
         path = self.run_dir / relpath
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as fh:
+        with open(path, "w", encoding="utf-8") as fh:
             json.dump(obj, fh, indent=2, default=str)
         return ArtifactRef(name=Path(relpath).stem, kind="json", path=relpath)
 
     def load_json(self, relpath: str) -> Any:
-        with open(self.run_dir / relpath) as fh:
+        with open(self.run_dir / relpath, encoding="utf-8") as fh:
             return json.load(fh)
 
     def save_text(self, relpath: str, text: str, kind: str = "text") -> ArtifactRef:
         path = self.run_dir / relpath
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
         return ArtifactRef(name=Path(relpath).stem, kind=kind, path=relpath)
 
     def save_df(self, relpath: str, df: pd.DataFrame, kind: str = "table") -> ArtifactRef:
@@ -145,7 +145,7 @@ class RunContext:
     def record(self, result: StageResult) -> StageResult:
         self._results[result.stage] = result
         path = self.stage_dir(result.stage) / "result.json"
-        with open(path, "w") as fh:
+        with open(path, "w", encoding="utf-8") as fh:
             fh.write(result.model_dump_json(indent=2))
         self._write_manifest()
         self.logger.info(result.token_line())
@@ -156,7 +156,7 @@ class RunContext:
             return self._results[stage]
         path = self.stages_dir / stage / "result.json"
         if path.exists():
-            res = StageResult.model_validate_json(path.read_text())
+            res = StageResult.model_validate_json(path.read_text(encoding="utf-8"))
             self._results[stage] = res
             return res
         return None
@@ -199,7 +199,7 @@ class RunContext:
             "ts": datetime.now(UTC).isoformat(),
             "prompt": prompt, "response": response,
         }
-        with open(self.reasoning_dir / "transcript.jsonl", "a") as fh:
+        with open(self.reasoning_dir / "transcript.jsonl", "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec) + "\n")
 
     def attach_dataset(self, df: pd.DataFrame) -> ArtifactRef:
@@ -221,7 +221,7 @@ class RunContext:
                 for s in self.config.stages.enabled
             },
         }
-        with open(self.manifest_path, "w") as fh:
+        with open(self.manifest_path, "w", encoding="utf-8") as fh:
             json.dump(manifest, fh, indent=2)
 
     def _load_existing(self) -> None:

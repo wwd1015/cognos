@@ -111,7 +111,7 @@ def _cmd_init(args) -> int:
     if out.exists() and not args.force:
         print(f"{out} already exists (use --force to overwrite).")
         return 1
-    out.write_text(CONFIG_TEMPLATE)
+    out.write_text(CONFIG_TEMPLATE, encoding="utf-8")
     print(f"Wrote config template to {out}")
     return 0
 
@@ -160,13 +160,13 @@ def _cmd_report(args) -> int:
     run_dir = Path(args.runs_dir or "runs") / args.run
     summ = run_dir / "summary.txt"
     if summ.exists():
-        print(summ.read_text())
+        print(summ.read_text(encoding="utf-8"))
     else:
         manifest = run_dir / "manifest.json"
         if not manifest.exists():
             print(f"No run found at {run_dir}")
             return 1
-        print(json.dumps(json.loads(manifest.read_text()), indent=2))
+        print(json.dumps(json.loads(manifest.read_text(encoding="utf-8")), indent=2))
     return 0
 
 
@@ -180,7 +180,7 @@ def _cmd_list_runs(args) -> int:
     for d in sorted(runs_dir.iterdir()):
         man = d / "manifest.json"
         if man.exists():
-            m = json.loads(man.read_text())
+            m = json.loads(man.read_text(encoding="utf-8"))
             done = [k for k, v in m.get("stages", {}).items() if v]
             print(f"{d.name}  project={m.get('project')}  stages_done={len(done)}/{len(m.get('stages', {}))}")
     return 0

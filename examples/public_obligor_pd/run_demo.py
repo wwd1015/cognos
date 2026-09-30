@@ -213,7 +213,7 @@ def save_sample(orch: Orchestrator, summary) -> None:
         src = orch.ctx.run_dir / rel
         if src.exists():
             shutil.copy(src, out / name)
-    (out / "run_summary.txt").write_text(summary.token_block() + "\n")
+    (out / "run_summary.txt").write_text(summary.token_block() + "\n", encoding="utf-8")
     print(f"\n  Sample artifacts refreshed under {out}")
 
 

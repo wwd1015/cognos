@@ -177,8 +177,8 @@ def save_sample(orch: Orchestrator, summary, naive_orch: Orchestrator) -> None:
     ide = naive_orch.ctx.require("ideate").payload
     lines = ["# Open design questions (ideate, before the MD answered)", ""]
     lines += [f"- **[{q['id']}]** {q['question']}" for q in ide["open_questions"]]
-    (out / "open_questions_before_answers.md").write_text("\n".join(lines) + "\n")
-    (out / "run_summary.txt").write_text(summary.token_block() + "\n")
+    (out / "open_questions_before_answers.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (out / "run_summary.txt").write_text(summary.token_block() + "\n", encoding="utf-8")
     print(f"\n  Sample artifacts refreshed under {out}")
 
 

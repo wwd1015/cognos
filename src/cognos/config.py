@@ -261,7 +261,7 @@ class CognosConfig(BaseModel):
     # --- IO ----------------------------------------------------------------------
     @classmethod
     def from_yaml(cls, path: str | Path) -> CognosConfig:
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             raw = yaml.safe_load(fh)
         if not isinstance(raw, dict):
             raise ValueError(f"Config at {path} must be a YAML mapping, got {type(raw)}")
@@ -272,5 +272,5 @@ class CognosConfig(BaseModel):
         return cls.model_validate(raw)
 
     def to_yaml(self, path: str | Path) -> None:
-        with open(path, "w") as fh:
+        with open(path, "w", encoding="utf-8") as fh:
             yaml.safe_dump(self.model_dump(mode="json"), fh, sort_keys=False)

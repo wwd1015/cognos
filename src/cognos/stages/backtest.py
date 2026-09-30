@@ -53,7 +53,7 @@ class BacktestStage(Stage):
         ctx.save_df("stages/backtest/scored.parquet", impact_res.scored_df)
         if impact_res.config_path:
             res.add_artifact(ctx.save_text(
-                "stages/backtest/impact_entity.yaml", open(impact_res.config_path).read(), kind="text"))
+                "stages/backtest/impact_entity.yaml", open(impact_res.config_path, encoding="utf-8").read(), kind="text"))
         if impact_res.validation.get("error_count", 0):
             res.add_finding(Finding(id="impact-validation", severity=Severity.MEDIUM, category="data-quality",
                                     message=f"IMPACT reported {impact_res.validation['error_count']} validation error(s)."))
