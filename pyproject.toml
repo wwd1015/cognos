@@ -38,7 +38,7 @@ cognos = "cognos.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-cognos = ["py.typed", "agents/prompts/*.md", "agents/providers.yaml"]
+cognos = ["py.typed", "agents/prompts/*.md", "agents/providers.yaml", "ui/assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -546,7 +546,8 @@ class DocumentStage(Stage):
             rec = (r.payload.get("recommendation") if r is not None else None) or {}
             if rec:
                 recs.append([stage, FRIENDLY.get(rec.get("agent", ""), rec.get("agent", "")),
-                             f"{rec.get('provider', '')}:{rec.get('model', '')}",
+                             rec.get("provider", "") if rec.get("model") in (None, rec.get("provider"), "heuristic", "replay")
+                             else f"{rec.get('provider', '')}:{rec.get('model', '')}",
                              str(rec.get("output", {}).get("summary", "")).replace("|", "/")])
         log = ["# Decision log", "",
                "Agents recommend; the engine checks; a human decides at each gate.", "",

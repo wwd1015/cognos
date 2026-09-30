@@ -1,15 +1,20 @@
 """COGNOS command-line interface.
 
-Exposes both operating modes plus per-stage invocation:
-  cognos run        --config cognos.yaml [--interactive]   # full pipeline (autonomous or HITL)
-  cognos run-stage  <stage> --config ... --run <run_id>     # one stage, individually invocable
-  cognos demo       [--task regression|classification|credit|timeseries]
-  cognos init / explain / report / list-runs / agents
+  cognos ui         [--port 8050]                              # the Dash workbench
+  cognos run        --config cognos.yaml [--interactive] [--provider P]
+  cognos demo       [--task commercial|cni|migration|...] [--interactive] [--provider P]
+  cognos status     --run <run_id>                            # step table, gates, questions
+  cognos gate       <gate> --run <run_id> --action accept|edit|override|send_back|approve|reject
+  cognos answer     --run <run_id> --gap <id> --text "..."   # answer a sponsor question
+  cognos retry      <step> --run <run_id>
+  cognos run-stage  <stage> --config ... --run <run_id>       # one stage, individually invocable
+  cognos providers | agents | init | explain | report | list-runs
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -19,7 +24,7 @@ CONFIG_TEMPLATE = """\
 name: my_model
 description: "Describe the modeling problem."
 task: regression          # regression | classification | ml_regression | ml_classification | timeseries
-mode: autonomous          # autonomous | interactive
+mode: interactive         # interactive (pause at the review gates) | autonomous (agents' calls stand)
 
 data:
   path: data.csv
@@ -32,12 +37,22 @@ data:
   horizon_periods: null   # outcome window in periods; null = max observed event time
 
 design:                   # the sponsor's (MD's) design brief — unanswered fields become
-  use_case: ""            #   open design questions in ideate's design brief, never silent
-  horizon: ""             #   assumptions. e.g. origination | surveillance | CECL | IRB
+  use_case: ""            #   open questions at the design gate, never silent assumptions
+  horizon: ""             #   e.g. origination | surveillance | CECL | IRB
   default_definition: ""  # e.g. "90+ DPD or nonaccrual"
   segment: ""             # e.g. "C&I middle-market"
   interpretability: required  # required | preferred | flexible
   notes: ""
+
+agents:                   # who makes the recommendations (cognos providers lists them)
+  provider: auto          # auto | heuristic | claude_cli | anthropic | openai | xai | ...
+  model: null             # override the provider's default model
+  max_retries: 2          # engine-check failures are fed back and retried
+  budget_usd: 5.0         # spend cap per run (0 = unlimited)
+
+workflow:
+  gates: [gate_data, gate_design, gate_champion, gate_validation, gate_signoff]
+  auto_challenge_loops: 2 # validator findings routed back automatically, at most N times
 
 metric:
   name: auto              # auto, or rmse/mae/r2/roc_auc/accuracy/f1/log_loss/...
@@ -48,30 +63,31 @@ search:
   holdout_fraction: 0.2
   random_state: 42
   ensemble: true
+  guided: false           # let the modeler agent propose extra experiments (engine keeps winners)
 
 structural:               # Merton distance-to-default (needs market observables)
-  enabled: false          # when on: DD feeds the champion (hybrid) + structural PD benchmark
+  enabled: false
   equity_value_col: null
   equity_vol_col: null
   debt_col: null
 
 migration:                # rating-transition matrix (needs a rating history)
-  enabled: false          # when on: rating-implied PD feeds the champion (hybrid) +
-  rating_col: null        #   pure-migration benchmark + by-rating expected-loss forecast
+  enabled: false
+  rating_col: null
   next_rating_col: null   # rating at the END of the outcome window (outcome data, never a feature)
-  rating_scale: []        # best -> worst excl. default; empty = inferred from default rates
+  rating_scale: []
   default_state: D
-  withdrawn_states: [NR]  # transitions to these are NR-adjusted out of the denominator
-  horizon_periods: 1      # loss-forecast horizon in rating periods (matrix powers)
-  monotone_pd: true       # PAVA-monotonize the default column (rank-order by construction)
-  condition_col: null     # e.g. a macro-regime column -> conditional (downturn) matrices
+  withdrawn_states: [NR]
+  horizon_periods: 1
+  monotone_pd: true
+  condition_col: null
   lgd: 0.45
   ead_column: null
 
 portfolio:                # Vasicek one-factor loss simulation + Basel IRB capital (reported)
   enabled: false
   lgd: 0.45
-  asset_correlation: null # null = Basel IRB formula rho(PD)
+  asset_correlation: null
 
 stress:                   # macro-scenario stress: shock covariates, re-score deterministically
   enabled: false
@@ -85,7 +101,7 @@ compliance:
 
 stages:
   enabled: [explore, ideate, model, backtest, validate, comply, document, review]
-  gates: [validate, comply, review]
+  gates: [validate, review]   # verdict gates that may BLOCK
 """
 
 
@@ -93,19 +109,78 @@ def _load_config(path: str) -> CognosConfig:
     return CognosConfig.from_yaml(path)
 
 
-def _console_gate(result) -> str:
-    print("\n" + "=" * 60)
-    print(f"GATE: {result.token_line()}")
-    print(f"  {result.summary}")
-    for f in result.findings[:10]:
-        print(f"    - {f.line()}")
+# --- terminal gate review ------------------------------------------------------------------
+def _gate_prompt(run_id: str, gate: str, root) -> bool:
+    """Show a waiting gate in the terminal and take a decision. False = leave it waiting."""
+    from . import service
+    from .engine import GateError
+    from .engine.graph import LABELS, STAGE_OF_GATE
+
+    stage = STAGE_OF_GATE[gate]
+    res = service.results(run_id, root).get(stage)
+    print("\n" + "=" * 72)
+    print(f"GATE {gate} — {LABELS[gate]}")
+    if res is not None:
+        print(f"  {res.token_line()}\n  {res.summary}")
+        rec = (res.payload or {}).get("recommendation") or {}
+        if rec:
+            print(f"  Agent ({rec.get('agent')} via {rec.get('provider')}): "
+                  f"{rec.get('output', {}).get('summary', '')}")
+        for f in res.findings[:8]:
+            print(f"    - {f.line()}")
+    st = service.state(run_id, root)
+    for g in st.open_gaps()[:6]:
+        print(f"  ? [{g.id}] {g.question}")
     if not sys.stdin.isatty():
-        print("  (non-interactive stdin) -> auto-approve")
-        return "approve"
-    ans = input("Approve and continue? [y/N]: ").strip().lower()
-    return "approve" if ans in ("y", "yes") else "reject"
+        if res is not None and res.verdict.value == "BLOCK":
+            print("  (non-interactive stdin, BLOCK) -> left waiting; resolve with `cognos gate`.")
+            return False
+        action = "approve" if gate == "gate_signoff" else "accept"
+        print(f"  (non-interactive stdin) -> {action}")
+        service.submit_gate(run_id, gate, action, reason="non-interactive stdin", root=root,
+                            background=False)
+        return True
+    choice = input("  [a]ccept  [s]end back  [q]uit (leave waiting) > ").strip().lower()
+    try:
+        if choice.startswith("a"):
+            reason = input("  reason (optional) > ").strip()
+            action = "approve" if gate == "gate_signoff" else "accept"
+            service.submit_gate(run_id, gate, action, reason=reason, root=root, background=False)
+            return True
+        if choice.startswith("s"):
+            target = stage if stage in ("explore", "ideate", "model") else (
+                input("  send back to [explore/ideate/model] > ").strip() or "model")
+            msg = input("  what should the agent reconsider? > ").strip()
+            service.submit_gate(run_id, gate, "send_back", {"target": target, "message": msg},
+                                reason=msg, root=root, background=False)
+            return True
+    except GateError as exc:
+        print(f"  refused: {exc}")
+        return True
+    return False
 
 
+def _drive(run_id: str, root, interactive: bool) -> int:
+    from . import service
+    from .engine.graph import GATES
+
+    for _ in range(50):
+        st = service.run_until_idle(run_id, root)
+        waiting = [g for g in GATES if st.status_of(g) == "awaiting"]
+        if not (interactive and waiting):
+            break
+        if not _gate_prompt(run_id, waiting[0], root):
+            break
+    eng = service.engine(run_id, root)
+    summary = eng.summary()
+    st = service.state(run_id, root)
+    print(summary.token_block())
+    print(f"status: {st.status}" + (f" ({st.halted_reason})" if st.halted_reason else ""))
+    print(f"\nRun directory: {eng.run_dir}")
+    return 0 if st.status in ("completed", "approved", "awaiting") else 2
+
+
+# --- commands ------------------------------------------------------------------------------
 def _cmd_init(args) -> int:
     out = Path(args.output)
     if out.exists() and not args.force:
@@ -117,46 +192,144 @@ def _cmd_init(args) -> int:
 
 
 def _cmd_explain(args) -> int:
+    from .agents import providers
+
     cfg = _load_config(args.config)
     print(f"COGNOS plan for project '{cfg.name}'")
     print(f"  task={cfg.task.value}  mode={cfg.mode.value}  metric={cfg.metric.name} ({cfg.metric.direction.value})")
     print(f"  target={cfg.data.target}  holdout={cfg.search.holdout_fraction}  budget={cfg.search.max_candidates} candidates")
     print(f"  stages: {' -> '.join(cfg.stages.enabled)}")
-    print(f"  gates (may BLOCK): {', '.join(cfg.stages.gates)}")
+    print(f"  human review gates: {', '.join(cfg.workflow.gates) or 'none'}")
+    print(f"  verdict gates (may BLOCK): {', '.join(cfg.stages.gates)}")
+    try:
+        prov = providers.resolve(cfg.agents.provider, cfg.agents.model)
+        print(f"  agents: {prov['id']} ({prov.get('model') or prov['kind']})")
+    except providers.ProviderUnavailable as exc:
+        print(f"  agents: {exc}")
     print(f"  compliance: regimes={cfg.compliance.regimes} risk_tier={cfg.compliance.risk_tier} "
           f"fair_lending={cfg.compliance.fair_lending} jurisdictions={cfg.compliance.jurisdictions}")
     return 0
 
 
 def _cmd_run(args) -> int:
-    from .orchestrator import Orchestrator
+    from . import service
 
     cfg = _load_config(args.config)
-    orch = Orchestrator(cfg, runs_root=args.runs_dir, run_id=args.run_id)
-    summary = orch.run(interactive=args.interactive,
-                       gate_handler=_console_gate if args.interactive else None)
-    print(summary.token_block())
-    print(f"\nRun directory: {orch.ctx.run_dir}")
-    return 0 if summary.final_verdict.ok or summary.final_verdict.value in ("FAIL", "WARN") else 2
+    mode = "interactive" if args.interactive else cfg.mode.value
+    run_id = args.run_id
+    if run_id and (service.runs_root(args.runs_dir) / run_id / "state.json").exists():
+        pass  # resume an existing run
+    else:
+        from .engine import Engine
+
+        eng = Engine(cfg, run_id=run_id, runs_root=service.runs_root(args.runs_dir),
+                     provider=args.provider, mode=mode)
+        run_id = eng.run_id
+    return _drive(run_id, args.runs_dir, interactive=mode == "interactive")
+
+
+def _cmd_demo(args) -> int:
+    from . import service
+
+    cfg = service.demo_config(args.task, args.runs_dir)
+    mode = "interactive" if args.interactive else "autonomous"
+    run_id = service.create_run(cfg, mode=mode, provider=args.provider, root=args.runs_dir)
+    rc = _drive(run_id, args.runs_dir, interactive=args.interactive)
+    print(f"White paper (OKF bundle): {service.runs_root(args.runs_dir) / run_id / 'docs'}")
+    return rc
 
 
 def _cmd_run_stage(args) -> int:
     from .orchestrator import Orchestrator
 
     cfg = _load_config(args.config)
-    orch = Orchestrator(cfg, runs_root=args.runs_dir, run_id=args.run)
+    orch = Orchestrator(cfg, runs_root=args.runs_dir, run_id=args.run, provider=args.provider)
     result = orch.run_stage(args.stage)
     print(result.token_line())
     print(f"  {result.summary}")
     for f in result.findings:
         print(f"    - {f.line()}")
-    print(f"\nRun directory: {orch.ctx.run_dir}")
+    print(f"\nRun directory: {orch.engine.run_dir}")
+    return 0
+
+
+def _cmd_status(args) -> int:
+    from . import service
+    from .engine.graph import LABELS, STEPS
+
+    st = service.state(args.run, args.runs_dir)
+    print(f"run {st.run_id}  project={st.project}  mode={st.mode}  agents={st.provider}  "
+          f"status={st.status}  spend=${st.spend_usd:.2f}")
+    if st.halted_reason:
+        print(f"  halted: {st.halted_reason}")
+    for step in STEPS:
+        s = st.steps[step]
+        verdict = f" [{s.verdict}]" if s.verdict else ""
+        print(f"  {step:<16} {s.status:<9}{verdict:<10} {LABELS[step]}")
+    for g in st.gaps:
+        print(f"  ? {g.id} ({g.status}) {g.question}" + (f" -> {g.answer}" if g.answer else ""))
+    for c in st.challenges:
+        print(f"  ! {c.id} {c.source}->{c.target_stage} ({c.status}) {c.message}")
+    return 0
+
+
+def _cmd_gate(args) -> int:
+    from . import service
+    from .engine import GateError
+
+    payload = json.loads(args.payload) if args.payload else {}
+    if args.target:
+        payload["target"] = args.target
+    if args.message:
+        payload["message"] = args.message
+    try:
+        service.submit_gate(args.run, args.gate, args.action, payload, args.reason or "",
+                            root=args.runs_dir, background=False)
+    except (GateError, KeyError) as exc:
+        print(f"refused: {exc}")
+        return 1
+    return _drive(args.run, args.runs_dir, interactive=False)
+
+
+def _cmd_answer(args) -> int:
+    from . import service
+    from .engine import GateError
+
+    try:
+        service.answer_gap(args.run, args.gap, args.text or "", assume=args.assume,
+                           root=args.runs_dir, background=False)
+    except GateError as exc:
+        print(f"refused: {exc}")
+        return 1
+    return _drive(args.run, args.runs_dir, interactive=False)
+
+
+def _cmd_retry(args) -> int:
+    from . import service
+    from .engine import GateError
+
+    try:
+        service.retry(args.run, args.step, args.runs_dir, background=False)
+    except GateError as exc:
+        print(f"refused: {exc}")
+        return 1
+    return _drive(args.run, args.runs_dir, interactive=False)
+
+
+def _cmd_providers(args) -> int:
+    from .agents import providers
+
+    for p in providers.public_list():
+        mark = "available" if p["available"] else "-"
+        print(f"  {p['id']:<11} {mark:<10} {p['kind']:<14} {p.get('model') or '':<22} {p['label']}")
+    try:
+        print(f"\nauto resolves to: {providers.resolve('auto')['id']}")
+    except providers.ProviderUnavailable as exc:
+        print(f"\n{exc}")
     return 0
 
 
 def _cmd_report(args) -> int:
-    import json
-
     run_dir = Path(args.runs_dir or "runs") / args.run
     summ = run_dir / "summary.txt"
     if summ.exists():
@@ -171,123 +344,56 @@ def _cmd_report(args) -> int:
 
 
 def _cmd_list_runs(args) -> int:
-    import json
+    from . import service
 
-    runs_dir = Path(args.runs_dir or "runs")
-    if not runs_dir.exists():
-        print(f"No runs directory at {runs_dir}")
-        return 0
-    for d in sorted(runs_dir.iterdir()):
-        man = d / "manifest.json"
-        if man.exists():
-            m = json.loads(man.read_text(encoding="utf-8"))
-            done = [k for k, v in m.get("stages", {}).items() if v]
-            print(f"{d.name}  project={m.get('project')}  stages_done={len(done)}/{len(m.get('stages', {}))}")
+    rows = service.list_runs(args.runs_dir)
+    if not rows:
+        print(f"No runs under {service.runs_root(args.runs_dir)}")
+    for r in rows:
+        wait = f" waiting={r['waiting_on']}" if r["waiting_on"] else ""
+        print(f"{r['run_id']}  project={r['project']}  status={r['status']}  "
+              f"agents={r['provider']}{wait}")
     return 0
 
 
 def _cmd_agents(args) -> int:
+    from .agents.contracts import FRIENDLY, STAGE_AGENT
     from .orchestrator import _import_stages
     from .stages.base import STAGE_REGISTRY
 
     _import_stages()
     for name, cls in STAGE_REGISTRY.items():
-        gate = " [gate]" if getattr(cls, "is_gate", False) else ""
-        print(f"  {name}{gate}: {cls.description}")
+        gate = " [verdict gate]" if getattr(cls, "is_gate", False) else ""
+        agent = STAGE_AGENT.get(name)
+        who = f"  agent: {FRIENDLY[agent]}" if agent else "  agent: none (deterministic)"
+        print(f"  {name}{gate}: {cls.description}\n  {who}")
     return 0
 
 
-def _cmd_demo(args) -> int:
-    from . import synth
-    from .config import CognosConfig
-    from .orchestrator import Orchestrator
-
-    runs_dir = Path(args.runs_dir or "runs")
-    data_dir = runs_dir / "_demo_data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    gen = synth.GENERATORS[args.task]
-    df = gen()
-    csv = data_dir / f"{args.task}.csv"
-    df.to_csv(csv, index=False)
-
-    presets = {
-        "regression": dict(task="regression", target="target", metric="rmse"),
-        "classification": dict(task="classification", target="target", metric="roc_auc"),
-        "timeseries": dict(task="timeseries", target="target", metric="rmse", datetime_col="date"),
-        "credit": dict(task="classification", target="default", metric="roc_auc",
-                       protected=["group"], fair_lending=True),
-        "commercial": dict(task="classification", target="default", metric="roc_auc",
-                           datetime_col="vintage"),
-        "cni": dict(task="classification", target="default", metric="roc_auc",
-                    datetime_col="vintage", drop=["obligor_id", "dpd_at_outcome"],
-                    event_time_col="default_quarter", horizon_periods=4,
-                    portfolio={"enabled": True, "lgd": 0.45, "n_sims": 10000},
-                    stress={"enabled": True, "scenarios": [
-                        {"name": "adverse",
-                         "shocks": {"unemployment_rate": {"add": 3.0},
-                                    "gdp_growth": {"add": -2.0}}},
-                        {"name": "severely_adverse",
-                         "shocks": {"unemployment_rate": {"add": 6.0},
-                                    "gdp_growth": {"set": -4.0}}},
-                    ]},
-                    design={"use_case": "origination underwriting",
-                            "horizon": "12-month PD",
-                            "default_definition": "90+ DPD or nonaccrual within 12 months",
-                            "segment": "C&I middle-market",
-                            "interpretability": "required"}),
-        "migration": dict(task="classification", target="default", metric="roc_auc",
-                          datetime_col="asof", drop=["obligor_id", "regime", "ead"],
-                          migration={"enabled": True, "rating_col": "rating",
-                                     "next_rating_col": "next_rating",
-                                     "rating_scale": ["AAA", "AA", "A", "BBB", "BB", "B", "CCC"],
-                                     "condition_col": "regime", "lgd": 0.40,
-                                     "ead_column": "ead"},
-                          portfolio={"enabled": True, "lgd": 0.40, "ead_column": "ead",
-                                     "n_sims": 10000},
-                          stress={"enabled": True, "scenarios": [
-                              {"name": "adverse",
-                               "shocks": {"unemployment_rate": {"add": 3.0}}},
-                          ]},
-                          design={"use_case": "loss forecasting (CECL / stress testing)",
-                                  "horizon": "1-year default, multi-year via matrix powers",
-                                  "default_definition": "agency default state D "
-                                                        "(payment default / bankruptcy)",
-                                  "segment": "large corporate (agency-rated universe)",
-                                  "interpretability": "required"}),
-    }
-    p = presets[args.task]
-    raw = {
-        "name": f"demo_{args.task}",
-        "description": f"COGNOS synthetic {args.task} demo",
-        "task": p["task"],
-        "data": {"path": str(csv), "format": "csv", "target": p["target"],
-                 "datetime_col": p.get("datetime_col"), "protected_attributes": p.get("protected", []),
-                 "drop_columns": p.get("drop", []),
-                 "event_time_col": p.get("event_time_col"),
-                 "horizon_periods": p.get("horizon_periods")},
-        "design": p.get("design", {}),
-        "migration": p.get("migration", {}),
-        "portfolio": p.get("portfolio", {}),
-        "stress": p.get("stress", {}),
-        "metric": {"name": p["metric"]},
-        "compliance": {"fair_lending": p.get("fair_lending", False),
-                       "jurisdictions": ["US"] if args.task in ("commercial", "cni", "migration")
-                       else ["US", "EU"],
-                       "risk_tier": "high" if args.task in ("credit", "commercial", "cni",
-                                                            "migration") else "medium"},
-    }
-    cfg = CognosConfig.from_dict(raw)
-    orch = Orchestrator(cfg, runs_root=str(runs_dir))
-    summary = orch.run()
-    print(summary.token_block())
-    print(f"\nRun directory: {orch.ctx.run_dir}")
-    print(f"White paper (OKF bundle): {orch.ctx.docs_dir}")
+def _cmd_ui(args) -> int:
+    try:
+        from .ui.app import run_server
+    except ImportError as exc:
+        print(f"The UI needs the [ui] extra: pip install -e '.[ui]'  ({exc})")
+        return 1
+    run_server(host=args.host, port=args.port, runs_dir=args.runs_dir, debug=args.debug)
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="cognos", description="COGNOS — autonomous model-development agents.")
+    p = argparse.ArgumentParser(prog="cognos",
+                                description="COGNOS — agents recommend, you decide, the engine disposes.")
     sub = p.add_subparsers(dest="command", required=True)
+
+    def runs(sp):
+        sp.add_argument("--runs-dir", default=None)
+
+    pu = sub.add_parser("ui", help="launch the Dash workbench")
+    pu.add_argument("--host", default="127.0.0.1")
+    pu.add_argument("--port", type=int, default=8050)
+    pu.add_argument("--debug", action="store_true")
+    runs(pu)
+    pu.set_defaults(func=_cmd_ui)
 
     pi = sub.add_parser("init", help="write a config template")
     pi.add_argument("-o", "--output", default="cognos.yaml")
@@ -298,43 +404,89 @@ def build_parser() -> argparse.ArgumentParser:
     pe.add_argument("--config", required=True)
     pe.set_defaults(func=_cmd_explain)
 
-    pr = sub.add_parser("run", help="run the full pipeline")
+    pr = sub.add_parser("run", help="run the workflow (resumes when --run-id exists)")
     pr.add_argument("--config", required=True)
-    pr.add_argument("--interactive", action="store_true", help="pause at gates for approval")
+    pr.add_argument("--interactive", action="store_true", help="review each gate in the terminal")
+    pr.add_argument("--provider", default=None, help="agent backend (see `cognos providers`)")
     pr.add_argument("--run-id", default=None)
-    pr.add_argument("--runs-dir", default=None)
+    runs(pr)
     pr.set_defaults(func=_cmd_run)
+
+    pd = sub.add_parser("demo", help="run end to end on synthetic data")
+    pd.add_argument("--task", default="commercial",
+                    choices=["regression", "classification", "timeseries", "credit", "commercial",
+                             "cni", "migration"])
+    pd.add_argument("--interactive", action="store_true")
+    pd.add_argument("--provider", default="heuristic")
+    runs(pd)
+    pd.set_defaults(func=_cmd_demo)
 
     ps = sub.add_parser("run-stage", help="run a single stage against an existing run")
     ps.add_argument("stage")
     ps.add_argument("--config", required=True)
     ps.add_argument("--run", required=True, help="run id")
-    ps.add_argument("--runs-dir", default=None)
+    ps.add_argument("--provider", default=None)
+    runs(ps)
     ps.set_defaults(func=_cmd_run_stage)
+
+    pst = sub.add_parser("status", help="show a run's steps, questions and challenges")
+    pst.add_argument("--run", required=True)
+    runs(pst)
+    pst.set_defaults(func=_cmd_status)
+
+    pg = sub.add_parser("gate", help="decide a waiting gate")
+    pg.add_argument("gate")
+    pg.add_argument("--run", required=True)
+    pg.add_argument("--action", required=True,
+                    choices=["accept", "edit", "override", "send_back", "approve", "reject"])
+    pg.add_argument("--reason", default="")
+    pg.add_argument("--target", default=None, help="send_back: explore | ideate | model")
+    pg.add_argument("--message", default=None, help="send_back: what the agent should reconsider")
+    pg.add_argument("--payload", default=None, help="JSON, e.g. '{\"champion\": \"c3\"}'")
+    runs(pg)
+    pg.set_defaults(func=_cmd_gate)
+
+    pa = sub.add_parser("answer", help="answer (or accept as an assumption) a sponsor question")
+    pa.add_argument("--run", required=True)
+    pa.add_argument("--gap", required=True)
+    pa.add_argument("--text", default="")
+    pa.add_argument("--assume", action="store_true")
+    runs(pa)
+    pa.set_defaults(func=_cmd_answer)
+
+    prt = sub.add_parser("retry", help="retry a failed step")
+    prt.add_argument("step")
+    prt.add_argument("--run", required=True)
+    runs(prt)
+    prt.set_defaults(func=_cmd_retry)
+
+    pv = sub.add_parser("providers", help="list agent backends and availability")
+    pv.set_defaults(func=_cmd_providers)
 
     prep = sub.add_parser("report", help="print a run summary")
     prep.add_argument("--run", required=True)
-    prep.add_argument("--runs-dir", default=None)
+    runs(prep)
     prep.set_defaults(func=_cmd_report)
 
     pl = sub.add_parser("list-runs", help="list runs")
-    pl.add_argument("--runs-dir", default=None)
+    runs(pl)
     pl.set_defaults(func=_cmd_list_runs)
 
-    pa = sub.add_parser("agents", help="list the stage agents")
-    pa.set_defaults(func=_cmd_agents)
-
-    pd = sub.add_parser("demo", help="run an end-to-end demo on synthetic data")
-    pd.add_argument("--task", default="regression",
-                    choices=["regression", "classification", "timeseries", "credit", "commercial",
-                             "cni", "migration"])
-    pd.add_argument("--runs-dir", default=None)
-    pd.set_defaults(func=_cmd_demo)
-
+    pag = sub.add_parser("agents", help="list the stages and the agent behind each")
+    pag.set_defaults(func=_cmd_agents)
     return p
 
 
+def quiet_numerics() -> None:
+    """Entry points only: statsmodels' rank-deficiency and convergence chatter is reported in the
+    diagnostics battery already; keep it off the console (a library never touches global filters)."""
+    import warnings
+
+    warnings.filterwarnings("ignore", module=r"statsmodels(\..*)?")
+
+
 def main(argv: list[str] | None = None) -> int:
+    quiet_numerics()
     args = build_parser().parse_args(argv)
     return args.func(args)
 

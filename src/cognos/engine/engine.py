@@ -168,12 +168,17 @@ class Engine:
         try:
             self._execute(step)
         finally:
-            with self._cv:
-                self._inflight.discard(step)
-                self._cv.notify_all()
-            self.advance()
-            if not self._inflight:
-                self._write_summary()
+            # Schedule successors *before* releasing this step, so a waiter never observes an
+            # idle engine between two steps.
+            try:
+                self.advance()
+            finally:
+                with self._cv:
+                    self._inflight.discard(step)
+                    idle = not self._inflight
+                    self._cv.notify_all()
+                if idle:
+                    self._write_summary()
 
     def wait(self, timeout: float | None = None) -> bool:
         """Block until no step is in flight (UI tests)."""
