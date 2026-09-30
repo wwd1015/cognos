@@ -7,8 +7,10 @@ traceability anchors. On top of the white paper this stage also produces a Googl
 documentation pack. Every methodology/scoring claim is anchored to the code that implements it
 (``{@code:...#symbol}``) so the consistency-review stage can verify the docs match the deployment.
 
-The stage is deterministic and fully offline: an optional LLM brain only *polishes* prose, never
-gates the output.
+v1: the **Technical Writer** agent drafts the narrative sections with ``{{fact:<id>}}``
+placeholders that the engine renders (an agent never types a metric), and the bundle gains a
+**decision log** — every agent recommendation, every human gate decision, and every challenge with
+its response — so the white paper records who recommended what and who decided.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from typing import Any
 from ..artifacts import ArtifactRef, Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..okf import OKFBundle, OKFConcept
-from .base import Stage, register_stage
+from .base import Stage, attach_recommendation, register_stage
 
 
 def _fmt(value: Any, nd: int = 4) -> str:
@@ -339,14 +341,17 @@ class DocumentStage(Stage):
             ),
         ))
 
+        # --- narrative (Technical Writer) + decision log ------------------------------
+        narrative_payload = self._narrative(ctx, cfg, ip, emit)
+
         concept_names = [
-            "overview", "dataset", "methodology", "model", "coefficients",
-            "diagnostics", "backtest", "limitations", "model_card",
+            "overview", "narrative", "decisions", "dataset", "methodology", "model",
+            "coefficients", "diagnostics", "backtest", "limitations", "model_card",
         ]
         if vp:
-            concept_names.insert(7, "validation")
+            concept_names.insert(9, "validation")
         if cp:
-            concept_names.insert(8 if vp else 7, "compliance")
+            concept_names.insert(10 if vp else 9, "compliance")
 
         # --- 12. EU AI Act Annex IV (only for EU deployments) --------------------
         if "EU" in cfg.compliance.jurisdictions:
@@ -390,6 +395,7 @@ class DocumentStage(Stage):
         ctx.save_json("stages/document/result.payload.json", {"concepts": concept_names})
 
         res.payload = {
+            **narrative_payload,
             "bundle_dir": ctx.rel(ctx.docs_dir),
             "n_concepts": len(concept_names),
             "concepts": concept_names,
@@ -494,6 +500,73 @@ class DocumentStage(Stage):
             f"{diagnostics.get('n_passed', 0)}/{diagnostics.get('n_run', 0)} statistical tests "
             "passed; see [diagnostics](./diagnostics.md) and [backtest](./backtest.md)."
         )
+
+    def _narrative(self, ctx: RunContext, cfg, ip: dict, emit) -> dict:
+        """Ask the Technical Writer for the narrative; render placeholders; emit the decision log."""
+        from ..agents import facts as facts_mod
+        from ..agents.contracts import FRIENDLY, SECTIONS
+        from ..agents.slices import FACT_SCOPE
+        from ..engine.state import RunState
+
+        state = RunState.load(ctx.run_dir) if RunState.exists(ctx.run_dir) else None
+        decisions = [{"gate": d.gate, "action": d.action, "actor": d.actor, "reason": d.reason,
+                      "at": d.at} for d in (state.decisions if state else [])]
+        challenge_log = [{"id": c.id, "source": c.source, "stage": c.target_stage,
+                          "severity": c.severity, "message": c.message, "status": c.status,
+                          "response": c.response} for c in (state.challenges if state else [])]
+        out = ctx.recommend("writer", {
+            "sections_required": SECTIONS,
+            "framework_choices": ip.get("framework_choices") or [],
+            "design": cfg.design.model_dump(),
+            "excluded_columns": list(ctx.overrides.exclude_columns),
+            "open_questions": [q["question"] for q in ip.get("open_questions", [])],
+            "decisions": decisions,
+            "challenge_log": challenge_log,
+        })
+        facts = facts_mod.collect(ctx, prefixes=FACT_SCOPE["writer"])
+        titles = {"executive_summary": "Executive summary",
+                  "methodology_rationale": "Methodology rationale",
+                  "alternatives_considered": "Alternatives considered",
+                  "limitations": "Limitations and assumptions",
+                  "use_and_monitoring": "Use and monitoring"}
+        rendered = {s.section: facts_mod.render(s.markdown, facts) for s in out.sections}
+        body = ["# Narrative", "",
+                "_Drafted by the Technical Writer agent; every number is rendered from a recorded "
+                "fact._", ""]
+        for key in SECTIONS:
+            body += [f"## {titles[key]}", "", rendered.get(key, "").strip(), ""]
+        emit(OKFConcept(name="narrative", type="narrative", title="Narrative",
+                        description="Agent-drafted narrative with engine-rendered numbers.",
+                        tags=["narrative"], body="\n".join(body)))
+
+        # Decision log: who recommended what, who decided.
+        recs = []
+        for stage in ("explore", "ideate", "model", "backtest", "validate", "comply"):
+            r = ctx.get(stage)
+            rec = (r.payload.get("recommendation") if r is not None else None) or {}
+            if rec:
+                recs.append([stage, FRIENDLY.get(rec.get("agent", ""), rec.get("agent", "")),
+                             f"{rec.get('provider', '')}:{rec.get('model', '')}",
+                             str(rec.get("output", {}).get("summary", "")).replace("|", "/")])
+        log = ["# Decision log", "",
+               "Agents recommend; the engine checks; a human decides at each gate.", "",
+               "## Agent recommendations", "",
+               _table(["Stage", "Agent", "Backend", "Recommendation"], recs), "",
+               "## Human gate decisions", "",
+               _table(["Gate", "Action", "Actor", "Reason", "At"],
+                      [[d["gate"], d["action"], d["actor"], d["reason"].replace("|", "/") or "-",
+                        d["at"]] for d in decisions]), "",
+               "## Challenges and responses", "",
+               _table(["Id", "Source", "Stage", "Severity", "Challenge", "Status", "Response"],
+                      [[c["id"], c["source"], c["stage"], c["severity"],
+                        c["message"].replace("|", "/"), c["status"],
+                        (c["response"] or "-").replace("|", "/")] for c in challenge_log])]
+        emit(OKFConcept(name="decisions", type="decision_log", title="Decision Log",
+                        description="Agent recommendations, human gate decisions, and challenges.",
+                        tags=["governance", "audit"], body="\n".join(log)))
+        payload: dict = {"narrative_sections": rendered}
+        attach_recommendation(payload, ctx, "writer", out)
+        return payload
 
     def _whitepaper(self, cfg, bundle: OKFBundle, names: list[str]) -> str:
         """Concatenate the key concept bodies into a single human-readable white paper."""

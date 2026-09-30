@@ -6,6 +6,14 @@ statsmodels inference for linear families), runs the statistical diagnostic batt
 champion on the sealed holdout, and (optionally) reports an ensemble as a labelled challenger
 benchmark — the deployed model is always the single interpretable champion. Persists a deployable
 scorer the backtest/IMPACT stage embeds as a derived field.
+
+v1: the engine computes an **admissible set** — the evaluated candidates within one CV standard
+error of the best (plus the best interpretable one when interpretability is required) — and the
+**Modeler** agent chooses the champion from it, with economic sign checks, *before* the sealed
+holdout is scored (it never sees holdout evidence). A human override at gate_champion wins; every
+evaluation of the sealed holdout is counted (``holdout_evaluations``) so re-selection is visible to
+the validator. The search itself is cached by an input fingerprint, so a send-back or an override
+re-finalizes without re-searching.
 """
 
 from __future__ import annotations
@@ -21,7 +29,10 @@ from ..modeling.fit import HAZARD_FAMILIES
 from ..modeling.metrics import metric_direction
 from ..runtime.score import save_scorer
 from . import stat_tests
-from .base import Stage, register_stage
+from .base import Stage, attach_recommendation, register_stage
+
+_TREES = {"random_forest", "gradient_boosting"}
+MAX_ADMISSIBLE = 6
 
 OVERFIT_GAP_FRAC = 0.15  # relative degradation cv->holdout that triggers an overfitting finding
 
@@ -35,7 +46,7 @@ class ModelStage(Stage):
     def run(self, ctx: RunContext) -> StageResult:
         cfg = ctx.config
         df = ctx.load_dataset()
-        profile = ctx.require("explore").payload
+        profile = ctx.profile()  # human-excluded columns are already gone
         features = list(profile["features"])
         metric = cfg.metric.name
         is_clf = cfg.task.is_classification
@@ -135,16 +146,20 @@ class ModelStage(Stage):
 
         # --- ratchet search ---------------------------------------------------------
         families = ctx.get("ideate").payload.get("families") if ctx.has("ideate") else None
+        if ctx.overrides.slate:  # the human's slate edit at gate_design wins
+            families = list(dict.fromkeys(h["family"] for h in ctx.overrides.slate))
         families = families or (cfg.search.model_families or None)
-        sr = ratchet_search(
+        fingerprint = self._fingerprint(cfg, X_search, y_train, features, families, hazard_meta)
+        sr = self._cached_search(ctx, fingerprint, lambda: ratchet_search(
             X_search, y_train, task=cfg.task.value, metric=metric, is_classification=is_clf,
             is_timeseries=is_ts, families=families, max_candidates=cfg.search.max_candidates,
             folds=cfg.search.cv_folds, random_state=cfg.search.random_state,
             complexity_penalty=cfg.search.complexity_penalty, time_budget_s=cfg.search.time_budget_s,
             max_features=cfg.search.max_features_per_candidate,
             feature_columns=features, hazard_meta=hazard_meta,
-        )
+        ))
         ctx.save_text("stages/model/ledger.tsv", sr.ledger_tsv(), kind="tsv")
+        ctx.save_json("stages/model/ledger.json", sr.ledger_records())
 
         # --- ensemble of survivors (Caruana) ---------------------------------------
         # The deployed model is always the single interpretable champion (ADR-0007). An ensemble, when
@@ -174,28 +189,41 @@ class ModelStage(Stage):
         # candidate so the backtest stage can compute PBO over the real search library.
         oof_perf_path = self._save_oof_perf(ctx, sr, y_train, is_clf)
 
-        # --- LLM-guided refinement (ADR-0001 stage B; opt-in; reasoning proposes) ---
-        champion_cand, champion_cv = sr.champion, sr.champion_cv
-        champion_transforms: list = []
-        guided_info = None
+        # --- agent-guided refinement (ADR-0001 stage B; opt-in; the agent proposes) ---
+        guided_info, guided_entry = None, None
         # Guided refinement refits via the generic path; a hazard champion has its own fit contract.
-        if cfg.search.guided and ctx.brain.available and champion_cand.family not in HAZARD_FAMILIES:
+        if (cfg.search.guided and ctx.runner.kind != "heuristic"
+                and sr.champion.family not in HAZARD_FAMILIES):
             from ..modeling.guided import guided_search
+            from .ideate import _engine_families
 
             gr = guided_search(
-                ctx.brain, X_train, y_train, profile=profile, champion=sr.champion,
-                champion_cv=sr.champion_cv, metric=metric, direction=metric_direction(metric),
-                is_classification=is_clf, is_timeseries=is_ts, folds=cfg.search.cv_folds,
+                lambda c: ctx.recommend("experiment", c).model_dump(),
+                X_train, y_train, champion=sr.champion, champion_cv=sr.champion_cv,
+                metric=metric, direction=metric_direction(metric), is_classification=is_clf,
+                allowed_families=[f for f in _engine_families(cfg) if f not in HAZARD_FAMILIES],
+                is_timeseries=is_ts, folds=cfg.search.cv_folds,
                 random_state=cfg.search.random_state, rounds=cfg.search.guided_rounds,
-                log_fn=lambda p, r: ctx.log_reasoning("model", "guided-search", p, r),
             )
             guided_info = {"rounds": len(gr.rounds), "accepted": sum(1 for x in gr.rounds if x.accepted),
-                           "improved": gr.improved, "transforms": [t.to_dict() for t in gr.transforms]}
-            if gr.improved:  # engine verified the LLM-proposed champion beats the incumbent
-                champion_cand, champion_cv, champion_transforms = gr.champion, gr.champion_cv, gr.transforms
+                           "improved": gr.improved, "transforms": [t.to_dict() for t in gr.transforms],
+                           "history": [{"round": r.idx, "accepted": r.accepted, "score": r.score,
+                                        "note": r.note} for r in gr.rounds]}
+            if gr.improved:  # engine verified the agent-proposed candidate beats the incumbent
+                guided_entry = (gr.champion, gr.champion_cv, gr.transforms, list(sr.champion.features))
+
+        # --- admissible set + the Modeler's choice (before the holdout is touched) ------
+        admissible, lookup = self._admissible(sr, cfg, metric, X_train, y_train, is_clf,
+                                              guided_entry)
+        rec = self._modeler_choice(ctx, admissible, sr, metric, fingerprint)
+        champion_id, champion_source = rec.champion, "agent"
+        if ctx.overrides.champion and ctx.overrides.champion in lookup:
+            champion_id, champion_source = ctx.overrides.champion, "human"
+        champion_cand, champion_cv, champion_transforms, base_features = lookup[champion_id]
+        prev = ctx.get("model")
+        holdout_evaluations = int((prev.payload.get("holdout_evaluations") or 0) if prev else 0) + 1
 
         # --- refit champion (with any kept transforms) + statsmodels inference ------
-        base_features = list(sr.champion.features)
         hazard_info = None
         if champion_cand.family in HAZARD_FAMILIES:
             from ..modeling.hazard import fit_full_hazard, term_structure
@@ -322,6 +350,12 @@ class ModelStage(Stage):
 
         payload = {
             "champion": champion_cand.to_dict(),
+            "champion_id": champion_id,
+            "champion_label": champion_cand.label(),
+            "champion_source": champion_source,
+            "admissible_set": admissible,
+            "search_fingerprint": fingerprint,
+            "holdout_evaluations": holdout_evaluations,
             "metric": metric,
             "direction": metric_direction(metric),
             "cv_mean": champion_cv.mean,
@@ -349,6 +383,7 @@ class ModelStage(Stage):
             "n_train": int(len(train_df)),
             "n_holdout": int(len(holdout_df)),
         }
+        attach_recommendation(payload, ctx, "modeler", rec)
         if migration_info is not None:
             res.add_artifact(ctx.save_json("stages/model/migration.json", migration_info))
         res.add_artifact(ctx.save_json("stages/model/summary.json", payload))
@@ -363,13 +398,137 @@ class ModelStage(Stage):
         guided_note = (f" | guided +{len(champion_transforms)} transform(s)"
                        if champion_transforms else "")
         res.summary = (
-            f"Champion {champion_cand.label()} | CV {metric}={champion_cv.mean:.4f}"
+            f"Champion {champion_id} {champion_cand.label()} ({champion_source}) | "
+            f"CV {metric}={champion_cv.mean:.4f}"
             f"±{champion_cv.std:.4f}"
             + (f" | holdout={holdout_metric:.4f}" if holdout_metric is not None else "")
             + f" | tried {sr.n_tried} candidates{guided_note} | "
             f"diagnostics {diagnostics['n_passed']}/{diagnostics['n_run']} passed."
         )
         return res
+
+    # --- v1 helpers: search cache, admissible set, the Modeler's choice -----------------
+    @staticmethod
+    def _fingerprint(cfg, X_search, y_train, features, families, hazard_meta) -> str:
+        import hashlib
+        import json
+
+        data_hash = int(pd.util.hash_pandas_object(X_search, index=False).sum()) & 0xFFFFFFFF
+        key = {"features": features, "families": families, "hazard": hazard_meta,
+               "search": cfg.search.model_dump(exclude={"guided", "guided_rounds"}),
+               "task": cfg.task.value, "metric": cfg.metric.name, "rows": len(X_search),
+               "data": data_hash, "y": float(np.nansum(np.asarray(y_train, dtype=float)))}
+        return hashlib.sha256(json.dumps(key, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+    @staticmethod
+    def _cached_search(ctx: RunContext, fingerprint: str, search):
+        import joblib
+
+        path = ctx.resolve("stages/model/search_cache.joblib")
+        if path.exists():
+            try:
+                cached = joblib.load(path)
+                if cached.get("fingerprint") == fingerprint:
+                    return cached["sr"]
+            except Exception:  # a stale/corrupt cache just means searching again
+                pass
+        sr = search()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump({"fingerprint": fingerprint, "sr": sr}, path)
+        return sr
+
+    @staticmethod
+    def _signs(coefs: dict | None, features: list[str]) -> list[dict]:
+        if not coefs:
+            return []
+        out = []
+        for f in features:
+            key = next((k for k in coefs if k == f or k.endswith(f"__{f}")), None)
+            if key is None:
+                continue
+            v = coefs[key]
+            out.append({"feature": f, "sign": "0" if abs(v) < 1e-12 else ("+" if v > 0 else "-")})
+        return out
+
+    def _admissible(self, sr, cfg, metric: str, X_train, y_train, is_clf: bool,
+                    guided_entry) -> tuple[list[dict], dict]:
+        """Candidates statistically indistinguishable from the best (one-standard-error rule)."""
+        maximize = metric_direction(metric) == "maximize"
+        ok_idx = [r.idx for r in sr.ledger if r.status != "crash"]
+        entries = []  # (id, cand, cv, transforms, base_features)
+        for idx, (cand, cv) in zip(ok_idx, sr.evaluated, strict=False):
+            entries.append((f"c{idx}", cand, cv, [], list(cand.features)))
+        best_mean, best_std = sr.champion_cv.mean, sr.champion_cv.std
+        champ_id = next(e[0] for e in entries if e[1] is sr.champion)
+
+        def within(cv) -> bool:
+            return cv.mean >= best_mean - best_std if maximize else cv.mean <= best_mean + best_std
+
+        chosen = [e for e in entries if within(e[2])]
+        chosen.sort(key=lambda e: (e[0] != champ_id, -e[2].mean if maximize else e[2].mean))
+        required = cfg.design.interpretability == "required"
+        if required and all(e[1].family in _TREES for e in chosen):
+            interp = [e for e in entries if e[1].family not in _TREES]
+            if interp:
+                chosen.append(sorted(interp, key=lambda e: -e[2].mean if maximize else e[2].mean)[0])
+        chosen = chosen[:MAX_ADMISSIBLE]
+        if guided_entry is not None:
+            g_cand, g_cv, g_tr, g_base = guided_entry
+            chosen.insert(0, ("g1", g_cand, g_cv, g_tr, g_base))
+
+        admissible, lookup = [], {}
+        for cid, cand, cv, transforms, base in chosen:
+            lookup[cid] = (cand, cv, transforms, base)
+            signs: list[dict] = []
+            if cand.family not in _TREES and cand.family not in HAZARD_FAMILIES:
+                try:
+                    X_fit = X_train
+                    if transforms:
+                        from ..modeling.transforms import apply_transforms
+
+                        X_fit, _, _ = apply_transforms(X_train[base], transforms)
+                    fitted = fit_full(cand, X_fit, y_train, task=cfg.task.value,
+                                      is_classification=is_clf)
+                    signs = self._signs(fitted.coefficients(), list(cand.features))
+                except Exception:  # signs are advisory; a failed refit just omits them
+                    signs = []
+            admissible.append({
+                "id": cid, "label": cand.label(), "family": cand.family,
+                "n_features": len(cand.features), "features": list(cand.features),
+                "cv_mean": round(float(cv.mean), 6), "cv_std": round(float(cv.std), 6),
+                "role": "challenger" if (cand.family in _TREES and required) else "candidate",
+                "interpretable": cand.family not in _TREES,
+                "transforms": [t.to_dict() for t in transforms],
+                "coefficient_signs": signs,
+                "ratchet_champion": cid == champ_id,
+            })
+        # The ratchet champion leads unless a guided candidate beat it.
+        return admissible, lookup
+
+    @staticmethod
+    def _modeler_choice(ctx: RunContext, admissible: list[dict], sr, metric: str,
+                        fingerprint: str):
+        """Ask the Modeler — or reuse its last answer when only a human override changed."""
+        from ..agents.contracts import ModelerOutput
+
+        prev = ctx.get("model")
+        prev_rec = (prev.payload.get("recommendation") or {}) if prev else {}
+        if (ctx.overrides.champion and prev is not None
+                and prev.payload.get("search_fingerprint") == fingerprint
+                and prev_rec.get("output") and not ctx.challenges_for("model")):
+            ctx.runner.last["modeler"] = {**{k: v for k, v in prev_rec.items() if k != "output"}, "reused": True}
+            return ModelerOutput.model_validate(prev_rec["output"])
+        return ctx.recommend("modeler", {
+            "metric": metric,
+            "metric_direction": metric_direction(metric),
+            "interpretability": ctx.config.design.interpretability,
+            "admissible_set": admissible,
+            "n_candidates_tried": sr.n_tried,
+            "ledger_top": [{"label": r.label, "family": r.family, "n_features": r.n_features,
+                            "cv_mean": round(r.metric_value, 6), "status": r.status}
+                           for r in sorted(sr.ledger, key=lambda r: r.metric_value,
+                                           reverse=metric_direction(metric) == "maximize")[:10]],
+        })
 
     @staticmethod
     def _check_migration(model: dict) -> list[Finding]:

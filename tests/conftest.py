@@ -14,6 +14,29 @@ def _write_csv(tmp_path, df, name) -> str:
     return str(path)
 
 
+@pytest.fixture(autouse=True)
+def _offline_agents(monkeypatch):
+    """Tests never need a key or network: pin the deterministic (heuristic) agents."""
+    monkeypatch.setenv("COGNOS_PROVIDER", "heuristic")
+
+
+@pytest.fixture
+def replay_dir(tmp_path, monkeypatch):
+    """Factory: replay_dir({agent: output | [outputs...]}) -> a recorded-output directory, with the
+    replay provider selected (agents without a recording fall back to the heuristic agent)."""
+    import json
+
+    def _make(recordings: dict) -> str:
+        d = tmp_path / "recorded"
+        d.mkdir(exist_ok=True)
+        for agent, out in recordings.items():
+            (d / f"{agent}.json").write_text(json.dumps(out), encoding="utf-8")
+        monkeypatch.setenv("COGNOS_PROVIDER", "replay")
+        return str(d)
+
+    return _make
+
+
 @pytest.fixture
 def runs_dir(tmp_path) -> str:
     return str(tmp_path / "runs")

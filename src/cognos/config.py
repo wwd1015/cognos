@@ -40,11 +40,6 @@ class Mode(str, Enum):
     INTERACTIVE = "interactive"  # human-in-the-loop; pause at configured gates
 
 
-class BrainKind(str, Enum):
-    HEURISTIC = "heuristic"  # deterministic, no LLM (default; powers tests + offline demo)
-    LLM = "llm"  # Claude-backed reasoning for idea-gen / judgment / prose
-
-
 class DataConfig(BaseModel):
     path: str | None = None  # CSV/Parquet path; may be None when a DataFrame is passed in code
     format: str = "csv"  # csv | parquet
@@ -99,7 +94,7 @@ class SearchConfig(BaseModel):
     # challenger benchmark only — the deployed model is always the single interpretable champion.
     max_features_per_candidate: int | None = None
     complexity_penalty: float = 0.0  # parsimony / simplicity bias (>=0)
-    guided: bool = False  # opt-in LLM-guided search (ADR-0001 stage B); requires an LLM brain
+    guided: bool = False  # opt-in agent-guided search (ADR-0001 stage B): the modeler proposes experiments
     guided_rounds: int = 6  # number of LLM-proposed experiments after the deterministic ratchet
 
 
@@ -197,11 +192,27 @@ class StressConfig(BaseModel):
     scenarios: list[dict] = Field(default_factory=list)
 
 
-class BrainConfig(BaseModel):
-    kind: BrainKind = BrainKind.HEURISTIC
-    model: str = "claude-sonnet-4-6"
-    max_tokens: int = 4096
-    temperature: float = 0.2
+class AgentsConfig(BaseModel):
+    """Which backend runs the stage agents (agents/providers.yaml) and the runner's limits.
+
+    ``auto`` resolves COGNOS_PROVIDER, then the first available LLM provider, else ``heuristic``
+    (the deterministic offline agents). Tests and offline demos pin ``heuristic``.
+    """
+
+    provider: str = "auto"
+    model: str | None = None  # override the provider's default model
+    max_retries: int = 2  # validation retries per agent call (errors are fed back)
+    time_limit_s: float = 300.0  # wall-clock limit per agent call, all attempts
+    budget_usd: float = 5.0  # spend cap per run (estimated from token usage); 0 = unlimited
+    replay_dir: str | None = None  # provider "replay": directory of recorded <agent>.json outputs
+
+
+class WorkflowConfig(BaseModel):
+    """Human gates and the automatic challenge loop (engine/graph.py)."""
+
+    gates: list[str] = Field(default_factory=lambda: [
+        "gate_data", "gate_design", "gate_champion", "gate_validation", "gate_signoff"])
+    auto_challenge_loops: int = 2  # validator high findings routed back automatically, at most N times
 
 
 class StagesConfig(BaseModel):
@@ -242,9 +253,25 @@ class CognosConfig(BaseModel):
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
     stress: StressConfig = Field(default_factory=StressConfig)
-    brain: BrainConfig = Field(default_factory=BrainConfig)
+    agents: AgentsConfig = Field(default_factory=AgentsConfig)
+    workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
     stages: StagesConfig = Field(default_factory=StagesConfig)
     runs_dir: str = "runs"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_brain(cls, raw: Any) -> Any:
+        """v0.x profiles configured an LLM ``brain``; v1 configures ``agents`` (a provider)."""
+        if isinstance(raw, dict) and "brain" in raw:
+            raw = dict(raw)
+            brain = raw.pop("brain") or {}
+            agents = dict(raw.get("agents") or {})
+            if brain.get("kind") == "llm":
+                agents.setdefault("provider", "anthropic")
+            elif brain.get("kind") == "heuristic":
+                agents.setdefault("provider", "heuristic")
+            raw["agents"] = agents
+        return raw
 
     @model_validator(mode="after")
     def _fill_defaults(self) -> CognosConfig:

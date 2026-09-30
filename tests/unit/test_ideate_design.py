@@ -7,13 +7,10 @@ strategy with a leakage suspect.
 
 from __future__ import annotations
 
-import json
-
 import numpy as np
 import pytest
 
 from cognos import synth
-from cognos.brains import ScriptedBrain
 from cognos.config import CognosConfig
 from cognos.orchestrator import Orchestrator
 
@@ -34,8 +31,8 @@ def _cni_config(tmp_path, *, design: dict | None = None, **overrides) -> CognosC
     return CognosConfig.from_dict(raw)
 
 
-def _run_ideate(cfg, runs_dir, brain=None):
-    orch = Orchestrator(cfg, runs_root=runs_dir, brain=brain)
+def _run_ideate(cfg, runs_dir):
+    orch = Orchestrator(cfg, runs_root=runs_dir)
     orch.run_stage("explore")
     return orch, orch.run_stage("ideate")
 
@@ -152,26 +149,43 @@ def test_interpretability_policy_governs_tree_role(tmp_path, runs_dir, interp, e
         assert res.payload["families"][0] == "logit"
 
 
-def test_llm_design_review_widens_slate_and_questions(tmp_path, runs_dir):
-    transforms = json.dumps({"transforms": [], "note": "none"})
-    review = json.dumps({
-        "assessment_note": "Consider macro sensitivity for stress use.",
-        "extra_questions": ["Will the model feed stress-testing overlays?"],
-        "extra_hypotheses": [
-            {"family": "gradient_boosting", "feature_strategy": "top",
-             "rationale": "ceiling benchmark"},
-            {"family": "not_a_family", "feature_strategy": "top", "rationale": "bogus"},
-        ],
-    })
-    cfg = _cni_config(tmp_path, design=ANSWERED)
-    _, res = _run_ideate(cfg, runs_dir, brain=ScriptedBrain([transforms, review]))
+def _design_lead_output(slate_extra: dict) -> dict:
+    frameworks = [
+        {"framework": f, "decision": d, "reason": "test"}
+        for f, d in (("reduced_form_pd", "primary"), ("discrete_time_hazard", "candidate"),
+                     ("structural_merton", "rejected"), ("transition_matrix", "rejected"),
+                     ("ml_challenger", "challenger"))
+    ]
+    return {
+        "summary": "Consider macro sensitivity for stress use.",
+        "frameworks": frameworks,
+        "slate": [{"family": "logit", "feature_strategy": "top", "role": "candidate",
+                   "priority": 0.9, "rationale": "baseline"}, slate_extra],
+        "sponsor_questions": [{"question": "Will the model feed stress-testing overlays?",
+                               "category": "design", "design_field": "use_case",
+                               "why_it_matters": "stress use needs macro sensitivity"}],
+    }
 
-    assert any(q["source"] == "llm" for q in res.payload["open_questions"])
-    llm_h = [h for h in res.payload["hypotheses"] if h["source"] == "llm"]
-    assert [h["family"] for h in llm_h] == ["gradient_boosting"]  # bogus family dropped
+
+def test_design_lead_widens_slate_and_questions(tmp_path, runs_dir, replay_dir):
+    bogus = _design_lead_output({"family": "not_a_family", "feature_strategy": "top",
+                                 "role": "candidate", "priority": 0.5, "rationale": "bogus"})
+    good = _design_lead_output({"family": "gradient_boosting", "feature_strategy": "top",
+                                "role": "challenger", "priority": 0.5,
+                                "rationale": "ceiling benchmark"})
+    cfg = _cni_config(tmp_path, design=ANSWERED,
+                      agents={"replay_dir": replay_dir({"design_lead": [bogus, good]})})
+    orch, res = _run_ideate(cfg, runs_dir)
+
+    # the engine rejected the unfittable family and the agent's corrected answer was kept
+    audit = [line for line in (orch.ctx.agents_dir / "audit.jsonl").read_text(
+        encoding="utf-8").splitlines() if '"design_lead"' in line]
+    assert '"invalid"' in audit[0] and '"ok"' in audit[1]
+    assert any(q["source"] == "agent" for q in res.payload["open_questions"])
+    assert [h["family"] for h in res.payload["hypotheses"]] == ["logit", "gradient_boosting"]
     # the widened family joins the search list so the ratchet can judge it on evidence
     assert "gradient_boosting" in res.payload["families"]
-    assert "LLM design review" in res.payload["notes"]
+    assert "Design Lead" in res.payload["notes"]
 
 
 def test_design_config_round_trips_yaml(tmp_path):

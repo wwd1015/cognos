@@ -24,10 +24,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-llm = ["anthropic>=0.40"]
+llm = ["anthropic>=0.40", "openai>=1.40"]
+ui = ["dash>=3.0", "dash-mantine-components>=2.0", "dash-iconify>=0.1.2"]
 impact = ["impact"]
 dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6"]
-all = ["anthropic>=0.40", "pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6"]
+all = ["anthropic>=0.40", "openai>=1.40", "dash>=3.0", "dash-mantine-components>=2.0",
+       "dash-iconify>=0.1.2", "pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6"]
 
 [project.scripts]
 cognos = "cognos.cli:main"
@@ -36,7 +38,7 @@ cognos = "cognos.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-cognos = ["py.typed"]
+cognos = ["py.typed", "agents/prompts/*.md", "agents/providers.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

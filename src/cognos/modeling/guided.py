@@ -1,19 +1,20 @@
-"""LLM-guided search — the reasoning layer as the mutation function (ADR-0001 stage B).
+"""Agent-guided search — the modeler agent as the mutation function (ADR-0001 stage B).
 
-After the deterministic ratchet establishes a champion, the LLM proposes the *next* experiment given
-the ledger so far — typically new feature engineering, sometimes a different family/hyperparameters.
-The deterministic engine *disposes*: each proposal is applied target-hidden, scored with the same
-leakage-safe CV, and kept only if it beats the incumbent on the frozen metric. The LLM can therefore
-drive exploration without being able to hallucinate a result into the record.
+After the deterministic ratchet establishes a champion, the modeler agent proposes the *next*
+experiment given the ledger so far — typically new feature engineering, sometimes a different
+family/hyperparameters. The deterministic engine *disposes*: each proposal is applied target-hidden,
+scored with the same leakage-safe CV, and kept only if it beats the incumbent on the frozen metric.
+The agent can drive exploration without being able to hallucinate a result into the record.
 
-Every proposal (prompt + raw response) is logged to the run's reasoning transcript for replay/audit.
+``propose(context) -> dict`` is supplied by the model stage and routes through the agent runner,
+so every proposal is validated, audited and logged like any other agent call.
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -22,7 +23,7 @@ from .fit import DEFAULT_FAMILIES, GLM_FAMILIES, LINEAR_FAMILIES, Candidate, mak
 from .metrics import CVResult, cv_score, is_better
 from .transforms import SAFE_NP_FUNCS, TransformSpec, apply_transforms
 
-_KNOWN_FAMILIES = set(LINEAR_FAMILIES) | set(GLM_FAMILIES) | {
+KNOWN_FAMILIES = set(LINEAR_FAMILIES) | set(GLM_FAMILIES) | {
     f for fams in DEFAULT_FAMILIES.values() for f in fams
 }
 
@@ -45,73 +46,77 @@ class GuidedResult:
     improved: bool = False
 
 
-def build_prompt(profile: dict, champion: Candidate, champion_score: float, metric: str,
-                 direction: str, columns: list[str]) -> str:
-    return (
-        "You are COGNOS's modeling agent. Propose ONE next experiment to improve a model.\n"
-        f"Task metric: {metric} ({direction} is better). Current champion: {champion.family} on "
-        f"{len(champion.features)} features, CV {metric}={champion_score:.5f}.\n"
-        f"Available feature columns: {columns}\n"
-        f"Allowed model families: {sorted(_KNOWN_FAMILIES)}\n"
-        "You may propose feature-engineering transforms as expressions over the EXISTING columns using "
-        f"only np.<fn> with fn in {sorted(SAFE_NP_FUNCS)} and arithmetic. Do NOT reference the target.\n"
-        "Respond with ONLY a JSON object: {\"family\": <str>, \"hyperparams\": {..}, "
-        "\"transforms\": [{\"name\": <str>, \"expr\": <str>}], \"rationale\": <str>}. "
-        "Use [] for no transforms."
-    )
+def _parse_value(text: str) -> Any:
+    t = str(text).strip()
+    for cast in (int, float):
+        try:
+            return cast(t)
+        except ValueError:
+            continue
+    return {"none": None, "true": True, "false": False}.get(t.lower(), t)
 
 
 def parse_proposal(obj: dict, champion: Candidate) -> tuple[str, dict, list[TransformSpec]]:
-    family = obj.get("family") if obj.get("family") in _KNOWN_FAMILIES else champion.family
-    hyperparams = obj.get("hyperparams") if isinstance(obj.get("hyperparams"), dict) else {}
-    transforms = []
-    for t in obj.get("transforms", []) or []:
-        if isinstance(t, dict) and t.get("name") and t.get("expr"):
-            transforms.append(TransformSpec(name=str(t["name"]), expr=str(t["expr"])))
+    family = obj.get("family") if obj.get("family") in KNOWN_FAMILIES else champion.family
+    hp = obj.get("hyperparams") or []
+    if isinstance(hp, dict):  # tolerate the map form
+        hyperparams = dict(hp)
+    else:
+        hyperparams = {h["name"]: _parse_value(h.get("value", "")) for h in hp
+                       if isinstance(h, dict) and h.get("name")}
+    transforms = [TransformSpec(name=str(t["name"]), expr=str(t["expr"]))
+                  for t in obj.get("transforms", []) or []
+                  if isinstance(t, dict) and t.get("name") and t.get("expr")]
     return family, hyperparams, transforms
 
 
 def guided_search(
-    brain,
+    propose: Callable[[dict], dict],
     X: pd.DataFrame,
     y: np.ndarray,
     *,
-    profile: dict,
     champion: Candidate,
     champion_cv: CVResult,
     metric: str,
     direction: str,
     is_classification: bool,
+    allowed_families: list[str],
     is_timeseries: bool = False,
     folds: int = 5,
     random_state: int = 42,
     rounds: int = 6,
-    log_fn: Callable[[str, str], None] | None = None,
 ) -> GuidedResult:
-    """Run up to ``rounds`` LLM-proposed experiments; keep any that beat the incumbent on the metric."""
+    """Run up to ``rounds`` agent-proposed experiments; keep any that beat the incumbent."""
     base_features = list(champion.features)
     best_cand, best_cv, best_transforms = champion, champion_cv, []
     history: list[GuidedRound] = []
 
     for i in range(rounds):
-        prompt = build_prompt(profile, best_cand, best_cv.mean, metric, direction, list(X.columns))
+        context = {
+            "metric": metric, "direction": direction,
+            "champion": {"family": best_cand.family, "n_features": len(best_cand.features),
+                         "cv_mean": round(float(best_cv.mean), 6),
+                         "transforms": [t.to_dict() for t in best_transforms]},
+            "columns": base_features,
+            "allowed_families": allowed_families,
+            "safe_np_funcs": sorted(SAFE_NP_FUNCS),
+            "history": [{"round": r.idx, "proposal": r.proposal, "accepted": r.accepted,
+                         "cv_score": r.score, "note": r.note} for r in history],
+        }
         try:
-            raw = brain.generate(prompt, max_tokens=600)
-        except Exception as exc:  # brain failure ends guided search, deterministic champion stands
-            history.append(GuidedRound(i, {}, False, None, f"brain error: {type(exc).__name__}"))
+            obj = propose(context)
+        except Exception as exc:  # agent failure ends guided search; the ratchet champion stands
+            history.append(GuidedRound(i, {}, False, None, f"agent error: {type(exc).__name__}"))
             break
-        if log_fn:
-            log_fn(prompt, raw)
-        obj = _safe_json(raw)
-        if not obj:
-            history.append(GuidedRound(i, {}, False, None, "unparseable proposal"))
-            continue
+        if not obj or obj.get("stop"):
+            history.append(GuidedRound(i, obj or {}, False, None, "agent stopped"))
+            break
         family, hyperparams, transforms = parse_proposal(obj, best_cand)
         try:
             X_aug, applied, _ = apply_transforms(X[base_features], list(best_transforms) + transforms)
             cand = Candidate(family=family, features=list(X_aug.columns),
                              hyperparams={**hyperparams, "random_state": random_state},
-                             description=obj.get("rationale", "llm-guided")[:120])
+                             description=str(obj.get("rationale") or "agent-guided")[:120])
             cv = cv_score(make_fit_predict(cand, is_classification=is_classification), X_aug, y,
                           metric=metric, is_classification=is_classification,
                           is_timeseries=is_timeseries, folds=folds, random_state=random_state)
@@ -121,24 +126,11 @@ def guided_search(
         accepted = is_better(metric, cv.mean, best_cv.mean)
         if accepted:
             best_cand, best_cv = cand, cv
-            best_transforms = list(best_transforms) + applied
-        history.append(GuidedRound(i, obj, accepted, cv.mean,
+            best_transforms = list(applied)
+        history.append(GuidedRound(i, obj, accepted, float(cv.mean),
                                    "kept" if accepted else "discarded (no improvement)"))
 
     return GuidedResult(
         champion=best_cand, champion_cv=best_cv, transforms=best_transforms,
         rounds=history, improved=is_better(metric, best_cv.mean, champion_cv.mean),
     )
-
-
-def _safe_json(text: str) -> dict:
-    import re
-
-    m = re.search(r"\{.*\}", text, re.DOTALL)
-    if not m:
-        return {}
-    try:
-        obj = json.loads(m.group(0))
-        return obj if isinstance(obj, dict) else {}
-    except json.JSONDecodeError:
-        return {}

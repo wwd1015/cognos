@@ -9,32 +9,40 @@ specifications (family + feature strategy) for the modeling stage to search, plu
 ``design_brief.md``.
 
 Everything above is deterministic (rules over the explore profile + config) so the stage runs
-offline. When an LLM brain is available it additionally proposes feature-engineering transforms
-(engine-validated, target-hidden) and reviews the design brief for extra questions/candidates —
-reasoning proposes, the engine disposes.
+offline. v1: the **Design Lead** agent then decides every framework's role, ranks the slate (only
+engine-fittable families), may propose feature transforms (engine-validated, target-hidden) and
+adds sponsor questions — reasoning proposes, the engine disposes; the human reviews at gate_design.
 """
 
 from __future__ import annotations
 
-import json
+import hashlib
 import re
 
 from ..artifacts import Finding, Severity, StageResult, Verdict
 from ..config import CognosConfig
 from ..context import RunContext
 from ..modeling.fit import DEFAULT_FAMILIES
-from .base import Stage, register_stage
+from ..modeling.transforms import TransformSpec, apply_transforms
+from .base import Stage, attach_recommendation, register_stage
 
 
-def _parse_json(text: str) -> dict:
-    m = re.search(r"\{.*\}", text, re.DOTALL)
-    if not m:
-        return {}
-    try:
-        obj = json.loads(m.group(0))
-        return obj if isinstance(obj, dict) else {}
-    except json.JSONDecodeError:
-        return {}
+def _qhash(text: str) -> str:
+    return hashlib.sha1(text.strip().encode()).hexdigest()[:6]
+
+
+_DESIGN_FIELDS = ("use_case", "horizon", "default_definition", "segment")
+
+
+def _gap_spec(q: dict) -> dict:
+    """An open question as the engine's gap record: what an answer fills and where it re-enters."""
+    field = q.get("design_field")
+    if field is None and q["id"].startswith("design-") and q["id"][7:] in _DESIGN_FIELDS:
+        field = q["id"][7:]
+    category = q.get("category") or ("design" if q.get("source") == "design-brief" else "data")
+    reentry = "explore" if q["id"] == "data-leakage" else "ideate"
+    return {"id": q["id"], "question": q["question"], "category": category,
+            "source": q.get("source", "engine"), "design_field": field, "reentry": reentry}
 
 
 # Lower interpretability rank = more interpretable / preferred for regulated use.
@@ -320,8 +328,10 @@ class IdeateStage(Stage):
     description = "Assess data structure and frameworks; propose and rank candidate model specs."
 
     def run(self, ctx: RunContext) -> StageResult:
+        from ..modeling.transforms import SAFE_NP_FUNCS
+
         cfg = ctx.config
-        profile = ctx.require("explore").payload
+        profile = ctx.profile()  # human-excluded columns are already gone
         structure = _data_structure(cfg, profile)
         frameworks = _framework_assessment(cfg, profile, structure)
         questions = _open_questions(cfg, profile, structure)
@@ -346,34 +356,65 @@ class IdeateStage(Stage):
 
         epv = structure.get("events_per_variable")
         epv_low = epv is not None and epv < _EPV_FLOOR
-        # Few events => lean harder on parsimonious feature sets.
-        parsimony_bonus = 0.12 if epv_low else 0.05
+        default_slate = self._default_slate(families, top_feats, cfg, structure, epv_low)
 
-        hypotheses: list[dict] = []
-        hid = 0
-        for family in families:
-            interp = _INTERPRETABILITY.get(family, 0.5)
-            tree = family in _TREE_FAMILIES
-            base = interp
-            if tree and cfg.design.interpretability == "flexible":
-                base = min(0.75, interp + 0.3)  # trees compete when the sponsor allows it
-            role = "challenger" if (tree and cfg.design.interpretability == "required") else "candidate"
-            framework = self._family_framework(family, cfg, structure)
-            for strategy in ("top", "all"):
-                hid += 1
-                priority = round(min(1.0, base + (parsimony_bonus if strategy == "top" else 0.0)), 3)
-                hypotheses.append({
-                    "id": f"h{hid}",
-                    "family": family,
-                    "feature_strategy": strategy,
-                    "framework": framework,
-                    "role": role,
-                    "interpretable": interp >= 0.7,
-                    "priority": priority,
-                    "source": "engine",
-                    "rationale": self._rationale(family, strategy, top_feats, cfg, structure),
-                })
-        hypotheses.sort(key=lambda h: h["priority"], reverse=True)
+        # --- the Design Lead's recommendation (engine-checked) ---------------------
+        res = StageResult(stage=self.name, verdict=Verdict.PASS)
+        res.payload = {"data_structure": structure, "open_questions": questions,
+                       "families": families}
+        features = list(profile.get("features", []))
+
+        def check_transforms(out, sl) -> list[str]:
+            specs = [TransformSpec(name=t.name, expr=t.expr) for t in out.transforms]
+            if not specs:
+                return []
+            _, _, rejected = apply_transforms(ctx.load_dataset()[features], specs)
+            return [f"transform {spec.name!r} rejected by the engine ({why}); fix or drop it"
+                    for spec, why in rejected]
+
+        out = ctx.recommend("design_lead", {
+            "data_structure": structure,
+            "framework_assessment": [{k: f[k] for k in ("framework", "label", "applicable", "role",
+                                                          "reason")} for f in frameworks],
+            "fittable_families": _engine_families(cfg),
+            "default_slate": default_slate,
+            "features": features,
+            "clean_top_features": top_feats,
+            "open_questions": questions,
+            "safe_np_funcs": sorted(SAFE_NP_FUNCS),
+            "search_budget": cfg.search.max_candidates,
+            "interpretability": cfg.design.interpretability,
+        }, fresh={"ideate": res}, check=check_transforms)
+
+        # --- engine disposes: the slate (a human edit at gate_design wins) --------------
+        if ctx.overrides.slate:
+            slate, slate_source = ctx.overrides.slate, "human"
+        else:
+            slate = [i.model_dump() for i in out.slate]
+            slate_source = "agent" if ctx.runner.kind != "heuristic" else "engine"
+        hypotheses = []
+        for i, item in enumerate(sorted(slate, key=lambda h: -float(h.get("priority", 0.5))), 1):
+            fam = item["family"]
+            hypotheses.append({
+                "id": f"h{i}", "family": fam, "feature_strategy": item.get("feature_strategy", "all"),
+                "framework": self._family_framework(fam, cfg, structure),
+                "role": item.get("role", "candidate"),
+                "interpretable": _INTERPRETABILITY.get(fam, 0.5) >= 0.7,
+                "priority": round(float(item.get("priority", 0.5)), 3),
+                "source": slate_source,
+                "rationale": item.get("rationale", ""),
+            })
+        slate_families = list(dict.fromkeys(h["family"] for h in hypotheses))
+        families = ([f for f in families if f in slate_families]
+                    + [f for f in slate_families if f not in families])
+        proposed_transforms = [{"name": t.name, "expr": t.expr, "rationale": t.rationale}
+                               for t in out.transforms]
+        framework_choices = [f.model_dump() for f in out.frameworks]
+        for q in out.sponsor_questions:
+            questions.append({"id": f"agent-{_qhash(q.question)}", "question": q.question,
+                              "source": "agent", "category": q.category,
+                              "design_field": None if q.design_field == "none" else q.design_field})
+        questions = questions[:10]
 
         notes = (
             f"{len(families)} model families x feature strategies = {len(hypotheses)} hypotheses. "
@@ -381,17 +422,8 @@ class IdeateStage(Stage):
         )
         if epv_low:
             notes += (f" Low event support (EPV≈{epv}) — parsimonious feature sets up-weighted.")
+        notes += f" Design Lead: {out.summary}"
 
-        proposed_transforms: list[dict] = []
-        if ctx.brain.available:
-            extra_note, proposed_transforms = self._llm_propose(ctx, profile, families)
-            notes += " " + extra_note
-            hypotheses, questions, review_note = self._llm_design_review(
-                ctx, structure, frameworks, questions, hypotheses, families)
-            if review_note:
-                notes += " " + review_note
-
-        res = StageResult(stage=self.name, verdict=Verdict.PASS)
         payload = {
             "task": cfg.task.value,
             "families": families,
@@ -399,14 +431,19 @@ class IdeateStage(Stage):
             "data_structure": structure,
             "clean_top_features": top_feats,  # strongest predictors net of leakage suspects
             "framework_assessment": frameworks,
+            "framework_choices": framework_choices,
+            "fittable_families": _engine_families(cfg),
             "open_questions": questions,
+            "questions": [_gap_spec(q) for q in questions],
             "design": cfg.design.model_dump(),
             "hypotheses": hypotheses,
-            "proposed_transforms": proposed_transforms,  # LLM-authored, engine-validated (target-hidden)
+            "proposed_transforms": proposed_transforms,  # agent-authored, engine-validated
             "notes": notes,
         }
+        attach_recommendation(payload, ctx, "design_lead", out)
         res.add_artifact(ctx.save_json("stages/ideate/hypotheses.json", payload))
-        brief = self._design_brief_md(cfg, structure, frameworks, questions, hypotheses, notes)
+        brief = self._design_brief_md(cfg, structure, frameworks, questions, hypotheses, notes,
+                                      framework_choices)
         res.add_artifact(ctx.save_text("stages/ideate/design_brief.md", brief, kind="markdown"))
 
         if questions:
@@ -414,8 +451,8 @@ class IdeateStage(Stage):
                 id="design-open-questions", severity=Severity.LOW, category="design",
                 message=f"{len(questions)} open design question(s) for the model sponsor — see "
                         "stages/ideate/design_brief.md.",
-                suggestion="Answer them in the config's design: block (MD triangulation) and re-run "
-                           "ideate.",
+                suggestion="Answer them at the design gate (or in the config's design: block); "
+                           "ideate re-runs with the answers.",
             ))
         if epv_low:
             res.add_finding(Finding(
@@ -444,6 +481,27 @@ class IdeateStage(Stage):
             res.add_finding(Finding(id="no-ideas", severity=Severity.HIGH, category="idea-gen",
                                     message="No candidate model families resolved for this task."))
         return res
+
+    def _default_slate(self, families: list[str], top_feats: list[str], cfg: CognosConfig,
+                       structure: dict, epv_low: bool) -> list[dict]:
+        """The engine's deterministic slate — the heuristic Design Lead adopts it as-is."""
+        parsimony_bonus = 0.12 if epv_low else 0.05  # few events => lean on parsimonious sets
+        slate: list[dict] = []
+        for family in families:
+            interp = _INTERPRETABILITY.get(family, 0.5)
+            tree = family in _TREE_FAMILIES
+            base = interp
+            if tree and cfg.design.interpretability == "flexible":
+                base = min(0.75, interp + 0.3)  # trees compete when the sponsor allows it
+            role = "challenger" if (tree and cfg.design.interpretability == "required") else "candidate"
+            for strategy in ("top", "all"):
+                priority = round(min(1.0, base + (parsimony_bonus if strategy == "top" else 0.0)), 3)
+                slate.append({
+                    "family": family, "feature_strategy": strategy, "role": role,
+                    "priority": priority,
+                    "rationale": self._rationale(family, strategy, top_feats, cfg, structure),
+                })
+        return sorted(slate, key=lambda h: h["priority"], reverse=True)
 
     @staticmethod
     def _family_framework(family: str, cfg: CognosConfig, structure: dict) -> str:
@@ -484,7 +542,8 @@ class IdeateStage(Stage):
 
     @staticmethod
     def _design_brief_md(cfg: CognosConfig, structure: dict, frameworks: list[dict],
-                         questions: list[dict], hypotheses: list[dict], notes: str) -> str:
+                         questions: list[dict], hypotheses: list[dict], notes: str,
+                         choices: list[dict] | None = None) -> str:
         d = cfg.design
         answered = {
             "Use case": d.use_case, "Horizon": d.horizon,
@@ -504,6 +563,11 @@ class IdeateStage(Stage):
         for f in frameworks:
             lines.append(f"| {f['label']} | {f['applicable']} | {f['role']} | {f['reason']} "
                          f"| {f['reference']} |")
+        if choices:
+            lines += ["", "## Design Lead decisions", "", "| Framework | Decision | Reason |",
+                      "|---|---|---|"]
+            for c in choices:
+                lines.append(f"| {c['framework']} | {c['decision']} | {c['reason']} |")
         lines += ["", "## Open questions for the sponsor", ""]
         if questions:
             for q in questions:
@@ -518,99 +582,3 @@ class IdeateStage(Stage):
                          f"| {h['role']} | {h['priority']} | {h['rationale']} |")
         lines += ["", f"_Notes: {notes}_", ""]
         return "\n".join(lines)
-
-    @staticmethod
-    def _llm_propose(ctx: RunContext, profile: dict, families: list[str]) -> tuple[str, list[dict]]:
-        """LLM proposes feature-engineering transforms; the engine validates them (target-hidden).
-
-        Reasoning *proposes*; the engine *disposes* — a proposed transform is only retained if it
-        evaluates safely on a features-only view of the data. The exchange is logged for audit.
-        """
-        from ..modeling.transforms import SAFE_NP_FUNCS, TransformSpec, apply_transforms
-
-        prompt = (
-            "You are COGNOS's idea-generation agent. Propose up to 3 feature-engineering transforms as "
-            "expressions over the EXISTING feature columns, using only np.<fn> "
-            f"(fn in {sorted(SAFE_NP_FUNCS)}) and arithmetic. Do NOT reference the target.\n"
-            f"Task: {profile.get('task')}\nFeature columns: {profile.get('features')}\n"
-            f"Top correlations: {profile.get('top_correlations')}\n"
-            'Respond with ONLY JSON: {"transforms": [{"name": <str>, "expr": <str>}], "note": <str>}.'
-        )
-        try:
-            raw = ctx.brain.generate(prompt, max_tokens=500)
-        except Exception:
-            return ("", [])
-        ctx.log_reasoning("ideate", "propose-transforms", prompt, raw)
-
-        obj = _parse_json(raw)
-        specs = [TransformSpec(name=str(t["name"]), expr=str(t["expr"]))
-                 for t in (obj.get("transforms") or [])
-                 if isinstance(t, dict) and t.get("name") and t.get("expr")]
-        if not specs:
-            return (f"LLM note: {obj.get('note', '')}".strip(), [])
-        try:
-            df = ctx.load_dataset()
-            features = profile.get("features", [])
-            _, applied, rejected = apply_transforms(df[features], specs)  # target-hidden: df[features]
-        except Exception:
-            return (f"LLM note: {obj.get('note', '')}".strip(), [])
-        note = (f"LLM proposed {len(specs)} transform(s); {len(applied)} validated, "
-                f"{len(rejected)} rejected. {obj.get('note', '')}").strip()
-        return (note, [s.to_dict() for s in applied])
-
-    @staticmethod
-    def _llm_design_review(ctx: RunContext, structure: dict, frameworks: list[dict],
-                           questions: list[dict], hypotheses: list[dict],
-                           families: list[str]) -> tuple[list[dict], list[dict], str]:
-        """LLM reviews the deterministic design brief; the engine keeps only well-formed additions.
-
-        Extra hypotheses must name a family the engine can actually fit for this task — that space
-        may be *wider* than the deterministic slate (e.g. boosting when the regulated default is
-        linear-only), in which case the family is appended to the search list and the ratchet
-        decides on evidence. Extra questions are appended verbatim (questions to a human, not
-        recorded facts).
-        """
-        allowed = _engine_families(ctx.config)
-        prompt = (
-            "You are COGNOS's ideation agent reviewing a model design brief for a commercial-risk "
-            "model. Given the data structure, the framework assessment, and the open questions, "
-            "suggest at most 3 extra design questions for the model sponsor and at most 2 extra "
-            f"candidate specs (family must be one of {sorted(allowed)}; feature_strategy 'top' or "
-            "'all').\n"
-            f"Data structure: {json.dumps(structure)}\n"
-            f"Framework assessment: {json.dumps([{k: f[k] for k in ('framework', 'applicable', 'role', 'reason')} for f in frameworks])}\n"
-            f"Open questions: {json.dumps([q['question'] for q in questions])}\n"
-            'Respond with ONLY JSON: {"assessment_note": <str>, "extra_questions": [<str>], '
-            '"extra_hypotheses": [{"family": <str>, "feature_strategy": <str>, "rationale": <str>}]}.'
-        )
-        try:
-            raw = ctx.brain.generate(prompt, max_tokens=600)
-        except Exception:
-            return hypotheses, questions, ""
-        ctx.log_reasoning("ideate", "design-review", prompt, raw)
-
-        obj = _parse_json(raw)
-        for i, qtext in enumerate((obj.get("extra_questions") or [])[:3]):
-            if isinstance(qtext, str) and qtext.strip():
-                questions.append({"id": f"llm-q{i + 1}", "question": qtext.strip(), "source": "llm"})
-        existing = {(h["family"], h["feature_strategy"]) for h in hypotheses}
-        hid = len(hypotheses)
-        for h in (obj.get("extra_hypotheses") or [])[:2]:
-            if not isinstance(h, dict):
-                continue
-            fam, strat = h.get("family"), h.get("feature_strategy")
-            if fam not in allowed or strat not in ("top", "all") or (fam, strat) in existing:
-                continue  # the engine only keeps specs it can actually fit
-            if fam not in families:
-                families.append(fam)  # widen the search; the ratchet keeps it only if it wins
-            hid += 1
-            interp = _INTERPRETABILITY.get(fam, 0.5)
-            hypotheses.append({
-                "id": f"h{hid}", "family": fam, "feature_strategy": strat,
-                "framework": "llm-proposed", "role": "candidate",
-                "interpretable": interp >= 0.7, "priority": 0.5, "source": "llm",
-                "rationale": str(h.get("rationale") or "LLM-proposed candidate."),
-            })
-            existing.add((fam, strat))
-        note = str(obj.get("assessment_note") or "").strip()
-        return hypotheses, questions[:8], (f"LLM design review: {note}" if note else "")

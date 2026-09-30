@@ -57,6 +57,30 @@ class Stage(ABC):
         return result.finalize(started)
 
 
+def attach_recommendation(payload: dict, ctx: RunContext, agent: str, out) -> None:
+    """Record an agent's validated recommendation (and which backend produced it) in a payload."""
+    meta = ctx.runner.last.get(agent, {})
+    payload["recommendation"] = {"agent": agent, **meta, "output": out.model_dump()}
+
+
+def questions_from(texts: list[str], *, category: str, reentry: str, prefix: str,
+                   design_fields: list[str] | None = None) -> list[dict]:
+    """Agent questions for the sponsor, with stable ids (a hash of the text) so re-runs don't
+    duplicate the same open gap."""
+    import hashlib
+
+    out = []
+    for i, text in enumerate(texts):
+        text = str(text).strip()
+        if not text:
+            continue
+        qid = f"{prefix}-{hashlib.sha1(text.encode()).hexdigest()[:6]}"
+        field = (design_fields or [None] * len(texts))[i] if design_fields else None
+        out.append({"id": qid, "question": text, "category": category, "source": "agent",
+                    "design_field": field, "reentry": reentry})
+    return out
+
+
 def make_stage(name: str) -> Stage:
     if name not in STAGE_REGISTRY:
         raise KeyError(f"Unknown stage '{name}'. Known: {sorted(STAGE_REGISTRY)}")
