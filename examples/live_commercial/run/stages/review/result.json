@@ -1,0 +1,34 @@
+{
+  "stage": "review",
+  "verdict": "PASS",
+  "summary": "Reviewed 13 concept(s): 6 code anchor(s), 26 internal link(s); drift_score=0.000, 0 high-severity drift finding(s) [PASS].",
+  "metrics": {
+    "n_concepts": 13,
+    "drift_score": 0.0,
+    "n_high": 0
+  },
+  "payload": {
+    "n_concepts": 13,
+    "n_code_anchors": 6,
+    "n_links": 26,
+    "conformant": true,
+    "missing_code_paths": [],
+    "missing_symbols": [],
+    "broken_links": [],
+    "drift_score": 0.0,
+    "repo_root": "<local>\\orca\\workspaces\\cognos\\revamp"
+  },
+  "findings": [],
+  "artifacts": [
+    {
+      "name": "consistency",
+      "kind": "json",
+      "path": "stages/review/consistency.json",
+      "description": ""
+    }
+  ],
+  "started_at": "2026-09-30T02:35:55.667700+00:00",
+  "ended_at": "2026-09-30T02:35:55.674227+00:00",
+  "duration_s": 0.066178,
+  "error": null
+}

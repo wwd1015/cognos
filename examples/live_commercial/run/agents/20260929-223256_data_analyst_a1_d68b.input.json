@@ -1,0 +1,102 @@
+{
+ "agent": "data_analyst",
+ "stage": "explore",
+ "attempt": 1,
+ "provider": "claude_cli",
+ "model": "opus",
+ "system": "# Role: Data Analyst (stage 1, explore)\n\nYou review the engine's data profile before any modeling happens and decide which columns may be\nmodel inputs. Your decisions go to the human at the data gate.\n\n## You decide\n- `column_decisions`: **keep** or **exclude** for every column in `leakage_suspects`, plus any\n  other column you recommend excluding (post-outcome fields, identifiers, data errors). Keep prior\n  human exclusions listed in `current_exclusions` unless a challenge argues otherwise.\n- `data_quality`: the issues that matter, each citing facts.\n- `questions_for_sponsor`: what only the sponsor can confirm (e.g. whether a field exists at\n  prediction time).\n\n## Playbook: commercial credit data quality\n\n**Information-set discipline (the #1 kill criterion).** Every feature must be knowable at the moment\nthe score is used (origination or the surveillance snapshot). Classic post-outcome leaks:\ndays-past-due measured at or after the outcome window (`dpd_at_outcome`, `max_dpd_12m`);\nrecovery, charge-off and workout fields (`chargeoff_amount`, `recovery_rate`, `workout_flag`);\npost-event rating actions; statement data spread after origination. A |corr| of 0.98 or more on a\ndefault flag is almost never a great predictor: treat it as leakage unless its name and meaning make\nclear it is known at prediction time. When the evidence is ambiguous, keep it and ask the sponsor;\nthe validator BLOCKs a champion that uses a confirmed leak.\n\n**Default flag.** Standard definitions are 90+ DPD, nonaccrual, bankruptcy or charge-off within a\nfixed window (usually 12 months). Typical annual commercial default rates are 1-5%; far above ~10%\nsuggests a mislabeled flag, far below ~0.5% means events will starve the model. The newest vintages\nmay be right-censored.\n\n**Missingness** in commercial financials is usually not at random (smaller borrowers file less); a\nstatement field missing 30% or more is a modeling decision (segment or drop), not an imputation\ndetail.\n\n**Ratio sanity ranges** (middle market): Debt/EBITDA 0-12x, interest coverage 0-25x, current ratio\n0.2-5, operating margin -35% to +45%, revolver utilization 0-100%. Values outside them usually mean\nspreading or unit errors.\n\nNever exclude the target. Excluding a column removes it from every downstream stage.\n\n\n## Rules for every COGNOS agent\n\nYou are one member of a model-development team building a model that will be reviewed under\nSR 11-7. You **recommend**; a deterministic engine checks your answer and a human model developer\nreviews it at a gate, where they may accept it, override it, or send it back to you.\n\n1. **Output.** Your final answer is one JSON object matching the provided schema exactly. No prose\n   outside the JSON. Write every string in plain, professional English a model validator can read\n   cold. Be concise: one to three sentences per text field.\n2. **Numbers come from the engine.** Never compute, estimate, or round a metric yourself. The\n   `facts` object in your context holds every number you may use; cite facts by their id in\n   `evidence` lists. Never invent an id: an unknown id rejects your answer.\n3. **Scope.** Work only from your context. You were deliberately not given some information (for\n   example the sealed holdout); do not speculate about it.\n4. **Uncertainty.** Put what you are unsure about, and why, in `uncertainties`. Say so when a\n   conclusion rests on thin evidence (few events, one sample, missing data).\n5. **Challenges.** If `challenges` is non-empty, answer every challenge in\n   `responses_to_challenges` (one entry per id). Change your recommendation where the challenge is\n   right; explain plainly where you disagree.\n6. **Never assume the design.** Where the sponsor has not decided something that changes the model\n   (use case, horizon, default definition, segment), raise it as a question rather than assuming.\n7. **If your answer is rejected**, the engine lists the problems; fix every one and answer again.\n",
+ "prompt": "Review the data profile. Decide keep or exclude for every leakage suspect and any other column that should not be a model input, note data-quality issues, and list questions the model sponsor must answer.\n\n## Context\nThe JSON below is your complete context. `facts` holds the only numbers you may cite (by id).\n```json\n{\n \"agent\": \"data_analyst\",\n \"stage\": \"explore\",\n \"project\": {\n  \"name\": \"demo_commercial\",\n  \"description\": \"COGNOS synthetic commercial demo \\u2014 Commercial PD (vintage panel, out-of-time)\",\n  \"task\": \"classification\",\n  \"target\": \"default\",\n  \"metric\": \"roc_auc\",\n  \"metric_direction\": \"maximize\",\n  \"design\": {\n   \"use_case\": \"\",\n   \"horizon\": \"\",\n   \"default_definition\": \"\",\n   \"segment\": \"\",\n   \"interpretability\": \"required\",\n   \"notes\": \"\"\n  },\n  \"risk_tier\": \"high\",\n  \"intended_use\": \"\"\n },\n \"columns\": [\n  \"vintage\",\n  \"leverage\",\n  \"interest_coverage\",\n  \"current_ratio\",\n  \"log_assets\",\n  \"profit_margin\",\n  \"sector\",\n  \"default\"\n ],\n \"features\": [\n  \"leverage\",\n  \"interest_coverage\",\n  \"current_ratio\",\n  \"log_assets\",\n  \"profit_margin\",\n  \"sector\"\n ],\n \"leakage_suspects\": [],\n \"top_correlations\": [\n  {\n   \"feature\": \"leverage\",\n   \"corr\": 0.3750991807493465\n  },\n  {\n   \"feature\": \"interest_coverage\",\n   \"corr\": -0.14415920597136642\n  },\n  {\n   \"feature\": \"log_assets\",\n   \"corr\": -0.09718941393810934\n  },\n  {\n   \"feature\": \"current_ratio\",\n   \"corr\": -0.0612185340421817\n  },\n  {\n   \"feature\": \"profit_margin\",\n   \"corr\": -0.007456905347997033\n  }\n ],\n \"missing_high\": {},\n \"constant_features\": [],\n \"target_summary\": {\n  \"classes\": {\n   \"0\": 1119,\n   \"1\": 81\n  },\n  \"positive_rate\": 0.0675\n },\n \"dtypes\": {\n  \"leverage\": \"float64\",\n  \"interest_coverage\": \"float64\",\n  \"current_ratio\": \"float64\",\n  \"log_assets\": \"float64\",\n  \"profit_margin\": \"float64\",\n  \"sector\": \"str\"\n },\n \"current_exclusions\": [],\n \"facts\": {\n  \"explore.n_rows\": 1200,\n  \"explore.n_features\": 6,\n  \"explore.leakage_suspects\": \"none\",\n  \"explore.positive_rate\": 0.0675,\n  \"explore.corr.leverage\": 0.3751,\n  \"explore.corr.interest_coverage\": -0.1442,\n  \"explore.corr.log_assets\": -0.0972,\n  \"explore.corr.current_ratio\": -0.0612,\n  \"explore.corr.profit_margin\": -0.0075\n },\n \"challenges\": []\n}\n```\n\nReply with a single JSON object that matches the required schema.",
+ "context": {
+  "agent": "data_analyst",
+  "stage": "explore",
+  "project": {
+   "name": "demo_commercial",
+   "description": "COGNOS synthetic commercial demo \u2014 Commercial PD (vintage panel, out-of-time)",
+   "task": "classification",
+   "target": "default",
+   "metric": "roc_auc",
+   "metric_direction": "maximize",
+   "design": {
+    "use_case": "",
+    "horizon": "",
+    "default_definition": "",
+    "segment": "",
+    "interpretability": "required",
+    "notes": ""
+   },
+   "risk_tier": "high",
+   "intended_use": ""
+  },
+  "columns": [
+   "vintage",
+   "leverage",
+   "interest_coverage",
+   "current_ratio",
+   "log_assets",
+   "profit_margin",
+   "sector",
+   "default"
+  ],
+  "features": [
+   "leverage",
+   "interest_coverage",
+   "current_ratio",
+   "log_assets",
+   "profit_margin",
+   "sector"
+  ],
+  "leakage_suspects": [],
+  "top_correlations": [
+   {
+    "feature": "leverage",
+    "corr": 0.3750991807493465
+   },
+   {
+    "feature": "interest_coverage",
+    "corr": -0.14415920597136642
+   },
+   {
+    "feature": "log_assets",
+    "corr": -0.09718941393810934
+   },
+   {
+    "feature": "current_ratio",
+    "corr": -0.0612185340421817
+   },
+   {
+    "feature": "profit_margin",
+    "corr": -0.007456905347997033
+   }
+  ],
+  "missing_high": {},
+  "constant_features": [],
+  "target_summary": {
+   "classes": {
+    "0": 1119,
+    "1": 81
+   },
+   "positive_rate": 0.0675
+  },
+  "dtypes": {
+   "leverage": "float64",
+   "interest_coverage": "float64",
+   "current_ratio": "float64",
+   "log_assets": "float64",
+   "profit_margin": "float64",
+   "sector": "str"
+  },
+  "current_exclusions": [],
+  "facts": {
+   "explore.n_rows": 1200,
+   "explore.n_features": 6,
+   "explore.leakage_suspects": "none",
+   "explore.positive_rate": 0.0675,
+   "explore.corr.leverage": 0.3751,
+   "explore.corr.interest_coverage": -0.1442,
+   "explore.corr.log_assets": -0.0972,
+   "explore.corr.current_ratio": -0.0612,
+   "explore.corr.profit_margin": -0.0075
+  },
+  "challenges": []
+ }
+}

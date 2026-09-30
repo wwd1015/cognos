@@ -29,8 +29,18 @@
 | Reduced-form PD (obligor scorecard / GLM) | True | primary | Binary outcome with obligor-level financial and facility covariates — the standard framework for commercial PD at origination or surveillance. | Altman (1968); Ohlson (1980); Basel IRB PD; SR 11-7 |
 | Discrete-time hazard (survival) | True | candidate | Event timing present (data.event_time_col) — the engine panel-expands obligor-periods and fits a full discrete-time hazard (logit or cloglog grouped-time PH link) with a PD term structure. | Shumway (2001) hazard bankruptcy model |
 | Structural (Merton distance-to-default) | False | rejected | Requires traded-market observables (equity value/volatility, liability structure) to compute distance-to-default; none present — typical for private middle-market obligors. | Merton (1974); KMV/Moody's EDF |
-| Rating-transition matrix (migration) | False | rejected | Requires an internal rating history (grade at successive snapshots); none present. | CreditMetrics (1997); rating-migration practice |
+| Rating-transition matrix (migration) | False | rejected | Requires a rating history (grade at successive snapshots, e.g. an internal grade or agency rating panel); none present. | CreditMetrics (1997); S&P CreditPro rating-migration practice |
 | Machine-learning challenger (trees/boosting) | True | challenger | Interpretability is required for the deployed model, so nonlinear learners serve as challenger benchmarks quantifying the predictive ceiling. | champion–challenger practice; SR 11-7 benchmarking |
+
+## Design Lead decisions
+
+| Framework | Decision | Reason |
+|---|---|---|
+| reduced_form_pd | primary | Binary outcome with obligor-level financial and facility covariates — the standard framework for commercial PD at origination or surveillance. |
+| discrete_time_hazard | candidate | Event timing present (data.event_time_col) — the engine panel-expands obligor-periods and fits a full discrete-time hazard (logit or cloglog grouped-time PH link) with a PD term structure. |
+| structural_merton | rejected | Requires traded-market observables (equity value/volatility, liability structure) to compute distance-to-default; none present — typical for private middle-market obligors. |
+| transition_matrix | rejected | Requires a rating history (grade at successive snapshots, e.g. an internal grade or agency rating panel); none present. |
+| ml_challenger | challenger | Interpretability is required for the deployed model, so nonlinear learners serve as challenger benchmarks quantifying the predictive ceiling. |
 
 ## Open questions for the sponsor
 
@@ -42,14 +52,14 @@
 | # | Family | Features | Framework | Role | Priority | Rationale |
 |---|---|---|---|---|---|---|
 | h1 | logit | top | reduced_form_pd | candidate | 1.0 | Baseline interpretable LOGIT using the strongest clean predictors; defensible and easy to validate. On vintage-indexed data this reads as a discrete-time hazard (Shumway 2001). |
-| h3 | probit | top | reduced_form_pd | candidate | 1.0 | Binary GLM with the probit link using the strongest clean predictors; statsmodels inference with valid p-values. |
-| h5 | cloglog | top | reduced_form_pd | candidate | 1.0 | Binary GLM with the cloglog link using the strongest clean predictors; statsmodels inference with valid p-values. cloglog is the grouped-time proportional-hazards link. |
-| h7 | hazard_logit | top | discrete_time_hazard | candidate | 1.0 | Discrete-time hazard (logit link) on the obligor-period panel using the strongest clean predictors — PD term structure over the outcome window (Shumway 2001). |
-| h9 | hazard_cloglog | top | discrete_time_hazard | candidate | 1.0 | Discrete-time hazard (cloglog link) on the obligor-period panel using the strongest clean predictors — PD term structure over the outcome window (Shumway 2001). |
-| h11 | lasso_logit | top | reduced_form_pd | candidate | 1.0 | Regularized linear (lasso_logit) using the strongest clean predictors to control variance/collinearity. |
-| h13 | ridge_logit | top | reduced_form_pd | candidate | 0.97 | Regularized linear (ridge_logit) using the strongest clean predictors to control variance/collinearity. |
-| h2 | logit | all | reduced_form_pd | candidate | 0.95 | Baseline interpretable LOGIT using all features; defensible and easy to validate. On vintage-indexed data this reads as a discrete-time hazard (Shumway 2001). |
-| h4 | probit | all | reduced_form_pd | candidate | 0.93 | Binary GLM with the probit link using all features; statsmodels inference with valid p-values. |
-| h6 | cloglog | all | reduced_form_pd | candidate | 0.92 | Binary GLM with the cloglog link using all features; statsmodels inference with valid p-values. cloglog is the grouped-time proportional-hazards link. |
+| h2 | probit | top | reduced_form_pd | candidate | 1.0 | Binary GLM with the probit link using the strongest clean predictors; statsmodels inference with valid p-values. |
+| h3 | cloglog | top | reduced_form_pd | candidate | 1.0 | Binary GLM with the cloglog link using the strongest clean predictors; statsmodels inference with valid p-values. cloglog is the grouped-time proportional-hazards link. |
+| h4 | hazard_logit | top | discrete_time_hazard | candidate | 1.0 | Discrete-time hazard (logit link) on the obligor-period panel using the strongest clean predictors — PD term structure over the outcome window (Shumway 2001). |
+| h5 | hazard_cloglog | top | discrete_time_hazard | candidate | 1.0 | Discrete-time hazard (cloglog link) on the obligor-period panel using the strongest clean predictors — PD term structure over the outcome window (Shumway 2001). |
+| h6 | lasso_logit | top | reduced_form_pd | candidate | 1.0 | Regularized linear (lasso_logit) using the strongest clean predictors to control variance/collinearity. |
+| h7 | ridge_logit | top | reduced_form_pd | candidate | 0.97 | Regularized linear (ridge_logit) using the strongest clean predictors to control variance/collinearity. |
+| h8 | logit | all | reduced_form_pd | candidate | 0.95 | Baseline interpretable LOGIT using all features; defensible and easy to validate. On vintage-indexed data this reads as a discrete-time hazard (Shumway 2001). |
+| h9 | probit | all | reduced_form_pd | candidate | 0.93 | Binary GLM with the probit link using all features; statsmodels inference with valid p-values. |
+| h10 | cloglog | all | reduced_form_pd | candidate | 0.92 | Binary GLM with the cloglog link using all features; statsmodels inference with valid p-values. cloglog is the grouped-time proportional-hazards link. |
 
-_Notes: 7 model families x feature strategies = 14 hypotheses. Strongest clean signals: debt_to_ebitda, gdp_growth, unemployment_rate, utilization_rate, log_total_assets. Low event support (EPV≈7.8) — parsimonious feature sets up-weighted._
+_Notes: 7 model families x feature strategies = 14 hypotheses. Strongest clean signals: debt_to_ebitda, gdp_growth, unemployment_rate, utilization_rate, log_total_assets. Low event support (EPV≈7.8) — parsimonious feature sets up-weighted. Design Lead: Primary framework: reduced_form_pd. Ranked 14 engine-fittable specifications, interpretable families first when interpretability is required._

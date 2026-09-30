@@ -1,5 +1,22 @@
 # COGNOS architecture
 
+> v1.0: **agents recommend, humans decide, the engine disposes**
+> ([ADR-0010](docs/adr/0010-agents-recommend-humans-decide.md)).
+
+```
+      Dash + Mantine workbench (cognos ui)            CLI (cognos …)
+                        └──────────────┬──────────────┘
+                              cognos.service  (the single boundary)
+                                       │
+          engine/  graph · RunState · gates · challenges · gaps · events · staleness
+                                       │
+          stages/  prepare ─▶ ctx.recommend(agent) ─▶ finalize (engine disposes)
+             │                           │
+          modeling/ okf/ runtime/     agents/  prompts · contracts · slices · facts · checks ·
+          (numerical core,            heuristic · runner · providers: heuristic | replay |
+           frozen substrate)          claude_cli | anthropic | openai_compat
+```
+
 ## Two layers
 
 COGNOS is a two-layer system in which an LLM **reasoning layer** and a deterministic **engine** are
@@ -15,14 +32,16 @@ both first-class and interdependent ([ADR-0001](docs/adr/0001-reasoning-proposes
    determinism is the anti-hallucination mechanism: a proposal cannot enter the record unless the
    engine independently measures that it improves on the auditable yardstick.
 
-Neither layer is optional. Running with no LLM is the deterministic substrate + test double (a
-`ScriptedBrain` test double exists), not a degraded product — it is how the deliverable's analysis is
-always reproduced and served ([ADR-0003](docs/adr/0003-two-tier-reproducibility.md)).
+Neither layer is optional. Running with the deterministic (heuristic) agents is the offline and demo
+path and the test substrate (`replay` re-runs recorded agent outputs), not a degraded product — it is
+how the deliverable's analysis is always reproduced ([ADR-0003](docs/adr/0003-two-tier-reproducibility.md)).
+In production the LLM agents recommend and a model developer decides at five review gates.
 
-COGNOS also ships a **Claude-Code-native agent layer** — declarative agent specs in
-`.claude/agents/*.md`, a mechanical orchestrator slash command, PreToolUse safety hooks, and
-per-project YAML profiles, in the spirit of `deputy`. The agent layer drives the engine through the
-`cognos` CLI.
+The agents run **inside the engine** (v1.0): each stage consults its agent through
+`ctx.recommend()`, and the runner calls the configured backend — `claude -p` in an isolated
+temp directory, the Anthropic API, any OpenAI-compatible API, recorded outputs (`replay`), or the
+deterministic `heuristic` agents. The v0.x `.claude/agents` wrappers are retired; their domain
+playbooks are the agents' role prompts (`src/cognos/agents/prompts/`).
 
 ## Reasoning-driven loop
 
@@ -52,9 +71,10 @@ at serving.
 
 The two-tier reproducibility split makes this auditable
 ([ADR-0003](docs/adr/0003-two-tier-reproducibility.md)): the **analysis** (every number the engine
-computes) is fully bit-reproducible offline with no LLM, while the **reasoning trajectory** is
-non-deterministic, recorded to `runs/<id>/reasoning/transcript.jsonl` for replay/audit, and
-human-gated. The LLM is required to automate the search, never to reproduce the result.
+computes) is fully bit-reproducible offline with no LLM, while the **recommendations** are
+non-deterministic, recorded to `runs/<id>/agents/` (every attempt's prompt, context slice and raw
+output) for audit and `replay`, and human-gated at the review gates. The LLM is required to automate
+the judgment, never to reproduce the result.
 
 ## Lineage (what we borrowed and from where)
 
@@ -64,26 +84,33 @@ human-gated. The LLM is required to automate the search, never to reproduce the 
 | `autoforge` | The `name: value` stdout + `results.tsv` ledger optimization protocol, reimplemented in `integrations/autoforge_loop.py`; accept-if-better-else-discard ratchet. |
 | `autoresearch` (Karpathy) | The ratchet hill-climb; the **frozen-substrate / mutable-surface** split (sealed metric + holdout the search can't touch); fixed-budget experiments; TSV experiment ledger; auditability from *provenance* (every change committed) plus a *frozen evaluator*; the LLM as the mutation function proposing the next experiment from the ledger ([ADR-0001](docs/adr/0001-reasoning-proposes-engine-disposes.md)). |
 | `IMPACT` | In-process integration via `EntityPipeline`: the model is embedded as a **derived field** (`cognos.runtime.score.score_row`) so IMPACT builds a standardized scored feature table. A kept target-hidden transform round-trips verbatim to a derived field so train- and serve-time feature logic are identical ([ADR-0002](docs/adr/0002-llm-authored-transforms-safe-execution.md)). |
+| Cyber Credit Officer | Engine-run agents with role prompts + Pydantic output contracts + context slices; validate-and-retry against deterministic tools; human decision gates (accept / edit / override); a challenger whose high-severity findings loop back to the responsible agent (bounded); information gaps with targeted re-entry; per-call audit (prompt hash, context hash, raw I/O, cost); `claude -p` / Anthropic / OpenAI-compatible backends; practice (mock) mode ([ADR-0010](docs/adr/0010-agents-recommend-humans-decide.md)). |
 | Prior-art research | Orchestrator-worker with a sequential dependent pipeline; interrupt/checkpoint/resume for HITL; independent critic/validator agents (avoid "degeneration of thought"); CASH search + leakage-safe cross-validation + the single interpretable champion (Caruana ensembling kept only as an opt-in labelled challenger benchmark, [ADR-0007](docs/adr/0007-single-interpretable-champion-no-silent-ensemble.md)); statistical diagnostic battery; SR 11-7 outcomes analysis (Gini/KS, calibration, PSI) with PBO/Deflated-Sharpe demoted to opt-in trading mode ([ADR-0005](docs/adr/0005-backtesting-is-credit-risk-outcomes-analysis.md)); SR 11-7 × NIST AI RMF; Model Cards + EU Annex IV; OKF docs + AST drift detection. |
 
 ## Control flow
 
-The orchestrator (`orchestrator.py`) is deliberately mechanical: it sequences stages in the legal
-lifecycle order, persists each `StageResult` to disk, and honors gate verdicts. Judgment lives in the
-stage agents; determinism lives in the orchestrator and the safety hooks.
+The engine (`engine/engine.py`) is deliberately mechanical. It walks the step graph
+(`engine/graph.py`), runs every ready step, checkpoints, pauses at human gates, applies decisions,
+routes challenges, syncs gaps, and marks stale work — it never judges.
 
 ```
-for stage in enabled:
-    result = stage.run_guarded(ctx)     # times + crash-isolates; missing deps -> ERROR
-    ctx.record(result)                  # checkpoint to runs/<id>/stages/<stage>/result.json
-    if stage is a gate and verdict not OK:
-        autonomous : BLOCK halts (if halt_on_block); FAIL/OPEN_QUESTIONS recorded, run continues
-        interactive: gate_handler(result) -> approve | reject (reject halts)
-    if verdict == ERROR: halt
+explore → gate_data → ideate → gate_design → model → gate_champion → backtest → validate
+        → gate_validation → comply → document → review → gate_signoff
+
+loop:
+  ready = steps whose dependencies are done/skipped and that are pending or stale
+  stage step : result = stage.run_guarded(ctx); record; sync gaps + challenge responses
+               ERROR -> failed (retry later) · BLOCK at validate/review -> blocked (halts)
+               validate: high validator findings -> challenges -> target stage stale (≤ N loops)
+  gate step  : interactive -> awaiting (the human decides) · autonomous -> auto-accept
+  decision   : handler updates overrides / challenges / gaps -> changed steps + descendants stale
 ```
 
-Because every stage checkpoints, a second run with the same `run_id` reuses completed stages
-(resume-from-failure), and any single stage can be re-run in a fresh process via `cognos run-stage`.
+Two drivers share one step executor: `run_until_idle()` (synchronous — CLI, tests, autonomous runs)
+and `start()`/`advance()` (background threads — the UI). Every read-modify-write of `state.json`
+happens under the run's lock after re-loading from disk; a step invalidated while it was running
+stays stale when it finishes. Because stages checkpoint and state is on disk, any process (a CLI
+command, the UI after a restart) resumes a run exactly; `cognos run-stage` still re-runs one stage.
 
 ## The stage contract
 
@@ -101,25 +128,35 @@ stages through the `RunContext` and writes its outputs as artifacts under `runs/
 
 ```
 runs/<run_id>/
+  config.yaml              # the profile the run was created from (rehydrates the engine)
+  state.json               # RunState: steps, gate decisions, challenges, gaps, overrides, loops, spend
+  events.jsonl             # the activity feed (UI, CLI)
   manifest.json            # run metadata + per-stage verdicts
-  summary.json summary.txt # machine- and human-readable run summary (final + per-stage verdicts)
-  data/   dataset.parquet train.parquet holdout.parquet   # sealed holdout lives here
-  models/ champion_scorer.joblib                           # deployable scorer (IMPACT entry point)
-  docs/   *.md index.md log.md                             # the OKF white-paper bundle
-  stages/<stage>/result.json + artifacts (profile.json, ledger.tsv, diagnostics.json, oof_perf.npz,
-                                          scored.parquet, impact_entity.yaml, compliance.json, …)
+  summary.json summary.txt # machine- and human-readable run summary
+  agents/  audit.jsonl <call>.input.json <call>.output.json <call>.transcript.jsonl
+  data/    dataset.parquet train.parquet holdout.parquet   # sealed holdout lives here
+  models/  champion_scorer.joblib                          # deployable scorer (IMPACT entry point)
+  docs/    *.md index.md log.md narrative.md decisions.md  # the OKF white-paper bundle
+  stages/<stage>/result.json + artifacts (profile.json, hypotheses.json, design_brief.md,
+                                          ledger.tsv/json, search_cache.joblib, diagnostics.json, …)
 ```
 
-## The pluggable brain
+## The agent layer
 
-`brains/base.py` defines `Brain` with `available: bool` and `generate()/judge()`. The default
-`HeuristicBrain` is `available=False`, so stages take their deterministic path — the substrate that
-reproduces and serves the deliverable's analysis, not a fallback. A `ScriptedBrain` test double
-replays canned responses for deterministic testing of the reasoning-driven path. `LLMBrain` (Claude
-via the `anthropic` SDK) activates only when the SDK and `ANTHROPIC_API_KEY` are present, and degrades
-to the deterministic path otherwise. Stages always branch `if ctx.brain.available: … else: …` and
-never *require* the LLM to reproduce a result — the LLM automates the search, never the analysis
-([ADR-0003](docs/adr/0003-two-tier-reproducibility.md)).
+Each agent is five pieces (`src/cognos/agents/`):
+
+| Piece | Role |
+|---|---|
+| `prompts/<agent>.md` + `_common.md` | the role and its domain playbook; shared rules (numbers from facts, answer every challenge, never assume the design) |
+| `contracts.py` | the typed recommendation (`extra="forbid"`, strict-grammar-friendly JSON types) |
+| `slices.py` | what the agent may see: project brief + stage evidence + `facts` scoped to its independence (the modeler sees no model/backtest facts; the validator never sees the modeler's rationale) + its open challenges |
+| `checks.py` | what the engine re-checks (cited facts exist, every challenge answered, champion ∈ admissible set, fittable families, target never excluded, no typed metrics in prose, …) |
+| `heuristic.py` | the deterministic implementation of the same contract — the offline path |
+
+`runner.py` builds the prompt (task + context JSON + challenges + the previous attempt's errors),
+calls the backend, validates, retries up to `agents.max_retries`, and audits every attempt; it
+enforces a per-call time limit and a per-run spend budget. Provider resolution:
+`COGNOS_PROVIDER` → `agents.provider` → `auto` (first available LLM backend, else `heuristic`).
 
 ## Key design decisions
 
@@ -131,8 +168,13 @@ never *require* the LLM to reproduce a result — the LLM automates the search, 
   (`modeling/transforms.py`) over a features-only view (`X`) + a fixed `np.<fn>` set; `y` is never in
   scope, so transforms cannot leak the target even onto the labelled holdout.
 - **Two-tier reproducibility** ([ADR-0003](docs/adr/0003-two-tier-reproducibility.md)): the analysis is
-  bit-reproducible offline with no LLM; the reasoning trajectory is recorded to
-  `runs/<id>/reasoning/transcript.jsonl` for replay/audit and is human-gated.
+  bit-reproducible offline with no LLM; the recommendations are recorded to `runs/<id>/agents/`
+  (every attempt's prompt, context slice and raw output) with the human decisions in `state.json`
+  and the decision log, and are replayable with the `replay` provider.
+- **Agents recommend, humans decide** ([ADR-0010](docs/adr/0010-agents-recommend-humans-decide.md)):
+  five review gates; one pushback mechanism (challenges) for human send-backs and validator findings;
+  sponsor questions as tracked gaps; the modeler chooses from the one-standard-error admissible set
+  before the holdout is scored; only the engine BLOCKs, and a BLOCK is never acceptable.
 - **Primary domain is commercial** model development under SR 11-7
   ([ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md)). Fair-lending scans
   are an optional, off-by-default module (`compliance.fair_lending: false`) — out of scope for a
@@ -145,7 +187,8 @@ never *require* the LLM to reproduce a result — the LLM automates the search, 
 - **`comply` is non-gating** ([ADR-0006](docs/adr/0006-compliance-is-non-gating-readiness-report.md)): a
   model-risk readiness report that never PASSes or BLOCKs, never marks an unevidenced element compliant
   (ongoing monitoring is always outstanding at dev time), and lists human-only steps (independent
-  validation sign-off, monitoring plan, governance). The **only gates are `validate` and `review`**;
+  validation sign-off, monitoring plan, governance). The **only verdict gates are `validate` and
+  `review`** (the five human review gates decide, they never BLOCK);
   `validate` hard-BLOCKs only on confirmed target leakage, and `review` BLOCKs only on stale docs↔code
   references.
 - **Single interpretable champion** ([ADR-0007](docs/adr/0007-single-interpretable-champion-no-silent-ensemble.md)):

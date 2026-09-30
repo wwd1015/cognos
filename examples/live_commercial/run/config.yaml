@@ -1,0 +1,8 @@
+name: demo_commercial
+description: "COGNOS synthetic commercial demo \u2014 Commercial PD (vintage panel,\
+  \ out-of-time)"
+version: 0.1.0
+task: classification
+mode: autonomous
+data:
+  path: <local>\liveruns

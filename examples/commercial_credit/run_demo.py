@@ -19,8 +19,8 @@ real model-development engagement:
      OKF white paper → docs↔code review.
 
 Run:  python examples/commercial_credit/run_demo.py [--save-sample]
-(Requires `pip install -e .`. Runs fully offline with the deterministic engine; an LLM brain adds
-proposed transforms and a design review on top, never instead.)
+(Requires `pip install -e .`. Runs fully offline with the deterministic agents; LLM agents (any
+provider) recommend on top of the same engine checks, never instead.)
 
 `--save-sample` refreshes examples/commercial_credit/sample_output/ with the real artifacts
 (design brief, open questions, run summary) so the repository carries a captured example.
@@ -204,4 +204,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    from cognos.cli import quiet_numerics, utf8_console
+
+    utf8_console()
+    quiet_numerics()
     main()

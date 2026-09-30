@@ -1,5 +1,5 @@
 === COGNOS RUN SUMMARY ===
-run_id: 20260705T021208Z-3deeeba
+run_id: 20260930T023946Z-9aaddba
 project: cni_middle_market_pd
 mode: autonomous
 final_verdict: WARN

@@ -1,0 +1,11 @@
+{
+  "n_concepts": 13,
+  "n_code_anchors": 6,
+  "n_links": 26,
+  "conformant": true,
+  "missing_code_paths": [],
+  "missing_symbols": [],
+  "broken_links": [],
+  "drift_score": 0.0,
+  "repo_root": "<local>\\orca\\workspaces\\cognos\\revamp"
+}

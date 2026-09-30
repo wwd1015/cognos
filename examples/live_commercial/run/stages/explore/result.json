@@ -1,0 +1,264 @@
+{
+  "stage": "explore",
+  "verdict": "PASS",
+  "summary": "Profiled 1200 rows x 8 cols; 6 features; 0 leakage suspect(s); 0 data-quality finding(s). Data Analyst recommends excluding 0 column(s).",
+  "metrics": {
+    "n_rows": 1200,
+    "n_features": 6,
+    "n_leakage_suspects": 0
+  },
+  "payload": {
+    "n_rows": 1200,
+    "n_cols": 8,
+    "target": "default",
+    "task": "classification",
+    "features": [
+      "leverage",
+      "interest_coverage",
+      "current_ratio",
+      "log_assets",
+      "profit_margin",
+      "sector"
+    ],
+    "numeric_features": [
+      "leverage",
+      "interest_coverage",
+      "current_ratio",
+      "log_assets",
+      "profit_margin"
+    ],
+    "categorical_features": [
+      "sector"
+    ],
+    "dtypes": {
+      "vintage": "str",
+      "leverage": "float64",
+      "interest_coverage": "float64",
+      "current_ratio": "float64",
+      "log_assets": "float64",
+      "profit_margin": "float64",
+      "sector": "str",
+      "default": "int64"
+    },
+    "missing": {
+      "vintage": 0.0,
+      "leverage": 0.0,
+      "interest_coverage": 0.0,
+      "current_ratio": 0.0,
+      "log_assets": 0.0,
+      "profit_margin": 0.0,
+      "sector": 0.0,
+      "default": 0.0
+    },
+    "numeric_summary": {
+      "leverage": {
+        "mean": 3.0259814754826966,
+        "std": 2.1954404502868883,
+        "min": 0.044530304757893,
+        "max": 15.090718589268524
+      },
+      "interest_coverage": {
+        "mean": 6.436160801200708,
+        "std": 3.324568602623013,
+        "min": 0.7595030393709361,
+        "max": 25.237108232761507
+      },
+      "current_ratio": {
+        "mean": 1.6252589830894617,
+        "std": 0.511844289098912,
+        "min": 0.2,
+        "max": 3.2040804569582475
+      },
+      "log_assets": {
+        "mean": 15.946600182043102,
+        "std": 1.474938614291355,
+        "min": 11.40569781523854,
+        "max": 20.940781162552224
+      },
+      "profit_margin": {
+        "mean": 0.08054760260132177,
+        "std": 0.06030173587929663,
+        "min": -0.1317525971814242,
+        "max": 0.3215494425636359
+      }
+    },
+    "target_summary": {
+      "classes": {
+        "0": 1119,
+        "1": 81
+      },
+      "positive_rate": 0.0675
+    },
+    "top_correlations": [
+      {
+        "feature": "leverage",
+        "corr": 0.3750991807493465
+      },
+      {
+        "feature": "interest_coverage",
+        "corr": -0.14415920597136642
+      },
+      {
+        "feature": "log_assets",
+        "corr": -0.09718941393810934
+      },
+      {
+        "feature": "current_ratio",
+        "corr": -0.0612185340421817
+      },
+      {
+        "feature": "profit_margin",
+        "corr": -0.007456905347997033
+      }
+    ],
+    "leakage_suspects": [],
+    "recommended_exclusions": [],
+    "column_decisions": [
+      {
+        "column": "vintage",
+        "decision": "keep",
+        "reason": "Not recommended as a model input, and it is already outside the feature list. It is kept in the dataset only because the out-of-time vintage split needs it, and excluding it would remove it from every downstream stage.",
+        "evidence": []
+      },
+      {
+        "column": "leverage",
+        "decision": "keep",
+        "reason": "This is the strongest single correlate of default, but at a plausible level well below the leakage threshold. As a balance-sheet ratio, it is normally known at origination.",
+        "evidence": [
+          "explore.corr.leverage",
+          "explore.leakage_suspects"
+        ]
+      }
+    ],
+    "questions": [
+      {
+        "id": "data-942fb1",
+        "question": "What is the default definition (for example 90+ DPD, nonaccrual, bankruptcy or charge-off), and over what horizon is it measured (for example 12 months from origination)?",
+        "category": "data",
+        "source": "agent",
+        "design_field": null,
+        "reentry": "explore"
+      },
+      {
+        "id": "data-5bb71a",
+        "question": "Is the score used at origination or at a periodic surveillance snapshot? Are the financial ratios taken from the statement available at that date, rather than one spread afterwards?",
+        "category": "data",
+        "source": "agent",
+        "design_field": null,
+        "reentry": "explore"
+      },
+      {
+        "id": "data-15b046",
+        "question": "Are the most recent vintages fully seasoned for the default horizon, or are they right-censored?",
+        "category": "data",
+        "source": "agent",
+        "design_field": null,
+        "reentry": "explore"
+      },
+      {
+        "id": "data-e86088",
+        "question": "Which segment does the model cover (for example middle market or small business), and should sector be modeled as-is or grouped?",
+        "category": "data",
+        "source": "agent",
+        "design_field": null,
+        "reentry": "explore"
+      },
+      {
+        "id": "data-540f46",
+        "question": "Are leverage and interest_coverage defined in the usual way (Debt/EBITDA and EBIT/interest), and is profit_margin stated as a fraction or as a percentage?",
+        "category": "data",
+        "source": "agent",
+        "design_field": null,
+        "reentry": "explore"
+      }
+    ],
+    "recommendation": {
+      "agent": "data_analyst",
+      "call_id": "20260929-223256_data_analyst_a1_d68b",
+      "attempts": 1,
+      "provider": "claude_cli",
+      "model": "opus",
+      "kind": "claude_cli",
+      "output": {
+        "summary": "The profile shows no leakage suspects, no fields with heavy missing data and no constant features. All six candidate features (leverage, interest_coverage, current_ratio, log_assets, profit_margin and sector) look like standard origination financials, so I recommend keeping them all. The main concerns are a small number of default events and a design that has not been specified: the horizon, default definition, use case and segment are all blank and need sponsor confirmation. Vintage should stay in the dataset for the out-of-time split but should not be used as a model input.",
+        "uncertainties": [
+          "The profile gives no distribution statistics (min, max or percentiles), so I could not check the ratios against their sanity ranges or look for spreading or unit errors.",
+          "The timing of the financial fields relative to the prediction date is not documented, so the absence of leakage rests only on correlation levels and column names.",
+          "The default count is small, so any conclusion about individual features, sector levels or vintage stability rests on thin evidence."
+        ],
+        "responses_to_challenges": [],
+        "column_decisions": [
+          {
+            "column": "vintage",
+            "decision": "keep",
+            "reason": "Not recommended as a model input, and it is already outside the feature list. It is kept in the dataset only because the out-of-time vintage split needs it, and excluding it would remove it from every downstream stage.",
+            "evidence": []
+          },
+          {
+            "column": "leverage",
+            "decision": "keep",
+            "reason": "This is the strongest single correlate of default, but at a plausible level well below the leakage threshold. As a balance-sheet ratio, it is normally known at origination.",
+            "evidence": [
+              "explore.corr.leverage",
+              "explore.leakage_suspects"
+            ]
+          }
+        ],
+        "data_quality": [
+          {
+            "statement": "The observed default rate is above the typical 1-5% annual range for commercial portfolios, though below the level that would suggest a mislabeled flag. It should be reconciled with the sponsor's default definition and horizon.",
+            "evidence": [
+              "explore.positive_rate"
+            ],
+            "confidence": "medium"
+          },
+          {
+            "statement": "The sample has few default events relative to 6 features, including a categorical sector field. Estimates by sector level and by vintage will be noisy, and the out-of-time holdout will reduce the events further.",
+            "evidence": [
+              "explore.n_rows",
+              "explore.positive_rate",
+              "explore.n_features"
+            ],
+            "confidence": "high"
+          },
+          {
+            "statement": "The engine flagged no feature as a leakage suspect. All absolute correlations with default are modest, the largest being leverage.",
+            "evidence": [
+              "explore.leakage_suspects",
+              "explore.corr.leverage",
+              "explore.corr.interest_coverage"
+            ],
+            "confidence": "high"
+          },
+          {
+            "statement": "Profit margin has almost no linear correlation with default. It may be weak on its own, have a non-linear relationship, or contain spreading or unit errors, so it is worth checking against the -35% to +45% sanity range.",
+            "evidence": [
+              "explore.corr.profit_margin"
+            ],
+            "confidence": "low"
+          }
+        ],
+        "questions_for_sponsor": [
+          "What is the default definition (for example 90+ DPD, nonaccrual, bankruptcy or charge-off), and over what horizon is it measured (for example 12 months from origination)?",
+          "Is the score used at origination or at a periodic surveillance snapshot? Are the financial ratios taken from the statement available at that date, rather than one spread afterwards?",
+          "Are the most recent vintages fully seasoned for the default horizon, or are they right-censored?",
+          "Which segment does the model cover (for example middle market or small business), and should sector be modeled as-is or grouped?",
+          "Are leverage and interest_coverage defined in the usual way (Debt/EBITDA and EBIT/interest), and is profit_margin stated as a fraction or as a percentage?"
+        ]
+      }
+    }
+  },
+  "findings": [],
+  "artifacts": [
+    {
+      "name": "profile",
+      "kind": "json",
+      "path": "stages/explore/profile.json",
+      "description": ""
+    }
+  ],
+  "started_at": "2026-09-30T02:32:56.958900+00:00",
+  "ended_at": "2026-09-30T02:33:13.747076+00:00",
+  "duration_s": 16.811707,
+  "error": null
+}

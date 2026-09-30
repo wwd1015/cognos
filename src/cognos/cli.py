@@ -485,7 +485,18 @@ def quiet_numerics() -> None:
     warnings.filterwarnings("ignore", module=r"statsmodels(\..*)?")
 
 
+def utf8_console() -> None:
+    """Entry points only: Windows consoles and redirected pipes default to a legacy codepage that
+    cannot print the ≈ / ↔ / Δ in stage summaries; never crash on output."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    utf8_console()
     quiet_numerics()
     args = build_parser().parse_args(argv)
     return args.func(args)

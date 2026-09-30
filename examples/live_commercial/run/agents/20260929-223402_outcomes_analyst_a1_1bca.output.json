@@ -1,0 +1,78 @@
+{
+ "raw": {
+  "summary": "The ridge-logit champion separates defaulters from non-defaulters well on the out-of-time sample, and its score distribution is stable. Calibration is the weak point: the model under-predicts risk in the riskiest band and slightly over-predicts in the safest bands. I recommend conditional acceptance for rank-ordering, with recalibration before the PDs are used as levels (for pricing, capital or loss estimates). Discrimination sits above typical commercial ranges but below the leakage alarm level, and it rests on a small sample of 240 accounts.",
+  "discrimination": "Out-of-time Gini is 0.7549, AUC is 0.8774 and KS is 0.6265. Gini sits a little above the typical commercial range of 40-70% but below the 85-90% leakage alarm, and KS sits above its typical range. The out-of-time AUC is higher than the walk-forward CV mean of 0.8153 (standard deviation 0.0806), not lower as is usual. With 240 accounts and no leakage suspects, this most likely reflects sample noise rather than leakage.",
+  "calibration": "Expected calibration error is 0.0559. The bias runs in different directions across the range: the model under-predicts in the highest-risk band, where realized defaults are well above predicted PD, and over-predicts in the lowest bands, where no defaults occurred. This means the PD curve is too flat; it ranks risk correctly but understates how steep the risk is. Each band holds only 24 accounts, so band-level results are noisy, but the top-band gap is large enough to act on.",
+  "stability": "PSI is 0.0238, labelled stable (well below the 0.10 monitoring threshold). The score distribution has not shifted materially between development and out-of-time samples. Walk-forward fold scores vary widely (standard deviation 0.0806), which suggests performance is sensitive to the time period.",
+  "findings": [
+   {
+    "id": "F1",
+    "severity": "medium",
+    "category": "calibration",
+    "message": "Predicted PDs are too flat. The model under-predicts default risk in the highest-risk band and over-predicts in the lowest bands. Recalibrate (for example with a calibration intercept and slope) before the PDs are used as levels for pricing, capital or loss estimation.",
+    "evidence": [
+     "backtest.expected_calibration_error",
+     "model.n_holdout",
+     "backtest.evaluation_sample"
+    ]
+   },
+   {
+    "id": "F2",
+    "severity": "medium",
+    "category": "discrimination",
+    "message": "Out-of-time Gini and KS sit above typical commercial ranges, and out-of-time AUC is higher than the CV mean, where some degradation would be normal. Leakage screening found no suspects and Gini is below the alarm level, but the gain rests on 240 accounts and should be confirmed on another out-of-time cohort.",
+    "evidence": [
+     "backtest.gini",
+     "backtest.ks",
+     "backtest.auc",
+     "backtest.walk_forward_mean",
+     "explore.leakage_suspects",
+     "model.n_holdout"
+    ]
+   },
+   {
+    "id": "F3",
+    "severity": "low",
+    "category": "stability",
+    "message": "Performance varies widely across walk-forward folds. Ongoing monitoring should track AUC by cohort rather than rely on a single point estimate.",
+    "evidence": [
+     "backtest.walk_forward_std",
+     "backtest.walk_forward_mean"
+    ]
+   },
+   {
+    "id": "F4",
+    "severity": "low",
+    "category": "stability",
+    "message": "PSI shows no material shift in the score distribution between samples, so stability does not argue for recalibration.",
+    "evidence": [
+     "backtest.psi",
+     "backtest.psi_label"
+    ]
+   },
+   {
+    "id": "F5",
+    "severity": "medium",
+    "category": "design",
+    "message": "Use case, horizon and default definition are still undecided, with open design questions outstanding. Whether the calibration is acceptable depends on these choices. The sponsor should confirm them before calibration is signed off.",
+    "evidence": [
+     "ideate.n_open_questions",
+     "ideate.shape"
+    ]
+   }
+  ],
+  "uncertainties": [
+   "The evaluation sample is small (240 accounts, 24 per band), so there are few defaults per band; both the band-level calibration results and the higher-than-CV AUC could partly be sampling noise.",
+   "The newest out-of-time cohorts may be right-censored, which would depress realized default rates in the lower bands; the context does not show how much of the performance window each cohort has observed.",
+   "No portfolio or stress results were provided, so I could not assess how the calibration bias would flow into losses."
+  ],
+  "responses_to_challenges": []
+ },
+ "meta": {
+  "model": "opus",
+  "turns": 2,
+  "cost_usd": 0.0661338,
+  "input_tokens": 2,
+  "output_tokens": 2200
+ }
+}

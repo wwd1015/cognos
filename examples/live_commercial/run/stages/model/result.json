@@ -1,0 +1,506 @@
+{
+  "stage": "model",
+  "verdict": "PASS",
+  "summary": "Champion c6 ridge_logit(6f;C=0.1,random_state=42) (agent) | CV roc_auc=0.8153±0.0806 | holdout=0.8774 | tried 16 candidates | diagnostics 2/2 passed.",
+  "metrics": {
+    "cv_mean": 0.8152687091913611,
+    "cv_std": 0.08058444749500875,
+    "holdout_metric": 0.8774263120057513,
+    "n_candidates_tried": 16,
+    "champion": "ridge_logit",
+    "n_transforms": 0
+  },
+  "payload": {
+    "champion": {
+      "family": "ridge_logit",
+      "features": [
+        "leverage",
+        "interest_coverage",
+        "log_assets",
+        "current_ratio",
+        "profit_margin",
+        "sector"
+      ],
+      "hyperparams": {
+        "C": 0.1,
+        "random_state": 42
+      },
+      "description": "ridge_logit/top"
+    },
+    "champion_id": "c6",
+    "champion_label": "ridge_logit(6f;C=0.1,random_state=42)",
+    "champion_source": "agent",
+    "admissible_set": [
+      {
+        "id": "c6",
+        "label": "ridge_logit(6f;C=0.1,random_state=42)",
+        "family": "ridge_logit",
+        "n_features": 6,
+        "features": [
+          "leverage",
+          "interest_coverage",
+          "log_assets",
+          "current_ratio",
+          "profit_margin",
+          "sector"
+        ],
+        "cv_mean": 0.815269,
+        "cv_std": 0.080584,
+        "role": "candidate",
+        "interpretable": true,
+        "transforms": [],
+        "coefficient_signs": [
+          {
+            "feature": "leverage",
+            "sign": "+"
+          },
+          {
+            "feature": "interest_coverage",
+            "sign": "-"
+          },
+          {
+            "feature": "log_assets",
+            "sign": "-"
+          },
+          {
+            "feature": "current_ratio",
+            "sign": "-"
+          },
+          {
+            "feature": "profit_margin",
+            "sign": "+"
+          }
+        ],
+        "ratchet_champion": true
+      },
+      {
+        "id": "c3",
+        "label": "lasso_logit(6f;C=0.1,random_state=42)",
+        "family": "lasso_logit",
+        "n_features": 6,
+        "features": [
+          "leverage",
+          "interest_coverage",
+          "log_assets",
+          "current_ratio",
+          "profit_margin",
+          "sector"
+        ],
+        "cv_mean": 0.811452,
+        "cv_std": 0.09179,
+        "role": "candidate",
+        "interpretable": true,
+        "transforms": [],
+        "coefficient_signs": [
+          {
+            "feature": "leverage",
+            "sign": "+"
+          },
+          {
+            "feature": "interest_coverage",
+            "sign": "-"
+          },
+          {
+            "feature": "log_assets",
+            "sign": "-"
+          },
+          {
+            "feature": "current_ratio",
+            "sign": "-"
+          },
+          {
+            "feature": "profit_margin",
+            "sign": "+"
+          }
+        ],
+        "ratchet_champion": false
+      },
+      {
+        "id": "c7",
+        "label": "ridge_logit(6f;C=1.0,random_state=42)",
+        "family": "ridge_logit",
+        "n_features": 6,
+        "features": [
+          "leverage",
+          "interest_coverage",
+          "log_assets",
+          "current_ratio",
+          "profit_margin",
+          "sector"
+        ],
+        "cv_mean": 0.802913,
+        "cv_std": 0.07291,
+        "role": "candidate",
+        "interpretable": true,
+        "transforms": [],
+        "coefficient_signs": [
+          {
+            "feature": "leverage",
+            "sign": "+"
+          },
+          {
+            "feature": "interest_coverage",
+            "sign": "-"
+          },
+          {
+            "feature": "log_assets",
+            "sign": "-"
+          },
+          {
+            "feature": "current_ratio",
+            "sign": "-"
+          },
+          {
+            "feature": "profit_margin",
+            "sign": "+"
+          }
+        ],
+        "ratchet_champion": false
+      },
+      {
+        "id": "c4",
+        "label": "lasso_logit(6f;C=1.0,random_state=42)",
+        "family": "lasso_logit",
+        "n_features": 6,
+        "features": [
+          "leverage",
+          "interest_coverage",
+          "log_assets",
+          "current_ratio",
+          "profit_margin",
+          "sector"
+        ],
+        "cv_mean": 0.800603,
+        "cv_std": 0.074334,
+        "role": "candidate",
+        "interpretable": true,
+        "transforms": [],
+        "coefficient_signs": [
+          {
+            "feature": "leverage",
+            "sign": "+"
+          },
+          {
+            "feature": "interest_coverage",
+            "sign": "-"
+          },
+          {
+            "feature": "log_assets",
+            "sign": "-"
+          },
+          {
+            "feature": "current_ratio",
+            "sign": "-"
+          },
+          {
+            "feature": "profit_margin",
+            "sign": "+"
+          }
+        ],
+        "ratchet_champion": false
+      },
+      {
+        "id": "c8",
+        "label": "ridge_logit(6f;C=10.0,random_state=42)",
+        "family": "ridge_logit",
+        "n_features": 6,
+        "features": [
+          "leverage",
+          "interest_coverage",
+          "log_assets",
+          "current_ratio",
+          "profit_margin",
+          "sector"
+        ],
+        "cv_mean": 0.797589,
+        "cv_std": 0.068181,
+        "role": "candidate",
+        "interpretable": true,
+        "transforms": [],
+        "coefficient_signs": [
+          {
+            "feature": "leverage",
+            "sign": "+"
+          },
+          {
+            "feature": "interest_coverage",
+            "sign": "-"
+          },
+          {
+            "feature": "log_assets",
+            "sign": "-"
+          },
+          {
+            "feature": "current_ratio",
+            "sign": "-"
+          },
+          {
+            "feature": "profit_margin",
+            "sign": "+"
+          }
+        ],
+        "ratchet_champion": false
+      },
+      {
+        "id": "c5",
+        "label": "lasso_logit(6f;C=10.0,random_state=42)",
+        "family": "lasso_logit",
+        "n_features": 6,
+        "features": [
+          "leverage",
+          "interest_coverage",
+          "log_assets",
+          "current_ratio",
+          "profit_margin",
+          "sector"
+        ],
+        "cv_mean": 0.797187,
+        "cv_std": 0.068266,
+        "role": "candidate",
+        "interpretable": true,
+        "transforms": [],
+        "coefficient_signs": [
+          {
+            "feature": "leverage",
+            "sign": "+"
+          },
+          {
+            "feature": "interest_coverage",
+            "sign": "-"
+          },
+          {
+            "feature": "log_assets",
+            "sign": "-"
+          },
+          {
+            "feature": "current_ratio",
+            "sign": "-"
+          },
+          {
+            "feature": "profit_margin",
+            "sign": "+"
+          }
+        ],
+        "ratchet_champion": false
+      }
+    ],
+    "search_fingerprint": "1ca5a3213d6c641a",
+    "holdout_evaluations": 1,
+    "metric": "roc_auc",
+    "direction": "maximize",
+    "cv_mean": 0.8152687091913611,
+    "cv_std": 0.08058444749500875,
+    "holdout_metric": 0.8774263120057513,
+    "n_candidates_tried": 16,
+    "n_configs_for_deflation": 16,
+    "cv_fold_scores": [
+      0.7815168257157208,
+      0.8382722250125565,
+      0.683073832245103,
+      0.8473129080863887,
+      0.9261677548970366
+    ],
+    "oof_perf_path": "stages/model/oof_perf.npz",
+    "n_search_strategies": 16,
+    "coefficients": {
+      "const": -3.463208537640107,
+      "leverage": 0.9781444144278328,
+      "interest_coverage": -0.9807601259489952,
+      "log_assets": -0.3962993038819082,
+      "current_ratio": -0.37698621371284297,
+      "profit_margin": 0.08929499417694292,
+      "sector_industrials": -0.5136879830422452,
+      "sector_retail": -0.012207258959423217,
+      "sector_tech": -0.6663047903832409
+    },
+    "pvalues": {
+      "const": 1.395700516823388e-24,
+      "leverage": 4.800217826876972e-15,
+      "interest_coverage": 0.00002935221485080354,
+      "log_assets": 0.01224553193610489,
+      "current_ratio": 0.0188398002155011,
+      "profit_margin": 0.591448820370552,
+      "sector_industrials": 0.23580286426364372,
+      "sector_retail": 0.9760850590217487,
+      "sector_tech": 0.16678031710427665
+    },
+    "feature_importances": null,
+    "diagnostics": {
+      "tests": [
+        {
+          "name": "max_vif",
+          "category": "multicollinearity",
+          "statistic": 1.567313380437203,
+          "pvalue": null,
+          "passed": true,
+          "severity": "INFO",
+          "interpretation": "Max VIF=1.6 on 'sector_industrials'.",
+          "h0": "VIF < 10 (no severe multicollinearity)"
+        },
+        {
+          "name": "condition_number",
+          "category": "multicollinearity",
+          "statistic": 4.895003646136195,
+          "pvalue": null,
+          "passed": true,
+          "severity": "INFO",
+          "interpretation": "Design condition number=4.9.",
+          "h0": "condition number < 30"
+        }
+      ],
+      "n_run": 2,
+      "n_passed": 2,
+      "n_failed": 0,
+      "n_skipped": 0,
+      "max_failed_severity": "INFO",
+      "failed_tests": []
+    },
+    "challenger_benchmark": null,
+    "hazard": null,
+    "structural": null,
+    "migration": null,
+    "guided": null,
+    "transforms": [],
+    "base_features": [
+      "leverage",
+      "interest_coverage",
+      "log_assets",
+      "current_ratio",
+      "profit_margin",
+      "sector"
+    ],
+    "scorer_path": "<local>\\liveruns\\20260930T023256Z-4ca26a4\\models\\champion_scorer.joblib",
+    "raw_features": [
+      "leverage",
+      "interest_coverage",
+      "current_ratio",
+      "log_assets",
+      "profit_margin",
+      "sector"
+    ],
+    "is_classification": true,
+    "n_train": 960,
+    "n_holdout": 240,
+    "recommendation": {
+      "agent": "modeler",
+      "call_id": "20260929-223348_modeler_a1_3b7e",
+      "attempts": 1,
+      "provider": "claude_cli",
+      "model": "opus",
+      "kind": "claude_cli",
+      "output": {
+        "summary": "I recommend c6 (ridge logit, C=0.1) as champion. It has the best cross-validated AUC and is the current ratchet champion. It uses the same six features as every other admissible candidate, and all six candidates are interpretable. Four of its five signed coefficients match economic priors. Profit margin has the wrong sign (+) in every admissible candidate, so I raise it as an open issue for the gate rather than a reason to pick a different candidate.",
+        "uncertainties": [
+          "The data do not tell me whether the wrong sign on profit margin comes from collinearity, from mixing sectors, or from a real effect; I do not have pairwise feature correlations or sector-level results.",
+          "Regularized coefficients are point estimates without honest p-values, so I cannot say whether the profit margin coefficient is meaningfully different from zero.",
+          "The design fields (use case, horizon, default definition, segment) are blank, and these could change which features and target definition are appropriate."
+        ],
+        "responses_to_challenges": [],
+        "champion": "c6",
+        "rationale": "All six admissible candidates use the same features and show the same coefficient signs. The only real choice is the family and regularization strength. c6 has the highest cross-validated AUC, which falls in the normal range for a 12-month obligor PD model, and no leakage suspects were flagged (explore.leakage_suspects). Its stronger ridge penalty suits a sample with only 81 events. No admissible candidate has consistent signs on profit margin, so switching candidates would not fix that problem.",
+        "sign_checks": [
+          {
+            "feature": "leverage",
+            "expected": "+",
+            "observed": "+",
+            "assessment": "consistent"
+          },
+          {
+            "feature": "interest_coverage",
+            "expected": "-",
+            "observed": "-",
+            "assessment": "consistent"
+          },
+          {
+            "feature": "log_assets",
+            "expected": "-",
+            "observed": "-",
+            "assessment": "consistent"
+          },
+          {
+            "feature": "current_ratio",
+            "expected": "-",
+            "observed": "-",
+            "assessment": "consistent"
+          },
+          {
+            "feature": "profit_margin",
+            "expected": "-",
+            "observed": "+",
+            "assessment": "wrong_sign"
+          },
+          {
+            "feature": "sector",
+            "expected": "none",
+            "observed": "n/a",
+            "assessment": "no_prior"
+          }
+        ],
+        "concerns": [
+          {
+            "statement": "Profit margin has a positive coefficient on PD, the opposite of the economic prior. Its correlation with default on its own is essentially zero, so the sign is most likely caused by collinearity with interest coverage or leverage rather than a real effect. The next experiment should test the same model with profit margin removed.",
+            "evidence": [
+              "explore.corr.profit_margin",
+              "explore.corr.interest_coverage",
+              "explore.corr.leverage"
+            ],
+            "confidence": "medium"
+          },
+          {
+            "statement": "The model is fitted on few default events and about 13.5 events per variable. Fold-to-fold variation in cross-validated AUC is large compared with the gaps between candidates, so the ranking within the admissible set is not reliable.",
+            "evidence": [
+              "ideate.n_events",
+              "ideate.events_per_variable",
+              "explore.n_rows"
+            ],
+            "confidence": "high"
+          },
+          {
+            "statement": "The sponsor has not specified the use case, horizon, default definition or segment, and several design questions remain open. The champion may need to be revisited once these are decided.",
+            "evidence": [
+              "ideate.n_open_questions"
+            ],
+            "confidence": "high"
+          }
+        ]
+      }
+    }
+  },
+  "findings": [],
+  "artifacts": [
+    {
+      "name": "champion_scorer",
+      "kind": "model",
+      "path": "models\\champion_scorer.joblib",
+      "description": "Picklable scorer embedded by IMPACT / serving."
+    },
+    {
+      "name": "coefficients",
+      "kind": "json",
+      "path": "stages/model/coefficients.json",
+      "description": ""
+    },
+    {
+      "name": "diagnostics",
+      "kind": "json",
+      "path": "stages/model/diagnostics.json",
+      "description": ""
+    },
+    {
+      "name": "summary",
+      "kind": "json",
+      "path": "stages/model/summary.json",
+      "description": ""
+    },
+    {
+      "name": "oof_perf",
+      "kind": "json",
+      "path": "stages/model/oof_perf.npz",
+      "description": "Per-candidate OOF performance matrix for PBO."
+    }
+  ],
+  "started_at": "2026-09-30T02:34:02.244239+00:00",
+  "ended_at": "2026-09-30T02:34:02.247443+00:00",
+  "duration_s": 19.738853,
+  "error": null
+}

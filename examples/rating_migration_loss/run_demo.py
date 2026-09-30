@@ -259,4 +259,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    from cognos.cli import quiet_numerics, utf8_console
+
+    utf8_console()
+    quiet_numerics()
     main()

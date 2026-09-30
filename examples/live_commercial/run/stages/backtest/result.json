@@ -1,0 +1,252 @@
+{
+  "stage": "backtest",
+  "verdict": "WARN",
+  "summary": "Scored 240 rows via built-in scorer; OOS roc_auc=0.8774; Gini=0.755, KS=0.627, PSI=0.024 (stable).",
+  "metrics": {
+    "oos_metric": 0.8774263120057513,
+    "used_impact": false,
+    "gini": 0.7548526240115025,
+    "psi": 0.02380025076523046
+  },
+  "payload": {
+    "used_impact": false,
+    "impact_note": "IMPACT not installed; used built-in fallback scorer.",
+    "scored_rows": 240,
+    "evaluation_sample": "out_of_time",
+    "oos_metric": 0.8774263120057513,
+    "oos_metric_name": "roc_auc",
+    "outcomes_analysis": {
+      "gini": 0.7548526240115025,
+      "auc": 0.8774263120057513,
+      "ks": 0.6265276779295471,
+      "expected_calibration_error": 0.05588368830928309,
+      "calibration_table": [
+        {
+          "band": 0,
+          "n": 24,
+          "predicted": 0.005738663752307458,
+          "observed": 0.0
+        },
+        {
+          "band": 1,
+          "n": 24,
+          "predicted": 0.010976040771570978,
+          "observed": 0.0
+        },
+        {
+          "band": 2,
+          "n": 24,
+          "predicted": 0.016795597844491233,
+          "observed": 0.0
+        },
+        {
+          "band": 3,
+          "n": 24,
+          "predicted": 0.02179328328256827,
+          "observed": 0.08333333333333333
+        },
+        {
+          "band": 4,
+          "n": 24,
+          "predicted": 0.02848422176587392,
+          "observed": 0.041666666666666664
+        },
+        {
+          "band": 5,
+          "n": 24,
+          "predicted": 0.03690515989040765,
+          "observed": 0.0
+        },
+        {
+          "band": 6,
+          "n": 24,
+          "predicted": 0.048362038505252225,
+          "observed": 0.041666666666666664
+        },
+        {
+          "band": 7,
+          "n": 24,
+          "predicted": 0.06742336663362834,
+          "observed": 0.125
+        },
+        {
+          "band": 8,
+          "n": 24,
+          "predicted": 0.09930920671214993,
+          "observed": 0.16666666666666666
+        },
+        {
+          "band": 9,
+          "n": 24,
+          "predicted": 0.34293053927697814,
+          "observed": 0.625
+        }
+      ],
+      "psi": 0.02380025076523046,
+      "psi_label": "stable",
+      "n_scored": 240
+    },
+    "portfolio_analysis": null,
+    "stress_testing": null,
+    "walk_forward": {
+      "scheme": "out_of_time",
+      "fold_scores": [
+        0.7815168257157208,
+        0.8382722250125565,
+        0.683073832245103,
+        0.8473129080863887,
+        0.9261677548970366
+      ],
+      "mean": 0.8152687091913611,
+      "std": 0.08058444749500875
+    },
+    "trading": null,
+    "n_trials": 16,
+    "interpretation": {
+      "discrimination": "Out-of-time Gini is 0.7549, AUC is 0.8774 and KS is 0.6265. Gini sits a little above the typical commercial range of 40-70% but below the 85-90% leakage alarm, and KS sits above its typical range. The out-of-time AUC is higher than the walk-forward CV mean of 0.8153 (standard deviation 0.0806), not lower as is usual. With 240 accounts and no leakage suspects, this most likely reflects sample noise rather than leakage.",
+      "calibration": "Expected calibration error is 0.0559. The bias runs in different directions across the range: the model under-predicts in the highest-risk band, where realized defaults are well above predicted PD, and over-predicts in the lowest bands, where no defaults occurred. This means the PD curve is too flat; it ranks risk correctly but understates how steep the risk is. Each band holds only 24 accounts, so band-level results are noisy, but the top-band gap is large enough to act on.",
+      "stability": "PSI is 0.0238, labelled stable (well below the 0.10 monitoring threshold). The score distribution has not shifted materially between development and out-of-time samples. Walk-forward fold scores vary widely (standard deviation 0.0806), which suggests performance is sensitive to the time period."
+    },
+    "recommendation": {
+      "agent": "outcomes_analyst",
+      "call_id": "20260929-223402_outcomes_analyst_a1_1bca",
+      "attempts": 1,
+      "provider": "claude_cli",
+      "model": "opus",
+      "kind": "claude_cli",
+      "output": {
+        "summary": "The ridge-logit champion separates defaulters from non-defaulters well on the out-of-time sample, and its score distribution is stable. Calibration is the weak point: the model under-predicts risk in the riskiest band and slightly over-predicts in the safest bands. I recommend conditional acceptance for rank-ordering, with recalibration before the PDs are used as levels (for pricing, capital or loss estimates). Discrimination sits above typical commercial ranges but below the leakage alarm level, and it rests on a small sample of 240 accounts.",
+        "uncertainties": [
+          "The evaluation sample is small (240 accounts, 24 per band), so there are few defaults per band; both the band-level calibration results and the higher-than-CV AUC could partly be sampling noise.",
+          "The newest out-of-time cohorts may be right-censored, which would depress realized default rates in the lower bands; the context does not show how much of the performance window each cohort has observed.",
+          "No portfolio or stress results were provided, so I could not assess how the calibration bias would flow into losses."
+        ],
+        "responses_to_challenges": [],
+        "discrimination": "Out-of-time Gini is 0.7549, AUC is 0.8774 and KS is 0.6265. Gini sits a little above the typical commercial range of 40-70% but below the 85-90% leakage alarm, and KS sits above its typical range. The out-of-time AUC is higher than the walk-forward CV mean of 0.8153 (standard deviation 0.0806), not lower as is usual. With 240 accounts and no leakage suspects, this most likely reflects sample noise rather than leakage.",
+        "calibration": "Expected calibration error is 0.0559. The bias runs in different directions across the range: the model under-predicts in the highest-risk band, where realized defaults are well above predicted PD, and over-predicts in the lowest bands, where no defaults occurred. This means the PD curve is too flat; it ranks risk correctly but understates how steep the risk is. Each band holds only 24 accounts, so band-level results are noisy, but the top-band gap is large enough to act on.",
+        "stability": "PSI is 0.0238, labelled stable (well below the 0.10 monitoring threshold). The score distribution has not shifted materially between development and out-of-time samples. Walk-forward fold scores vary widely (standard deviation 0.0806), which suggests performance is sensitive to the time period.",
+        "findings": [
+          {
+            "id": "F1",
+            "severity": "medium",
+            "category": "calibration",
+            "message": "Predicted PDs are too flat. The model under-predicts default risk in the highest-risk band and over-predicts in the lowest bands. Recalibrate (for example with a calibration intercept and slope) before the PDs are used as levels for pricing, capital or loss estimation.",
+            "evidence": [
+              "backtest.expected_calibration_error",
+              "model.n_holdout",
+              "backtest.evaluation_sample"
+            ]
+          },
+          {
+            "id": "F2",
+            "severity": "medium",
+            "category": "discrimination",
+            "message": "Out-of-time Gini and KS sit above typical commercial ranges, and out-of-time AUC is higher than the CV mean, where some degradation would be normal. Leakage screening found no suspects and Gini is below the alarm level, but the gain rests on 240 accounts and should be confirmed on another out-of-time cohort.",
+            "evidence": [
+              "backtest.gini",
+              "backtest.ks",
+              "backtest.auc",
+              "backtest.walk_forward_mean",
+              "explore.leakage_suspects",
+              "model.n_holdout"
+            ]
+          },
+          {
+            "id": "F3",
+            "severity": "low",
+            "category": "stability",
+            "message": "Performance varies widely across walk-forward folds. Ongoing monitoring should track AUC by cohort rather than rely on a single point estimate.",
+            "evidence": [
+              "backtest.walk_forward_std",
+              "backtest.walk_forward_mean"
+            ]
+          },
+          {
+            "id": "F4",
+            "severity": "low",
+            "category": "stability",
+            "message": "PSI shows no material shift in the score distribution between samples, so stability does not argue for recalibration.",
+            "evidence": [
+              "backtest.psi",
+              "backtest.psi_label"
+            ]
+          },
+          {
+            "id": "F5",
+            "severity": "medium",
+            "category": "design",
+            "message": "Use case, horizon and default definition are still undecided, with open design questions outstanding. Whether the calibration is acceptable depends on these choices. The sponsor should confirm them before calibration is signed off.",
+            "evidence": [
+              "ideate.n_open_questions",
+              "ideate.shape"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "findings": [
+    {
+      "id": "oa-F1",
+      "severity": "MEDIUM",
+      "category": "calibration",
+      "message": "Predicted PDs are too flat. The model under-predicts default risk in the highest-risk band and over-predicts in the lowest bands. Recalibrate (for example with a calibration intercept and slope) before the PDs are used as levels for pricing, capital or loss estimation.",
+      "confidence": 1.0,
+      "location": "outcomes_analyst",
+      "suggestion": "Evidence: backtest.expected_calibration_error, model.n_holdout, backtest.evaluation_sample",
+      "reviewed": false
+    },
+    {
+      "id": "oa-F2",
+      "severity": "MEDIUM",
+      "category": "discrimination",
+      "message": "Out-of-time Gini and KS sit above typical commercial ranges, and out-of-time AUC is higher than the CV mean, where some degradation would be normal. Leakage screening found no suspects and Gini is below the alarm level, but the gain rests on 240 accounts and should be confirmed on another out-of-time cohort.",
+      "confidence": 1.0,
+      "location": "outcomes_analyst",
+      "suggestion": "Evidence: backtest.gini, backtest.ks, backtest.auc, backtest.walk_forward_mean, explore.leakage_suspects, model.n_holdout",
+      "reviewed": false
+    },
+    {
+      "id": "oa-F3",
+      "severity": "LOW",
+      "category": "stability",
+      "message": "Performance varies widely across walk-forward folds. Ongoing monitoring should track AUC by cohort rather than rely on a single point estimate.",
+      "confidence": 1.0,
+      "location": "outcomes_analyst",
+      "suggestion": "Evidence: backtest.walk_forward_std, backtest.walk_forward_mean",
+      "reviewed": false
+    },
+    {
+      "id": "oa-F4",
+      "severity": "LOW",
+      "category": "stability",
+      "message": "PSI shows no material shift in the score distribution between samples, so stability does not argue for recalibration.",
+      "confidence": 1.0,
+      "location": "outcomes_analyst",
+      "suggestion": "Evidence: backtest.psi, backtest.psi_label",
+      "reviewed": false
+    },
+    {
+      "id": "oa-F5",
+      "severity": "MEDIUM",
+      "category": "design",
+      "message": "Use case, horizon and default definition are still undecided, with open design questions outstanding. Whether the calibration is acceptable depends on these choices. The sponsor should confirm them before calibration is signed off.",
+      "confidence": 1.0,
+      "location": "outcomes_analyst",
+      "suggestion": "Evidence: ideate.n_open_questions, ideate.shape",
+      "reviewed": false
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "backtest",
+      "kind": "json",
+      "path": "stages/backtest/backtest.json",
+      "description": ""
+    }
+  ],
+  "started_at": "2026-09-30T02:34:02.298589+00:00",
+  "ended_at": "2026-09-30T02:34:24.493385+00:00",
+  "duration_s": 22.194816,
+  "error": null
+}

@@ -1,5 +1,5 @@
 === COGNOS RUN SUMMARY ===
-run_id: 20260712T012307Z-ddd448e
+run_id: 20260930T024000Z-465ebd4
 project: corporate_migration_loss
 mode: autonomous
 final_verdict: WARN

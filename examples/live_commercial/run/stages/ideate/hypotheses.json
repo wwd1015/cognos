@@ -1,0 +1,631 @@
+{
+  "task": "classification",
+  "families": [
+    "logit",
+    "probit",
+    "cloglog",
+    "lasso_logit",
+    "ridge_logit",
+    "gradient_boosting",
+    "random_forest"
+  ],
+  "search_budget": 24,
+  "data_structure": {
+    "shape": "panel",
+    "datetime_col": "vintage",
+    "n_rows": 1200,
+    "n_features": 6,
+    "n_numeric": 5,
+    "n_categorical": 1,
+    "leakage_suspects": [],
+    "n_events": 81,
+    "event_rate": 0.0675,
+    "events_per_variable": 13.5
+  },
+  "clean_top_features": [
+    "leverage",
+    "interest_coverage",
+    "log_assets",
+    "current_ratio",
+    "profit_margin"
+  ],
+  "framework_assessment": [
+    {
+      "framework": "reduced_form_pd",
+      "label": "Reduced-form PD (obligor scorecard / GLM)",
+      "applicable": true,
+      "role": "primary",
+      "reason": "Binary outcome with obligor-level financial and facility covariates \u2014 the standard framework for commercial PD at origination or surveillance.",
+      "engine_families": [
+        "logit",
+        "ridge_logit",
+        "lasso_logit"
+      ],
+      "reference": "Altman (1968); Ohlson (1980); Basel IRB PD; SR 11-7"
+    },
+    {
+      "framework": "discrete_time_hazard",
+      "label": "Discrete-time hazard (survival)",
+      "applicable": "partial",
+      "role": "candidate",
+      "reason": "Time-indexed cohorts present \u2014 a period-indexed logit reads as a discrete-time hazard; set data.event_time_col (default period per obligor) to unlock the full hazard families and PD term structure.",
+      "engine_families": [
+        "logit"
+      ],
+      "reference": "Shumway (2001) hazard bankruptcy model"
+    },
+    {
+      "framework": "structural_merton",
+      "label": "Structural (Merton distance-to-default)",
+      "applicable": false,
+      "role": "rejected",
+      "reason": "Requires traded-market observables (equity value/volatility, liability structure) to compute distance-to-default; none present \u2014 typical for private middle-market obligors.",
+      "engine_families": [],
+      "reference": "Merton (1974); KMV/Moody's EDF"
+    },
+    {
+      "framework": "transition_matrix",
+      "label": "Rating-transition matrix (migration)",
+      "applicable": false,
+      "role": "rejected",
+      "reason": "Requires a rating history (grade at successive snapshots, e.g. an internal grade or agency rating panel); none present.",
+      "engine_families": [],
+      "reference": "CreditMetrics (1997); S&P CreditPro rating-migration practice"
+    },
+    {
+      "framework": "ml_challenger",
+      "label": "Machine-learning challenger (trees/boosting)",
+      "applicable": true,
+      "role": "challenger",
+      "reason": "Interpretability is required for the deployed model, so nonlinear learners serve as challenger benchmarks quantifying the predictive ceiling.",
+      "engine_families": [
+        "gradient_boosting",
+        "random_forest"
+      ],
+      "reference": "champion\u2013challenger practice; SR 11-7 benchmarking"
+    }
+  ],
+  "framework_choices": [
+    {
+      "framework": "reduced_form_pd",
+      "decision": "primary",
+      "reason": "The obligors are private and the outcome is a binary default flag, with financial ratios and sector as covariates. A GLM scorecard is the standard, interpretable framework for this, and it meets the interpretability requirement."
+    },
+    {
+      "framework": "discrete_time_hazard",
+      "decision": "candidate",
+      "reason": "The data is indexed by vintage, so a logit or cloglog on this panel reads as a discrete-time hazard (Shumway 2001). The full hazard families and a PD term structure need data.event_time_col to be set, which matters if the use case turns out to be CECL or IFRS 9."
+    },
+    {
+      "framework": "structural_merton",
+      "decision": "rejected",
+      "reason": "There are no traded-market observables, such as equity value, equity volatility or liability structure, so distance-to-default cannot be computed for these private obligors."
+    },
+    {
+      "framework": "transition_matrix",
+      "decision": "rejected",
+      "reason": "The data holds no internal or agency rating history across successive snapshots, so migration matrices cannot be estimated."
+    },
+    {
+      "framework": "ml_challenger",
+      "decision": "challenger",
+      "reason": "Interpretability is required, so random forest and gradient boosting serve only as benchmarks. They measure the predictive ceiling and the price paid for interpretability."
+    }
+  ],
+  "fittable_families": [
+    "logit",
+    "probit",
+    "cloglog",
+    "ridge_logit",
+    "lasso_logit",
+    "random_forest",
+    "gradient_boosting"
+  ],
+  "open_questions": [
+    {
+      "id": "design-use_case",
+      "question": "What decision will the model support (origination underwriting, portfolio surveillance, CECL/IFRS 9, IRB, stress testing)? The use case fixes the target definition, horizon, and documentation depth.",
+      "source": "design-brief"
+    },
+    {
+      "id": "design-horizon",
+      "question": "What outcome window defines the target (e.g. 12-month default)? The window must match how the target column was labelled.",
+      "source": "design-brief"
+    },
+    {
+      "id": "design-default_definition",
+      "question": "What event definition labels 'default' (e.g. 90+ DPD, nonaccrual, bankruptcy)? Validation re-derives risk from this.",
+      "source": "design-brief"
+    },
+    {
+      "id": "design-segment",
+      "question": "What portfolio segment does this sample represent (C&I, CRE, small business\u2026)? Pooling heterogeneous segments biases coefficients.",
+      "source": "design-brief"
+    },
+    {
+      "id": "agent-056fd5",
+      "question": "What decision will the model support: origination underwriting, portfolio surveillance, CECL or IFRS 9, IRB, or stress testing?",
+      "source": "agent",
+      "category": "design",
+      "design_field": "use_case"
+    },
+    {
+      "id": "agent-dd7c11",
+      "question": "What outcome window was used to label the default flag (for example, default within 12 months of the vintage date)?",
+      "source": "agent",
+      "category": "design",
+      "design_field": "horizon"
+    },
+    {
+      "id": "agent-4ad9ed",
+      "question": "What event defines default: 90+ days past due, nonaccrual, charge-off, or bankruptcy?",
+      "source": "agent",
+      "category": "design",
+      "design_field": "default_definition"
+    },
+    {
+      "id": "agent-26bc9c",
+      "question": "Which portfolio segment does this sample represent (C&I, CRE, small business), and should sectors be pooled or modeled separately?",
+      "source": "agent",
+      "category": "design",
+      "design_field": "segment"
+    },
+    {
+      "id": "agent-35ca8e",
+      "question": "Can an event-time or observation-period column per obligor be supplied?",
+      "source": "agent",
+      "category": "data",
+      "design_field": null
+    }
+  ],
+  "questions": [
+    {
+      "id": "design-use_case",
+      "question": "What decision will the model support (origination underwriting, portfolio surveillance, CECL/IFRS 9, IRB, stress testing)? The use case fixes the target definition, horizon, and documentation depth.",
+      "category": "design",
+      "source": "design-brief",
+      "design_field": "use_case",
+      "reentry": "ideate"
+    },
+    {
+      "id": "design-horizon",
+      "question": "What outcome window defines the target (e.g. 12-month default)? The window must match how the target column was labelled.",
+      "category": "design",
+      "source": "design-brief",
+      "design_field": "horizon",
+      "reentry": "ideate"
+    },
+    {
+      "id": "design-default_definition",
+      "question": "What event definition labels 'default' (e.g. 90+ DPD, nonaccrual, bankruptcy)? Validation re-derives risk from this.",
+      "category": "design",
+      "source": "design-brief",
+      "design_field": "default_definition",
+      "reentry": "ideate"
+    },
+    {
+      "id": "design-segment",
+      "question": "What portfolio segment does this sample represent (C&I, CRE, small business\u2026)? Pooling heterogeneous segments biases coefficients.",
+      "category": "design",
+      "source": "design-brief",
+      "design_field": "segment",
+      "reentry": "ideate"
+    },
+    {
+      "id": "agent-056fd5",
+      "question": "What decision will the model support: origination underwriting, portfolio surveillance, CECL or IFRS 9, IRB, or stress testing?",
+      "category": "design",
+      "source": "agent",
+      "design_field": "use_case",
+      "reentry": "ideate"
+    },
+    {
+      "id": "agent-dd7c11",
+      "question": "What outcome window was used to label the default flag (for example, default within 12 months of the vintage date)?",
+      "category": "design",
+      "source": "agent",
+      "design_field": "horizon",
+      "reentry": "ideate"
+    },
+    {
+      "id": "agent-4ad9ed",
+      "question": "What event defines default: 90+ days past due, nonaccrual, charge-off, or bankruptcy?",
+      "category": "design",
+      "source": "agent",
+      "design_field": "default_definition",
+      "reentry": "ideate"
+    },
+    {
+      "id": "agent-26bc9c",
+      "question": "Which portfolio segment does this sample represent (C&I, CRE, small business), and should sectors be pooled or modeled separately?",
+      "category": "design",
+      "source": "agent",
+      "design_field": "segment",
+      "reentry": "ideate"
+    },
+    {
+      "id": "agent-35ca8e",
+      "question": "Can an event-time or observation-period column per obligor be supplied?",
+      "category": "data",
+      "source": "agent",
+      "design_field": null,
+      "reentry": "ideate"
+    }
+  ],
+  "design": {
+    "use_case": "",
+    "horizon": "",
+    "default_definition": "",
+    "segment": "",
+    "interpretability": "required",
+    "notes": ""
+  },
+  "hypotheses": [
+    {
+      "id": "h1",
+      "family": "logit",
+      "feature_strategy": "top",
+      "framework": "reduced_form_pd",
+      "role": "candidate",
+      "interpretable": true,
+      "priority": 1.0,
+      "source": "agent",
+      "rationale": "This is the most defensible baseline: a parsimonious logit on the clean top predictors, with leverage the strongest univariate signal (explore.corr.leverage). With 81 events (ideate.n_events), a parsimonious set keeps the events per parameter comfortable."
+    },
+    {
+      "id": "h2",
+      "family": "cloglog",
+      "feature_strategy": "top",
+      "framework": "reduced_form_pd",
+      "role": "candidate",
+      "interpretable": true,
+      "priority": 0.97,
+      "source": "agent",
+      "rationale": "The cloglog link is the grouped-time proportional-hazards link, so it fits the vintage panel structure and the hazard interpretation."
+    },
+    {
+      "id": "h3",
+      "family": "probit",
+      "feature_strategy": "top",
+      "framework": "reduced_form_pd",
+      "role": "candidate",
+      "interpretable": true,
+      "priority": 0.95,
+      "source": "agent",
+      "rationale": "This checks whether the choice of link changes the model; the coefficients and ranking should closely match the logit."
+    },
+    {
+      "id": "h4",
+      "family": "logit",
+      "feature_strategy": "all",
+      "framework": "reduced_form_pd",
+      "role": "candidate",
+      "interpretable": true,
+      "priority": 0.92,
+      "source": "agent",
+      "rationale": "This adds sector to the numeric ratios to test for segment effects. The sector dummies use up degrees of freedom, and events per variable is 13.5 before expansion (ideate.events_per_variable)."
+    },
+    {
+      "id": "h5",
+      "family": "cloglog",
+      "feature_strategy": "all",
+      "framework": "reduced_form_pd",
+      "role": "candidate",
+      "interpretable": true,
+      "priority": 0.88,
+      "source": "agent",
+      "rationale": "This is the hazard-link version of the full-feature specification, including sector."
+    },
+    {
+      "id": "h6",
+      "family": "probit",
+      "feature_strategy": "all",
+      "framework": "reduced_form_pd",
+      "role": "candidate",
+      "interpretable": true,
+      "priority": 0.86,
+      "source": "agent",
+      "rationale": "This is the link-sensitivity check for the full-feature specification."
+    },
+    {
+      "id": "h7",
+      "family": "lasso_logit",
+      "feature_strategy": "all",
+      "framework": "reduced_form_pd",
+      "role": "challenger",
+      "interpretable": true,
+      "priority": 0.84,
+      "source": "agent",
+      "rationale": "The lasso does data-driven selection across all features, including the sector levels, and so guards against overfitting at a modest event count. Its coefficients are shrunk and biased, so it serves as a challenger."
+    },
+    {
+      "id": "h8",
+      "family": "ridge_logit",
+      "feature_strategy": "all",
+      "framework": "reduced_form_pd",
+      "role": "challenger",
+      "interpretable": true,
+      "priority": 0.8,
+      "source": "agent",
+      "rationale": "The ridge penalty stabilizes coefficients if the liquidity, coverage and margin ratios are collinear. The shrinkage bias is why it is a challenger rather than the champion."
+    },
+    {
+      "id": "h9",
+      "family": "lasso_logit",
+      "feature_strategy": "top",
+      "framework": "reduced_form_pd",
+      "role": "challenger",
+      "interpretable": true,
+      "priority": 0.76,
+      "source": "agent",
+      "rationale": "This checks whether the weak predictors, such as profit_margin (explore.corr.profit_margin), are dropped under a penalty."
+    },
+    {
+      "id": "h10",
+      "family": "ridge_logit",
+      "feature_strategy": "top",
+      "framework": "reduced_form_pd",
+      "role": "challenger",
+      "interpretable": true,
+      "priority": 0.72,
+      "source": "agent",
+      "rationale": "This is a shrinkage-stability check on the parsimonious feature set."
+    },
+    {
+      "id": "h11",
+      "family": "gradient_boosting",
+      "feature_strategy": "all",
+      "framework": "ml_challenger",
+      "role": "challenger",
+      "interpretable": false,
+      "priority": 0.7,
+      "source": "agent",
+      "rationale": "This is the nonlinear predictive-ceiling benchmark, and it quantifies the AUC gap that interpretability costs."
+    },
+    {
+      "id": "h12",
+      "family": "random_forest",
+      "feature_strategy": "all",
+      "framework": "ml_challenger",
+      "role": "challenger",
+      "interpretable": false,
+      "priority": 0.66,
+      "source": "agent",
+      "rationale": "This is a second nonlinear benchmark, which checks that the ceiling estimate does not depend on one learner."
+    },
+    {
+      "id": "h13",
+      "family": "gradient_boosting",
+      "feature_strategy": "top",
+      "framework": "ml_challenger",
+      "role": "challenger",
+      "interpretable": false,
+      "priority": 0.6,
+      "source": "agent",
+      "rationale": "This is the ceiling on the parsimonious feature set, and it shows how much nonlinearity is left in the core ratios."
+    },
+    {
+      "id": "h14",
+      "family": "random_forest",
+      "feature_strategy": "top",
+      "framework": "ml_challenger",
+      "role": "challenger",
+      "interpretable": false,
+      "priority": 0.56,
+      "source": "agent",
+      "rationale": "This is the random forest ceiling on the parsimonious feature set."
+    }
+  ],
+  "proposed_transforms": [
+    {
+      "name": "log_interest_coverage",
+      "expr": "np.sign(interest_coverage) * np.log1p(np.abs(interest_coverage))",
+      "rationale": "Interest coverage is usually heavy-tailed and can be negative. A signed log compresses the extremes and keeps the monotonic relationship with risk, which should be negative."
+    },
+    {
+      "name": "leverage_capped",
+      "expr": "np.clip(leverage, 0, 5)",
+      "rationale": "This caps extreme leverage values so that outliers do not drive the logit coefficient. The expected sign stays positive."
+    },
+    {
+      "name": "log_current_ratio",
+      "expr": "np.log1p(np.maximum(current_ratio, 0))",
+      "rationale": "The current ratio is right-skewed, and a log transform linearizes its effect on the log-odds of default."
+    }
+  ],
+  "notes": "7 model families x feature strategies = 14 hypotheses. Strongest clean signals: leverage, interest_coverage, log_assets, current_ratio, profit_margin. Design Lead: I recommend a reduced-form PD scorecard as the primary framework, estimated with binary GLMs (logit, probit, cloglog), because the obligors are private and the data has a binary default flag. Because the data is a vintage panel, the logit and cloglog specifications can also be read as discrete-time hazard models; the full hazard framework needs an event-time column before it can be used. Regularized logits and tree ensembles are included as challengers: the tree models show the predictive ceiling, and interpretability is required for the deployed model. Use case, horizon, default definition and segment are all blank, so the sponsor must settle them before the design can be finalized.",
+  "recommendation": {
+    "agent": "design_lead",
+    "call_id": "20260929-223313_design_lead_a1_44e3",
+    "attempts": 1,
+    "provider": "claude_cli",
+    "model": "opus",
+    "kind": "claude_cli",
+    "output": {
+      "summary": "I recommend a reduced-form PD scorecard as the primary framework, estimated with binary GLMs (logit, probit, cloglog), because the obligors are private and the data has a binary default flag. Because the data is a vintage panel, the logit and cloglog specifications can also be read as discrete-time hazard models; the full hazard framework needs an event-time column before it can be used. Regularized logits and tree ensembles are included as challengers: the tree models show the predictive ceiling, and interpretability is required for the deployed model. Use case, horizon, default definition and segment are all blank, so the sponsor must settle them before the design can be finalized.",
+      "uncertainties": [
+        "There are only 81 events (ideate.n_events), so specifications that expand sector into dummies may overfit, and coefficient estimates may be imprecise.",
+        "The candidate slate is ordered on the assumption of a single-horizon PD use case. If the sponsor chooses CECL or IFRS 9, the hazard framework should move to primary.",
+        "The ranges of the ratios have not been confirmed in the context, so the cap on leverage and the log transforms rest on assumed typical distributions; the engine will reject them if they fail.",
+        "profit_margin has a near-zero univariate correlation with default (explore.corr.profit_margin), so its multivariate sign may be unstable or run against the economic prior."
+      ],
+      "responses_to_challenges": [],
+      "frameworks": [
+        {
+          "framework": "reduced_form_pd",
+          "decision": "primary",
+          "reason": "The obligors are private and the outcome is a binary default flag, with financial ratios and sector as covariates. A GLM scorecard is the standard, interpretable framework for this, and it meets the interpretability requirement."
+        },
+        {
+          "framework": "discrete_time_hazard",
+          "decision": "candidate",
+          "reason": "The data is indexed by vintage, so a logit or cloglog on this panel reads as a discrete-time hazard (Shumway 2001). The full hazard families and a PD term structure need data.event_time_col to be set, which matters if the use case turns out to be CECL or IFRS 9."
+        },
+        {
+          "framework": "structural_merton",
+          "decision": "rejected",
+          "reason": "There are no traded-market observables, such as equity value, equity volatility or liability structure, so distance-to-default cannot be computed for these private obligors."
+        },
+        {
+          "framework": "transition_matrix",
+          "decision": "rejected",
+          "reason": "The data holds no internal or agency rating history across successive snapshots, so migration matrices cannot be estimated."
+        },
+        {
+          "framework": "ml_challenger",
+          "decision": "challenger",
+          "reason": "Interpretability is required, so random forest and gradient boosting serve only as benchmarks. They measure the predictive ceiling and the price paid for interpretability."
+        }
+      ],
+      "slate": [
+        {
+          "family": "logit",
+          "feature_strategy": "top",
+          "role": "candidate",
+          "priority": 1.0,
+          "rationale": "This is the most defensible baseline: a parsimonious logit on the clean top predictors, with leverage the strongest univariate signal (explore.corr.leverage). With 81 events (ideate.n_events), a parsimonious set keeps the events per parameter comfortable."
+        },
+        {
+          "family": "cloglog",
+          "feature_strategy": "top",
+          "role": "candidate",
+          "priority": 0.97,
+          "rationale": "The cloglog link is the grouped-time proportional-hazards link, so it fits the vintage panel structure and the hazard interpretation."
+        },
+        {
+          "family": "probit",
+          "feature_strategy": "top",
+          "role": "candidate",
+          "priority": 0.95,
+          "rationale": "This checks whether the choice of link changes the model; the coefficients and ranking should closely match the logit."
+        },
+        {
+          "family": "logit",
+          "feature_strategy": "all",
+          "role": "candidate",
+          "priority": 0.92,
+          "rationale": "This adds sector to the numeric ratios to test for segment effects. The sector dummies use up degrees of freedom, and events per variable is 13.5 before expansion (ideate.events_per_variable)."
+        },
+        {
+          "family": "cloglog",
+          "feature_strategy": "all",
+          "role": "candidate",
+          "priority": 0.88,
+          "rationale": "This is the hazard-link version of the full-feature specification, including sector."
+        },
+        {
+          "family": "probit",
+          "feature_strategy": "all",
+          "role": "candidate",
+          "priority": 0.86,
+          "rationale": "This is the link-sensitivity check for the full-feature specification."
+        },
+        {
+          "family": "lasso_logit",
+          "feature_strategy": "all",
+          "role": "challenger",
+          "priority": 0.84,
+          "rationale": "The lasso does data-driven selection across all features, including the sector levels, and so guards against overfitting at a modest event count. Its coefficients are shrunk and biased, so it serves as a challenger."
+        },
+        {
+          "family": "ridge_logit",
+          "feature_strategy": "all",
+          "role": "challenger",
+          "priority": 0.8,
+          "rationale": "The ridge penalty stabilizes coefficients if the liquidity, coverage and margin ratios are collinear. The shrinkage bias is why it is a challenger rather than the champion."
+        },
+        {
+          "family": "lasso_logit",
+          "feature_strategy": "top",
+          "role": "challenger",
+          "priority": 0.76,
+          "rationale": "This checks whether the weak predictors, such as profit_margin (explore.corr.profit_margin), are dropped under a penalty."
+        },
+        {
+          "family": "ridge_logit",
+          "feature_strategy": "top",
+          "role": "challenger",
+          "priority": 0.72,
+          "rationale": "This is a shrinkage-stability check on the parsimonious feature set."
+        },
+        {
+          "family": "gradient_boosting",
+          "feature_strategy": "all",
+          "role": "challenger",
+          "priority": 0.7,
+          "rationale": "This is the nonlinear predictive-ceiling benchmark, and it quantifies the AUC gap that interpretability costs."
+        },
+        {
+          "family": "random_forest",
+          "feature_strategy": "all",
+          "role": "challenger",
+          "priority": 0.66,
+          "rationale": "This is a second nonlinear benchmark, which checks that the ceiling estimate does not depend on one learner."
+        },
+        {
+          "family": "gradient_boosting",
+          "feature_strategy": "top",
+          "role": "challenger",
+          "priority": 0.6,
+          "rationale": "This is the ceiling on the parsimonious feature set, and it shows how much nonlinearity is left in the core ratios."
+        },
+        {
+          "family": "random_forest",
+          "feature_strategy": "top",
+          "role": "challenger",
+          "priority": 0.56,
+          "rationale": "This is the random forest ceiling on the parsimonious feature set."
+        }
+      ],
+      "transforms": [
+        {
+          "name": "log_interest_coverage",
+          "expr": "np.sign(interest_coverage) * np.log1p(np.abs(interest_coverage))",
+          "rationale": "Interest coverage is usually heavy-tailed and can be negative. A signed log compresses the extremes and keeps the monotonic relationship with risk, which should be negative."
+        },
+        {
+          "name": "leverage_capped",
+          "expr": "np.clip(leverage, 0, 5)",
+          "rationale": "This caps extreme leverage values so that outliers do not drive the logit coefficient. The expected sign stays positive."
+        },
+        {
+          "name": "log_current_ratio",
+          "expr": "np.log1p(np.maximum(current_ratio, 0))",
+          "rationale": "The current ratio is right-skewed, and a log transform linearizes its effect on the log-odds of default."
+        }
+      ],
+      "sponsor_questions": [
+        {
+          "question": "What decision will the model support: origination underwriting, portfolio surveillance, CECL or IFRS 9, IRB, or stress testing?",
+          "category": "design",
+          "design_field": "use_case",
+          "why_it_matters": "The use case decides whether a single-horizon PD is enough or a PD term structure (hazard framework) is needed. It also sets calibration and documentation depth."
+        },
+        {
+          "question": "What outcome window was used to label the default flag (for example, default within 12 months of the vintage date)?",
+          "category": "design",
+          "design_field": "horizon",
+          "why_it_matters": "The model's horizon must match how the target was labelled, and the out-of-time design depends on it."
+        },
+        {
+          "question": "What event defines default: 90+ days past due, nonaccrual, charge-off, or bankruptcy?",
+          "category": "design",
+          "design_field": "default_definition",
+          "why_it_matters": "The default definition drives the event rate and calibration targets, and validation must re-derive risk from it."
+        },
+        {
+          "question": "Which portfolio segment does this sample represent (C&I, CRE, small business), and should sectors be pooled or modeled separately?",
+          "category": "design",
+          "design_field": "segment",
+          "why_it_matters": "Pooling heterogeneous segments biases coefficients. The answer decides whether sector is a covariate or a split."
+        },
+        {
+          "question": "Can an event-time or observation-period column per obligor be supplied?",
+          "category": "data",
+          "design_field": "none",
+          "why_it_matters": "Such a column would unlock the full discrete-time hazard families and a PD term structure."
+        }
+      ]
+    }
+  }
+}

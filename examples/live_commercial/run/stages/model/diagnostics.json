@@ -1,0 +1,30 @@
+{
+  "tests": [
+    {
+      "name": "max_vif",
+      "category": "multicollinearity",
+      "statistic": 1.567313380437203,
+      "pvalue": null,
+      "passed": true,
+      "severity": "INFO",
+      "interpretation": "Max VIF=1.6 on 'sector_industrials'.",
+      "h0": "VIF < 10 (no severe multicollinearity)"
+    },
+    {
+      "name": "condition_number",
+      "category": "multicollinearity",
+      "statistic": 4.895003646136195,
+      "pvalue": null,
+      "passed": true,
+      "severity": "INFO",
+      "interpretation": "Design condition number=4.9.",
+      "h0": "condition number < 30"
+    }
+  ],
+  "n_run": 2,
+  "n_passed": 2,
+  "n_failed": 0,
+  "n_skipped": 0,
+  "max_failed_severity": "INFO",
+  "failed_tests": []
+}

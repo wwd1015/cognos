@@ -3,6 +3,71 @@
 All notable changes to COGNOS are documented here. Format loosely follows Keep a Changelog;
 versioning is SemVer.
 
+## [1.0.0] — 2026-09-29
+
+**Agents recommend, humans decide, the engine disposes.** v1.0 adopts the design proven in Cyber
+Credit Officer — engine-run agents with contracts, human review gates, a challenger loop, tracked
+questions, and a full audit trail — on top of the unchanged econometric engine, and adds a Dash +
+Mantine workbench for model developers. Design in ADR-0010.
+
+### Added
+- **Workflow engine** (`engine/`): a step graph of the eight stages and five human review gates
+  (`gate_data`, `gate_design`, `gate_champion`, `gate_validation`, `gate_signoff`) with stale
+  propagation, `RunState` on disk (`state.json`: steps, gate decisions, challenges, gaps, overrides,
+  loops, spend), an activity feed (`events.jsonl`), synchronous and background drivers, retry, and
+  re-opening a decided gate. Interactive runs pause at gates; autonomous runs auto-accept (recorded).
+- **Gate decisions**: accept / edit / override / send back / approve / reject. Exclusions, slate
+  edits, design answers and champion overrides become *overrides* on the effective config — the
+  profile YAML is never edited. A BLOCK can be sent back or rejected, never accepted.
+- **Seven stage agents** (`agents/`): Data Analyst, Design Lead, Modeler (+ guided-search role),
+  Outcomes Analyst, Independent Validator, Model-Risk Analyst, Technical Writer — each with a role
+  prompt (the former `cognos-*` playbooks), a Pydantic contract, an independence-scoped context slice,
+  engine checks with retry-on-error, and a deterministic heuristic implementation.
+- **Challenges**: human send-backs and high-severity validator findings are routed to the stage's
+  agent, which must answer each one; validator findings loop back automatically at most
+  `workflow.auto_challenge_loops` (default 2) times.
+- **Gaps**: open design/data questions are tracked; answering one fills the design brief and
+  re-runs the stage that raised it, or it can be accepted as an assumption.
+- **Admissible set + blind champion choice**: the modeler chooses among candidates within one CV
+  standard error of the best, before the sealed holdout is scored; holdout evaluations are counted
+  and re-selection is flagged by the validator. The search is cached by an input fingerprint, so an
+  override or a send-back re-finalizes without re-searching.
+- **Facts and no LLM math**: agents cite fact ids; the writer's prose uses `{{fact:<id>}}`
+  placeholders the engine renders; unknown ids and typed metric values are rejected.
+- **Providers** (`agents/providers.yaml`): `heuristic`, `replay` (recorded outputs, heuristic
+  fallback), `claude_cli` (`claude -p`, isolated: empty cwd, no settings/tools/MCP, prompt on stdin),
+  `anthropic` (structured outputs, adaptive thinking, server-side refusal fallbacks), and
+  OpenAI-compatible APIs (OpenAI, xAI, OpenRouter, Ollama). `auto` picks the first available and
+  falls back to heuristic. Per-call time limit and per-run spend budget.
+- **Agent audit**: every attempt's prompt, context slice and raw output under `runs/<id>/agents/`,
+  with `audit.jsonl` (status, backend, model, hashes, duration, cost).
+- **Decision log** in the OKF bundle (`docs/decisions.md`) and an agent-drafted **narrative**
+  (`docs/narrative.md`).
+- **Service layer** (`service.py`) — the single boundary for the CLI and UI.
+- **Workbench** (`cognos ui`, `[ui]` extra): runs list + new-run drawer; run workspace with stage
+  rail, evidence beside recommendation, gate forms, live activity, questions & challenges, agent
+  audit with raw I/O; theme-aware charts (experiment ledger, coefficients by significance,
+  calibration, rubric, PD term structure); light and dark.
+- **CLI**: `ui`, `status`, `gate`, `answer`, `retry`, `providers`; `run --interactive` reviews
+  gates in the terminal; `--provider` on `run`, `demo`, `run-stage`.
+- `agents:` and `workflow:` profile sections (legacy `brain:` blocks migrate automatically).
+
+### Changed
+- Stages obtain judgment only through `ctx.recommend()`; `RunContext.config` is the effective
+  config and `ctx.profile()` the explore profile net of human exclusions.
+- `Orchestrator` / `run_pipeline` are a compatibility wrapper over the engine; a legacy
+  `gate_handler` can no longer approve a BLOCK.
+- Guided search routes proposals through the agent runner (validated, audited).
+- sklearn ≥ 1.8: `l1_ratio` replaces the deprecated `penalty` argument.
+
+### Removed
+- `brains/` (`HeuristicBrain`, `LLMBrain`, `ScriptedBrain`) — replaced by providers and `replay`.
+- `.claude/agents`, `.claude/commands/cognos-run.md`, `.claude/skills/cognos-*` — the agents run
+  in the engine; the playbooks are their prompts. The `.claude/hooks` safety backstops remain.
+
+### Fixed
+- Windows: every file read/write is explicitly UTF-8; `pyarrow` is a declared dependency.
+
 ## [0.5.0] — 2026-07-12
 
 The rating-migration release: the loss-forecasting framework corporate banks actually use when the

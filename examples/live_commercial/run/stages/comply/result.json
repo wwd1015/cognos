@@ -1,0 +1,265 @@
+{
+  "stage": "comply",
+  "verdict": "PASS",
+  "summary": "Model-risk readiness report (non-gating): SR 11-7 2/3 evidenced, 3 human step(s) outstanding, fair-lending n/a.",
+  "metrics": {
+    "sr11_7_evidenced": 2,
+    "disparate_impact": null,
+    "n_outstanding": 3,
+    "n_findings": 4
+  },
+  "payload": {
+    "inventory": {
+      "model_id": "demo_commercial",
+      "version": "0.1.0",
+      "purpose": "COGNOS synthetic commercial demo — Commercial PD (vintage panel, out-of-time)",
+      "intended_use": "",
+      "out_of_scope_use": "",
+      "risk_tier": "high",
+      "owner": "COGNOS",
+      "champion_family": "ridge_logit",
+      "n_features": 6,
+      "created_from_run": "20260930T023256Z-4ca26a4"
+    },
+    "sr11_7": {
+      "conceptual_soundness": {
+        "status": "pass",
+        "evidence": "Champion exposes per-feature effects (coefficients/importances) and a persisted scorer; theory/assumptions and feature roles are documented in the OKF bundle."
+      },
+      "ongoing_monitoring": {
+        "status": "warn",
+        "evidence": "Outstanding: ongoing monitoring requires a production monitoring plan — drift/PSI alert thresholds, performance-decay triggers, exception reporting, cadence and owner. Backtest produced monitoring-ready baselines (calibration/stability)."
+      },
+      "outcomes_analysis": {
+        "status": "pass",
+        "evidence": "Out-of-sample backtest ran (roc_auc=0.8774263120057513); outcomes analysis is evidenced."
+      }
+    },
+    "nist_ai_rmf": {
+      "govern": {
+        "status": "pass",
+        "evidence": "Risk tier 'high' assigned with COGNOS as accountable owner; governance regimes: SR11-7, NIST-AI-RMF."
+      },
+      "map": {
+        "status": "pass",
+        "evidence": "Context and data characteristics mapped by the explore stage (schema, missingness, leakage suspects)."
+      },
+      "measure": {
+        "status": "pass",
+        "evidence": "Performance measured via cross-validation, holdout, backtest and validation diagnostics."
+      },
+      "manage": {
+        "status": "warn",
+        "evidence": "Residual risk managed through monitoring plan and gate verdicts; thresholds pending sign-off."
+      }
+    },
+    "trustworthy": {
+      "valid_reliable": "pass",
+      "safe": "pass",
+      "secure_resilient": "warn",
+      "accountable_transparent": "pass",
+      "explainable_interpretable": "pass",
+      "privacy_enhanced": "pass",
+      "fair_bias_managed": "warn"
+    },
+    "fair_lending": {
+      "enabled": false
+    },
+    "regimes": [
+      "SR11-7",
+      "NIST-AI-RMF"
+    ],
+    "jurisdictions": [
+      "US"
+    ],
+    "outstanding_human_steps": [
+      "Independent model validation and sign-off (by a function independent of development).",
+      "A production monitoring plan: drift/PSI thresholds, performance-decay triggers, cadence, owner.",
+      "Model governance: change-control, override policy, and an approval record."
+    ],
+    "report_only": true,
+    "readiness": {
+      "level": "not_ready",
+      "narrative": "**Development:** The champion is a ridge logit on 6 features (model.champion_label). It was chosen from 16 candidates across 7 families, so alternatives were considered. No leakage suspects were found, and max-VIF and condition-number diagnostics passed. Leverage, interest coverage, log assets and current ratio are significant with the expected signs. Profit margin has a positive sign but is not significant (p = 0.5914), and none of the sector dummies are significant.\n\n**Validation evidence:** On the out-of-time sample (240 rows, evaluated once), AUC is 0.8774, Gini 0.7549, KS 0.6265, ECE 0.0559 and PSI 0.0238 ('stable'). Holdout AUC is well above the walk-forward mean of 0.8153 (std 0.0806). The engine's validation verdict is WARN with 6 findings, which the owner needs to review. None of this replaces independent effective challenge.\n\n**Governance:** Intended use and core design fields are blank, and 9 ideation questions are still open. The monitoring plan, independent sign-off, and change-control and approval records are outstanding (3 items). The report marks NIST Govern as 'pass', but Govern and Manage are organizational functions that the engine cannot evidence; they stay on the human-steps list. The fair-lending scan is not in scope for this profile. ECOA / Reg B still applies to business-purpose credit, so this needs a decision from a person.",
+      "priority_actions": [
+        {
+          "statement": "Sponsor to document the use case, horizon, default definition, segment and intended use, and to resolve the open ideation questions. Validation conclusions depend on these, and all are currently blank.",
+          "evidence": [
+            "ideate.n_open_questions"
+          ],
+          "confidence": "high"
+        },
+        {
+          "statement": "Assign and confirm the risk tier, register the model in the inventory, and obtain independent validation and sign-off. This includes review of the 6 validation findings behind the WARN verdict.",
+          "evidence": [
+            "validate.verdict",
+            "validate.n_findings",
+            "comply.n_outstanding"
+          ],
+          "confidence": "high"
+        },
+        {
+          "statement": "Model owner to adopt a production monitoring plan: PSI alert thresholds (for example 0.10 / 0.25), performance-decay and calibration triggers, cadence and a named owner. The backtest PSI and ECE can serve as baselines.",
+          "evidence": [
+            "comply.sr11_7.ongoing_monitoring",
+            "backtest.psi",
+            "backtest.expected_calibration_error",
+            "backtest.auc"
+          ],
+          "confidence": "high"
+        },
+        {
+          "statement": "Obtain MRM committee approval, establish change control and an override policy, and schedule the annual review. These Govern and Manage steps are organizational and cannot be evidenced by the engine.",
+          "evidence": [
+            "comply.n_outstanding"
+          ],
+          "confidence": "high"
+        },
+        {
+          "statement": "Decide whether a fair-lending (ECOA / Reg B) review is needed. The scan is not in scope for this profile, but Reg B applies to business-purpose credit.",
+          "evidence": [
+            "comply.n_outstanding"
+          ],
+          "confidence": "medium"
+        },
+        {
+          "statement": "Ask the validator to challenge whether the non-significant profit_margin and sector terms, and the positive sign on profit_margin, should stay in the model.",
+          "evidence": [
+            "model.p.profit_margin",
+            "model.coef.profit_margin",
+            "model.p.sector_retail",
+            "model.p.sector_tech",
+            "model.p.sector_industrials"
+          ],
+          "confidence": "medium"
+        }
+      ]
+    },
+    "recommendation": {
+      "agent": "risk_analyst",
+      "call_id": "20260929-223500_risk_analyst_a1_d1d4",
+      "attempts": 1,
+      "provider": "claude_cli",
+      "model": "opus",
+      "kind": "claude_cli",
+      "output": {
+        "summary": "The model is not ready for use. The statistical evidence is reasonable: the out-of-time AUC is 0.8774, PSI is stable and collinearity diagnostics passed. But the project is high risk tier, and the use case, horizon, default definition, segment and intended use have not been decided. Independent validation, a monitoring plan and governance approval are also still outstanding. The readiness report organizes this evidence; it does not decide compliance.",
+        "uncertainties": [
+          "The evidence is thin: 81 default events (13.5 events per variable) and a single 240-row out-of-time holdout. The performance estimates are therefore uncertain, as the 0.0806 walk-forward std shows.",
+          "The holdout AUC (0.8774) is well above the walk-forward mean (0.8153). This may reflect an easier out-of-time period rather than better generalization.",
+          "The data is a synthetic demo panel of 1,200 rows, and the content of the 6 validation findings is not in my context."
+        ],
+        "responses_to_challenges": [],
+        "readiness": "not_ready",
+        "narrative": "**Development:** The champion is a ridge logit on 6 features (model.champion_label). It was chosen from 16 candidates across 7 families, so alternatives were considered. No leakage suspects were found, and max-VIF and condition-number diagnostics passed. Leverage, interest coverage, log assets and current ratio are significant with the expected signs. Profit margin has a positive sign but is not significant (p = 0.5914), and none of the sector dummies are significant.\n\n**Validation evidence:** On the out-of-time sample (240 rows, evaluated once), AUC is 0.8774, Gini 0.7549, KS 0.6265, ECE 0.0559 and PSI 0.0238 ('stable'). Holdout AUC is well above the walk-forward mean of 0.8153 (std 0.0806). The engine's validation verdict is WARN with 6 findings, which the owner needs to review. None of this replaces independent effective challenge.\n\n**Governance:** Intended use and core design fields are blank, and 9 ideation questions are still open. The monitoring plan, independent sign-off, and change-control and approval records are outstanding (3 items). The report marks NIST Govern as 'pass', but Govern and Manage are organizational functions that the engine cannot evidence; they stay on the human-steps list. The fair-lending scan is not in scope for this profile. ECOA / Reg B still applies to business-purpose credit, so this needs a decision from a person.",
+        "priority_actions": [
+          {
+            "statement": "Sponsor to document the use case, horizon, default definition, segment and intended use, and to resolve the open ideation questions. Validation conclusions depend on these, and all are currently blank.",
+            "evidence": [
+              "ideate.n_open_questions"
+            ],
+            "confidence": "high"
+          },
+          {
+            "statement": "Assign and confirm the risk tier, register the model in the inventory, and obtain independent validation and sign-off. This includes review of the 6 validation findings behind the WARN verdict.",
+            "evidence": [
+              "validate.verdict",
+              "validate.n_findings",
+              "comply.n_outstanding"
+            ],
+            "confidence": "high"
+          },
+          {
+            "statement": "Model owner to adopt a production monitoring plan: PSI alert thresholds (for example 0.10 / 0.25), performance-decay and calibration triggers, cadence and a named owner. The backtest PSI and ECE can serve as baselines.",
+            "evidence": [
+              "comply.sr11_7.ongoing_monitoring",
+              "backtest.psi",
+              "backtest.expected_calibration_error",
+              "backtest.auc"
+            ],
+            "confidence": "high"
+          },
+          {
+            "statement": "Obtain MRM committee approval, establish change control and an override policy, and schedule the annual review. These Govern and Manage steps are organizational and cannot be evidenced by the engine.",
+            "evidence": [
+              "comply.n_outstanding"
+            ],
+            "confidence": "high"
+          },
+          {
+            "statement": "Decide whether a fair-lending (ECOA / Reg B) review is needed. The scan is not in scope for this profile, but Reg B applies to business-purpose credit.",
+            "evidence": [
+              "comply.n_outstanding"
+            ],
+            "confidence": "medium"
+          },
+          {
+            "statement": "Ask the validator to challenge whether the non-significant profit_margin and sector terms, and the positive sign on profit_margin, should stay in the model.",
+            "evidence": [
+              "model.p.profit_margin",
+              "model.coef.profit_margin",
+              "model.p.sector_retail",
+              "model.p.sector_tech",
+              "model.p.sector_industrials"
+            ],
+            "confidence": "medium"
+          }
+        ]
+      }
+    }
+  },
+  "findings": [
+    {
+      "id": "sr11-7-ongoing_monitoring",
+      "severity": "MEDIUM",
+      "category": "sr11-7",
+      "message": "SR 11-7 ongoing monitoring warning: Outstanding: ongoing monitoring requires a production monitoring plan — drift/PSI alert thresholds, performance-decay triggers, exception reporting, cadence and owner. Backtest produced monitoring-ready baselines (calibration/stability).",
+      "confidence": 0.8,
+      "location": "ongoing_monitoring",
+      "suggestion": null,
+      "reviewed": false
+    },
+    {
+      "id": "nist-manage",
+      "severity": "LOW",
+      "category": "nist-ai-rmf",
+      "message": "NIST AI RMF MANAGE incomplete: Residual risk managed through monitoring plan and gate verdicts; thresholds pending sign-off.",
+      "confidence": 0.7,
+      "location": "manage",
+      "suggestion": null,
+      "reviewed": false
+    },
+    {
+      "id": "trustworthy-secure_resilient",
+      "severity": "LOW",
+      "category": "trustworthy-ai",
+      "message": "Trustworthy-AI characteristic 'secure_resilient' not fully evidenced.",
+      "confidence": 0.6,
+      "location": "secure_resilient",
+      "suggestion": null,
+      "reviewed": false
+    },
+    {
+      "id": "trustworthy-fair_bias_managed",
+      "severity": "LOW",
+      "category": "trustworthy-ai",
+      "message": "Trustworthy-AI characteristic 'fair_bias_managed' not fully evidenced.",
+      "confidence": 0.6,
+      "location": "fair_bias_managed",
+      "suggestion": null,
+      "reviewed": false
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "compliance",
+      "kind": "json",
+      "path": "stages/comply/compliance.json",
+      "description": ""
+    }
+  ],
+  "started_at": "2026-09-30T02:35:00.239841+00:00",
+  "ended_at": "2026-09-30T02:35:19.160901+00:00",
+  "duration_s": 18.921076,
+  "error": null
+}

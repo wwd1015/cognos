@@ -1,168 +1,148 @@
 # COGNOS
 
-**An autonomous multi-agent system for end-to-end statistical & ML model development.**
+**A multi-agent workbench for regulated model development: agents recommend, you decide, the
+engine disposes.**
 
-COGNOS automates the model-development lifecycle for **commercial** modeling (e.g. commercial
-credit risk, validated under SR 11-7): data exploration, idea generation, model search + statistical
-testing, standardized backtesting, independent validation, a model-risk readiness report,
-documentation, and a docs↔code consistency check.
+COGNOS takes a dataset and a design brief through the model-development lifecycle for **commercial**
+modeling (e.g. commercial credit risk, validated under SR 11-7): data exploration, design, model
+search and statistical testing, outcomes analysis, independent validation, a model-risk readiness
+report, the white paper, and a docs↔code consistency check.
 
-It is a **two-layer** system (see [`docs/adr/`](docs/adr/)): an LLM **reasoning layer** that
-*proposes* the decisions a human modeler would make — design, model choice, feature engineering, the
-next experiment to try — and a deterministic **engine** that *disposes*: it fits, scores on a frozen
-metric and a sealed holdout, runs the statistical battery, and is the sole authority on what is kept
-and on any number that becomes a recorded fact. The reasoning automates judgment; the determinism is
-the anti-hallucination mechanism — **the LLM proposes, the engine disposes.**
+At every judgment step an **LLM agent recommends** — which columns may be inputs, which econometric
+framework fits, which champion to ship, what a validator would challenge. A **model developer
+decides** at five review gates: accept, edit, override, or challenge the agent and send the work
+back. A **deterministic engine disposes**: it computes every number, keeps the sealed holdout sealed,
+checks every agent answer (and makes the agent retry when it fails), and is the only thing that can
+BLOCK. The white paper records who recommended what, and who decided.
 
-It draws on [`deputy`](../deputy) (sequential declarative agents + mechanical orchestrator + on-disk
-artifact hand-offs), reimplements the [`autoforge`](../autoforge) / Karpathy-`autoresearch` ratchet,
-integrates the [`IMPACT`](../IMPACT) feature-table engine, and emits its white paper in Google's
-**Open Knowledge Format (OKF)**.
+v1.0 adopts the design proven in Cyber Credit Officer — engine-run agents with contracts, human
+gates, a challenger loop, and an audit trail — on top of COGNOS's econometric engine
+([ADR-0010](docs/adr/0010-agents-recommend-humans-decide.md)).
 
 ---
 
-## The pipeline
+## The workflow
 
 ```
-   dataset ─▶ explore ─▶ ideate ─▶ model ─▶ backtest ─▶ validate ─▶ comply ─▶ document ─▶ review ─▶ verdict
-              profile   ranked     ratchet   outcomes    SR 11-7     readiness   OKF white   docs↔code
-              +leakage  hypotheses search +   analysis    challenge   report      paper       drift gate ⛔
-                        (+LLM)     stat tests  (OOT)       ⛔          (non-gate)
+ explore ─▶ ideate ─▶ model ─▶ backtest ─▶ validate ─▶ comply ─▶ document ─▶ review
+    │          │         │                    │ ⛔                              │ ⛔
+ gate_data  gate_design  gate_champion   gate_validation                 gate_signoff
+ (you)       (you)        (you)            (you)                           (you)
 ```
 
-`⛔` = a **gate**: it can BLOCK the pipeline (autonomous) or pause for approval (interactive). The
-gates are **`validate`** and **`review`** only. Compliance is a non-gating report (ADR-0006).
+| Stage | The engine computes | The agent recommends | You decide at the gate |
+|---|---|---|---|
+| `explore` | profile, missingness, leakage suspects | **Data Analyst** — keep/exclude each suspect, data-quality issues, sponsor questions | which columns are inputs |
+| `ideate` | data structure, framework applicability, fittable families | **Design Lead** — framework roles, ranked slate, feature transforms (engine-validated), sponsor questions | the slate; answers to design questions |
+| `model` | budgeted leakage-safe search, the **admissible set** (one-SE rule), refit, inference, battery, sealed-holdout score | **Modeler** — the champion from the admissible set (blind to the holdout), economic sign checks; opt-in guided experiments | accept / override the champion |
+| `backtest` | IMPACT scoring, Gini/KS, calibration, PSI, portfolio sim, stress | **Outcomes Analyst** — reads discrimination, calibration, stability | — |
+| `validate` ⛔ | the effective-challenge rubric; **BLOCKs on confirmed leakage** | **Independent Validator** — findings routed back to the stage that must change (never sees the modeler's reasoning) | accept the risk / send back / reject |
+| `comply` | SR 11-7 / NIST AI RMF readiness report (non-gating) | **Model-Risk Analyst** — readiness and priority human actions | — |
+| `document` | OKF bundle, Model Card, EU Annex IV, decision log | **Technical Writer** — narrative with `{{fact:…}}` placeholders the engine renders | — |
+| `review` ⛔ | AST-verified docs↔code anchors; **BLOCKs on stale references** | — | sign off / reject |
 
-| Stage | What it does | Key outputs |
-|------|------------|-------------|
-| `explore`  | Profiles data; flags target-leakage suspects, missingness, imbalance | data profile |
-| `ideate`   | The design stage: assesses data structure + econometric frameworks (structural vs reduced-form vs hazard vs ML challenger), triangulates the `design:` brief with the sponsor (open questions, never silent assumptions), ranks candidate specs; with an LLM, proposes engine-validated feature transforms + a design review | design brief, hypotheses |
-| `model`    | Ratchet search over the CASH space — traditional GLM links (logit/**probit/cloglog**), **discrete-time hazard** families with a PD term structure (Shumway), regularized linear, trees — leakage-safe CV, full-rank statsmodels inference, statistical battery, single interpretable champion; opt-in **Merton structural** hybrid (distance-to-default feature + pure-structural benchmark) and **LLM-guided search** | champion, valid coefficients, term structure, diagnostics, ledger |
-| `backtest` | Scores via **IMPACT**; **outcomes analysis** on an out-of-time sample: Gini/KS, calibration, PSI; opt-in **Vasicek portfolio simulation** (EL/VaR/ES + Basel IRB capital) and **macro-scenario stress** (PBO/Deflated-Sharpe only in opt-in trading mode) | scored table, outcomes + portfolio + stress reports |
-| `validate` ⛔ | **Independent** SR 11-7 challenge: leakage (BLOCKs), overfitting, stability, diagnostics, significance | rubric + verdict |
-| `comply`   | Non-gating model-risk **readiness report**: SR 11-7 evidence + outstanding human steps | readiness report |
-| `document` | White paper as an **OKF bundle** + Google **Model Card** + EU **Annex IV**, with `{@code:…}` docs↔code links | OKF docs bundle |
-| `review` ⛔ | AST-verifies every docs↔code link; BLOCKs on stale references | consistency report |
+Any decision can be revised later; the engine marks everything downstream stale and re-runs it.
+Send-backs and high-severity validator findings reach the stage's agent as **challenges** it must
+answer. Unanswered design points (use case, horizon, default definition, segment) are **tracked
+questions**, never silent assumptions.
 
 ## Install
 
 ```bash
-pip install -e ".[dev]"      # core + tests (uv: uv pip install -e ".[dev]")
-pip install -e ".[llm]"      # optional: Claude reasoning layer (else deterministic engine only)
-pip install -e ../IMPACT     # optional: real IMPACT feature-table engine (else built-in scorer)
+pip install -e ".[dev,ui,llm]"   # engine + tests + the workbench + LLM backends
+pip install -e ../IMPACT         # optional: the real IMPACT feature-table engine
 ```
 
-Python ≥ 3.11. Core deps: numpy, pandas, scikit-learn, statsmodels, scipy, pydantic, PyYAML, joblib.
+Python ≥ 3.11. Agents run on any of: the local **Claude Code CLI** (`claude -p`, your login), the
+**Anthropic API** (`ANTHROPIC_API_KEY`), any **OpenAI-compatible** API (OpenAI, xAI, OpenRouter,
+Ollama), or the **deterministic heuristic agents** (offline, no key). `cognos providers` shows what
+is available.
 
 ## Quickstart
 
 ```bash
-# End-to-end on synthetic data (no config needed):
-cognos demo --task commercial      # commercial credit, out-of-time outcomes analysis
-cognos demo --task cni             # C&I portfolio: hazard term structure, portfolio sim, stress
-cognos demo --task migration       # rating-migration loss forecast on S&P-style agency data
-cognos demo --task regression
-# Worked commercial-risk example (leakage arc + MD triangulation + design brief):
-python examples/commercial_credit/run_demo.py
-# Comprehensive econometric/structural showcase (GLM links, hazard term structure,
-# Merton hybrid, Vasicek portfolio, macro stress) on a public-obligor book:
-python examples/public_obligor_pd/run_demo.py
-# Comprehensive rating-migration loss-forecast engagement (internal history too short ->
-# S&P-style agency data -> transition matrix, term structure, EL forecast, all 8 stages):
-python examples/rating_migration_loss/run_demo.py
-
-# Your own data:
-cognos init -o cognos.yaml         # write + edit a config template
-cognos explain --config cognos.yaml
-cognos run --config cognos.yaml             # autonomous
-cognos run --config cognos.yaml --interactive   # pause at gates (validate, review)
-
-# Stage-by-stage (human-in-the-loop): every agent is individually invocable
-cognos run-stage model --config cognos.yaml --run <run_id>
-
-cognos report --run <run_id>
-cognos agents
+cognos ui                                    # the workbench at http://127.0.0.1:8050
+cognos demo --task commercial --interactive  # review each gate in the terminal (heuristic agents)
+cognos demo --task cni --provider claude_cli # live Claude agents, autonomous
 ```
 
-Python API:
+Your own data:
+
+```bash
+cognos init -o cognos.yaml                   # profile template (design brief, agents, gates)
+cognos explain --config cognos.yaml
+cognos run --config cognos.yaml --interactive
+cognos status --run <run_id>                 # steps, questions, challenges
+cognos gate gate_champion --run <run_id> --action override --payload '{"champion": "c3"}' --reason "..."
+cognos gate gate_validation --run <run_id> --action send_back --target model --message "..."
+cognos answer --run <run_id> --gap design-use_case --text "origination underwriting"
+```
+
+Python:
 
 ```python
-from cognos import CognosConfig, run_pipeline
-cfg = CognosConfig.from_yaml("cognos.yaml")
-ctx, summary = run_pipeline(cfg)
-print(summary.token_block(), "white paper:", ctx.docs_dir)
+from cognos import service
+cfg = service.demo_config("commercial")
+run_id = service.create_run(cfg, mode="interactive", provider="heuristic")
+state = service.run_until_idle(run_id)                 # pauses at gate_data
+service.submit_gate(run_id, "gate_data", "accept", background=False)
 ```
 
-## The reasoning layer (propose / dispose)
+`Orchestrator` / `run_pipeline` still work as a compatibility wrapper (review gates auto-accepted).
 
-The LLM enters in two staged depths (off unless an LLM brain is configured):
+## The workbench
 
-- **Ideation** — proposes feature-engineering transforms grounded in the data profile; the engine
-  validates each (target-hidden) before it counts.
-- **Guided search** (`search.guided: true`) — after the deterministic ratchet, the LLM proposes the
-  *next* experiment from the experiment ledger; the engine applies it target-hidden, scores it with
-  leakage-safe CV, and **keeps it only if it beats the incumbent on the frozen metric**.
-
-A proposal can never enter the record unless the engine independently verifies it. LLM-authored
-feature transforms run on a **features-only view** — the target is never in scope, so a transform
-physically cannot leak the answer. Every prompt+response is recorded to
-`runs/<id>/reasoning/transcript.jsonl` for replay/audit.
-
-## Two operating modes, one control flow
-
-- **Autonomous** — the full pipeline runs unattended; a gate BLOCK halts. For quick prototypes.
-- **Stage-by-stage / interactive** — every stage is independently invocable (`cognos run-stage …`),
-  and `--interactive` pauses at each gate for approve/reject. For human-in-the-loop work.
-
-Each stage checkpoints its result, so runs **resume from failure** and any stage re-runs in a fresh
-process.
+`cognos ui` opens a Dash + Mantine app built for model developers: a runs list with a new-run drawer
+(demo presets or `projects/*.yaml`, interactive or autonomous, agent backend), and a run workspace
+with the stage rail, each stage's engine evidence (profile, framework assessment, slate, experiment
+ledger, admissible set, coefficient and calibration charts, rubric, findings, the rendered white
+paper) beside its agent's recommendation, the gate form, live activity, questions & challenges, and
+an agent audit where every call's prompt, context slice and raw output can be inspected. Light and
+dark themes; all state is on disk, so a refresh or restart loses nothing.
 
 ## What makes it trustworthy
 
-- **Propose / dispose** — the LLM never asserts a metric or verdict; only the deterministic engine
-  does. A wrong proposal simply fails to beat the holdout and is discarded.
-- **Two-tier reproducibility** — the *analysis* is bit-reproducible offline with no LLM; the
-  *reasoning trajectory* is recorded/replayable and human-gated (ADR-0003).
-- **Frozen substrate** — metric definitions + the sealed holdout are not editable by the search.
-- **Leakage-safe CV + target-hidden transforms** — preprocessing is fit inside each fold; feature
-  code can't see the target.
-- **Valid inference** — coefficients/p-values come from a full-rank K-1 design (no dummy-variable
-  trap), as SR 11-7 validation requires.
-- **Design by triangulation** — ideate turns every unanswered sponsor design point (use case,
-  horizon, default definition, segment) into an open question in `design_brief.md` instead of a
-  silent assumption; rejected frameworks are recorded with reasons ("alternatives considered").
-- **Independent challenge** — validation runs separately from modeling and BLOCKs on confirmed
-  leakage.
-- **Honest backtesting** — Gini/KS + calibration + PSI on an out-of-time sample; no rubber-stamped
-  compliance (compliance is a readiness report, not a verdict).
-- **Docs that can't silently drift** — the `review` gate AST-verifies docs↔code links every run.
+- **Agents recommend; the engine disposes.** Every agent answer is validated against a contract and
+  engine checks (unknown fact ids, a champion outside the admissible set, a non-fittable family, an
+  excluded target, a typed metric value…) and retried with the errors; failures are visible, never
+  silent.
+- **No LLM math.** Every recorded number comes from the engine; agents cite facts by id and the
+  writer's prose is rendered from placeholders.
+- **Frozen substrate.** Metric definitions and the sealed holdout are not agent-editable; the
+  modeler chooses before the holdout is scored, and every holdout evaluation is counted.
+- **Independent challenge.** The validator's context never contains the modeler's rationale; its
+  high findings loop back to the responsible stage (bounded) and the rest reach you.
+- **BLOCK is load-bearing.** Only the engine BLOCKs (confirmed leakage, stale docs↔code references);
+  a BLOCK can be sent back or rejected, never accepted.
+- **Leakage-safe CV + target-hidden transforms; valid inference** (full-rank K−1 design).
+- **Honest backtesting** — Gini/KS + calibration + PSI on an out-of-time sample; compliance is a
+  readiness report, not a verdict.
+- **Two-tier reproducibility** — the analysis re-derives offline with no LLM; the recommendations and
+  decisions are recorded (agent audit + decision log) and replayable (ADR-0003).
+- **Docs that can't silently drift** — `review` AST-verifies docs↔code links every run.
 
 ## Layout
 
 ```
 src/cognos/
-  config.py context.py artifacts.py orchestrator.py cli.py okf.py synth.py datautil.py
-  brains/        heuristic (default) + optional Claude LLMBrain + ScriptedBrain (test double)
-  stages/        the 8 agents + stat_tests battery
-  modeling/      metrics, fitters (+ GLM links incl. probit/cloglog), ratchet search,
-                 hazard (discrete-time survival, PD term structure), structural (Merton DD solver),
-                 migration (rating-transition matrix, term structure, EL forecast),
-                 simulate (Vasicek portfolio + macro stress), credit_metrics, backtest_stats,
-                 transforms (target-hidden), guided (LLM-guided search), ensemble
+  engine/        workflow graph, RunState, gates, events, the Engine (DAG + staleness + gates)
+  agents/        contracts, prompts/, slices (independence), facts, checks, heuristic agents,
+                 providers.yaml, runner (retry/audit/limits), backends/ (claude_cli, anthropic, openai)
+  stages/        the 8 stages + stat_tests battery (engine work; judgment via ctx.recommend)
+  modeling/      metrics, fitters (GLM links incl. probit/cloglog), ratchet search, hazard,
+                 structural (Merton), migration, simulate (Vasicek + stress), credit_metrics,
+                 transforms (target-hidden), guided (agent-guided search), ensemble
+  ui/            the Dash + Mantine workbench
+  service.py     the boundary the CLI and UI use
+  cli.py  config.py  context.py  artifacts.py  orchestrator.py (compat)  okf.py  synth.py
   integrations/  impact_adapter, autoforge_loop
-  runtime/       score (deployment scorer; re-applies transforms; the IMPACT derived-field entry point)
-.claude/         declarative agent specs + orchestrator command + safety hooks (deputy-style)
-  skills/        per-agent commercial-risk domain playbooks (cognos-<stage>/SKILL.md)
-projects/  examples/end_to_end/  examples/commercial_credit/  examples/public_obligor_pd/
-examples/rating_migration_loss/
-evals/  tests/
-docs/adr/        architecture decision records (0001-0009)
-CONTEXT.md       ubiquitous-language glossary
+  runtime/       deployment scorer (IMPACT derived-field entry point)
+projects/  examples/  evals/  tests/  docs/adr/ (0001–0010)  CONTEXT.md (glossary)
 ```
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`FEATURES.md`](FEATURES.md), [`CONTEXT.md`](CONTEXT.md),
-the decision records in [`docs/adr/`](docs/adr/), and [`CLAUDE.md`](CLAUDE.md) (principles for
-changing COGNOS itself).
+[`CHANGELOG.md`](CHANGELOG.md), the decision records in [`docs/adr/`](docs/adr/), and
+[`CLAUDE.md`](CLAUDE.md) (principles for changing COGNOS itself).
 
 ## License
 

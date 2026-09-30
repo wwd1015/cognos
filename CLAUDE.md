@@ -1,52 +1,89 @@
 # CLAUDE.md — principles for working on COGNOS itself
 
 These are binding design principles when editing COGNOS. They keep the system coherent, testable, and
-trustworthy.
+trustworthy. v1.0 architecture: **agents recommend, humans decide, the engine disposes** (ADR-0010).
 
 ## Non-negotiables
-1. **Always offline-runnable.** Every stage must work with the default `HeuristicBrain` (no API key).
-   LLM usage is additive only: branch `if ctx.brain.available: … else: <deterministic>` and never let
-   a missing key or SDK change a verdict or break a run.
-2. **Determinism in the plumbing, judgment in the agents.** The orchestrator and hooks must stay
-   mechanical (sequence, checkpoint, honor gates, escalate). Don't add a "smart supervisor."
-3. **Heavy artifacts by reference.** Datasets, fitted models, tables, and the OKF bundle live on disk
-   under the run dir; `StageResult.payload` carries only small structured data. A downstream stage in a
-   fresh process must be able to reconstruct everything from disk.
-4. **The frozen substrate stays frozen.** The sealed holdout (`data/holdout.parquet`) and metric
-   definitions (`modeling/metrics.py`) must not be editable by the search/idea stages. This is the
-   core anti-reward-hacking guarantee.
-5. **Independent challenge.** `validate`, `comply`, and `review` must not reuse the modeling stage's
-   reasoning; they re-derive risk from artifacts. Keep them separate.
-6. **Gates BLOCK only on high-confidence harm.** The only gates are `validate` and `review`; reserve
-   `BLOCK` for confirmed target leakage (`validate`) and stale docs↔code references (`review`).
-   Compliance is a non-gating report (ADR-0006) and never BLOCKs. Noisy signals (e.g. PBO) are
-   WARN/FAIL, not BLOCK.
-7. **Tests + lint must pass.** `pytest` green and `ruff check src/ tests/` clean before any commit.
+1. **Always offline-runnable.** Every stage runs with the deterministic (heuristic) agents — no key, no
+   network. Tests pin `COGNOS_PROVIDER=heuristic` (autouse fixture); a missing key, SDK or CLI makes a
+   provider *unavailable*, never a crash (`auto` falls back to heuristic).
+2. **Determinism in the plumbing, judgment in the agents, decisions with humans.** The engine
+   (`engine/`) stays mechanical: sequence, checkpoint, mark stale, pause at gates, apply decisions,
+   route challenges, escalate. Judgment enters only through `ctx.recommend(agent, ...)`. Don't add a
+   "smart supervisor."
+3. **No LLM math.** Every recorded number comes from the engine. Agents cite `facts` by id; the
+   writer uses `{{fact:<id>}}` placeholders the engine renders. Unknown fact ids and bare metric
+   numbers are rejected by `agents/checks.py`.
+4. **Heavy artifacts by reference.** Datasets, fitted models, tables, and the OKF bundle live on disk
+   under the run dir; `StageResult.payload` carries only small structured data. A stage in a fresh
+   process must reconstruct everything from disk (`state.json` + `stages/*/result.json`).
+5. **The frozen substrate stays frozen.** The sealed holdout (`data/holdout.parquet`) and metric
+   definitions (`modeling/metrics.py`) are never agent-editable. The modeler chooses the champion
+   from the admissible set *before* the holdout is scored and never sees holdout facts; every holdout
+   evaluation is counted (`holdout_evaluations`).
+6. **Independent challenge.** `validate`, `comply`, and `review` re-derive risk from artifacts. The
+   validator's slice never contains the modeler's rationale (`agents/slices.py` scopes).
+7. **Gates BLOCK only on high-confidence harm.** Verdict gates: `validate` (confirmed target
+   leakage) and `review` (stale docs↔code references). Agents can raise FAIL/WARN, never BLOCK, and a
+   BLOCK can never be *accepted* at a human gate — only sent back or rejected. Compliance is a
+   non-gating report (ADR-0006). Noisy signals (e.g. PBO) are WARN/FAIL, not BLOCK.
+8. **Tests + lint must pass.** `pytest` green and `ruff check src/ tests/` clean before any commit.
+   All file I/O passes `encoding="utf-8"` (Windows).
+
+## The workflow (engine/graph.py)
+```
+explore → gate_data → ideate → gate_design → model → gate_champion → backtest → validate
+        → gate_validation → comply → document → review → gate_signoff
+```
+`RunState` (`runs/<id>/state.json`) holds step statuses, gate decisions, challenges, gaps (sponsor
+questions) and overrides. Human decisions change the *effective* config through overrides (design
+answers → `ctx.config.design`; exclusions → `ctx.profile()`; slate → model families; champion →
+`overrides.champion`) — the profile YAML is never edited. A changed decision marks the downstream
+steps `stale`; a step invalidated while running stays stale when it finishes.
 
 ## Stage contract
 A stage is a `Stage` subclass with `name`, `requires`, `is_gate`, and `run(ctx) -> StageResult`. It
-reads prior outputs via `ctx.require(<stage>).payload`, writes artifacts under
-`runs/<id>/stages/<name>/`, sets `verdict`, `summary`, `metrics`, `payload`, `findings`, `artifacts`.
-Register it with `@register_stage` and add it to `stages/__init__._STAGE_MODULES`.
+reads prior outputs via `ctx.require(<stage>).payload` (explore's via `ctx.profile()`), writes
+artifacts under `runs/<id>/stages/<name>/`, and obtains judgment only via
+`ctx.recommend(agent, data, fresh={stage: provisional_result}, check=...)`, recording it with
+`attach_recommendation(payload, ctx, agent, out)`. Questions for the sponsor go in
+`payload["questions"]` (the engine syncs them to gaps). Register with `@register_stage` and add to
+`stages/__init__._STAGE_MODULES`.
+
+## Agents (agents/)
+Each agent = a role prompt (`prompts/<agent>.md` + `_common.md`), an output contract
+(`contracts.py`, `extra="forbid"`, strict-grammar-friendly types — no free-form maps), a slice scope
+(`slices.FACT_SCOPE`), engine checks (`checks.py`), and a deterministic implementation
+(`heuristic.py`, a pure function of the same slice). Adding or changing an agent means touching all
+five, and the heuristic must pass the checks (the tests hold it to that). Contracts carry
+`responses_to_challenges`; the default check requires one per open challenge.
+
+Providers (`providers.yaml`): `heuristic`, `replay` (recorded outputs, heuristic fallback),
+`claude_cli` (`claude -p`, isolated: empty cwd, `--setting-sources ""`, `--tools ""`,
+`--strict-mcp-config`, prompt on stdin), `anthropic` (structured outputs, adaptive thinking,
+server-side refusal fallbacks), `openai_compat` (`submit_answer` function). The runner audits every
+attempt to `runs/<id>/agents/` and enforces time and spend limits.
 
 ## Extending COGNOS
-- **New model family** → add an estimator branch in `modeling/fit.py::_estimator`, a hyperparameter
-  grid in `modeling/search.py::_hp_grid`, and (if it's a defaulted family) `DEFAULT_FAMILIES`.
-  Survival, structural, and simulation extension points live in `modeling/hazard.py`,
-  `modeling/structural.py`, and `modeling/simulate.py` (design rules: ADR-0008).
-- **New metric** → add it to `modeling/metrics.py::score` and, if higher-is-better, to `MAXIMIZE`.
-- **New statistical test** → add it to `stages/stat_tests.py` with its H0, severity, and a `_safe`
-  wrapper so an inapplicable test is `skipped`, never a crash.
-- **New compliance regime / jurisdiction** → extend `stages/comply.py`; emit structured evidence the
-  `document` stage can render and the `review` stage can trace.
-- **New stage** → keep it single-responsibility; subtract tools rather than add; wire `requires`.
+- **New model family** → estimator branch in `modeling/fit.py::_estimator`, grid in
+  `modeling/search.py::_hp_grid`, `DEFAULT_FAMILIES` if defaulted, and `stages/ideate.py::_engine_families`
+  so the design lead may propose it. Survival/structural/simulation extension points: ADR-0008.
+- **New metric** → `modeling/metrics.py::score` (+ `MAXIMIZE`); expose it as a fact in `agents/facts.py`
+  if agents should cite it.
+- **New statistical test** → `stages/stat_tests.py` with H0, severity, and a `_safe` wrapper.
+- **New gate action** → `engine/gates.py::ACTIONS` + handler + a UI control in `ui/panels.py`.
+- **New compliance regime** → extend `stages/comply.py`; emit evidence `document`/`review` can trace.
+- **New stage** → single-responsibility; wire `requires`, a graph node, and (optionally) an agent.
 
 ## Integrations
-- **IMPACT** is optional. `integrations/impact_adapter.py` must prefer the real `EntityPipeline` and
-  fall back to the built-in scorer on any error, recording `used_impact`. Never hard-depend on it.
-- **OKF** is the documentation substrate. Keep producers permissive and consumers tolerant (only
-  `type` is required; broken links are tolerated but reported).
+- **IMPACT** is optional. `integrations/impact_adapter.py` prefers the real `EntityPipeline` and falls
+  back to the built-in scorer on any error, recording `used_impact`. Never hard-depend on it.
+- **OKF** is the documentation substrate. Producers permissive, consumers tolerant.
 
-## The agent layer (`.claude/`)
-The declarative agents + orchestrator command mirror the engine. If you change the CLI surface or a
-stage's outputs, update the corresponding `.claude/agents/<stage>.md` and `commands/cognos-run.md`.
+## Front ends
+`service.py` is the only boundary the CLI (`cli.py`) and the Dash + Mantine workbench (`ui/`) use.
+UI panels are pure functions of (result, state, scheme) — keep them testable without a browser
+(`tests/ui`). Never write `component or fallback`: Dash components define `__len__`, so a childless
+component is falsy — use `graph(fig, placeholder)` / explicit `is None` checks. Charts follow the
+reference palette in `ui/theme.py` (single y-axis, legends for ≥ 2 series, status colors only with an
+icon + label).
