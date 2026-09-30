@@ -28,7 +28,9 @@ trustworthy. v1.0 architecture: **agents recommend, humans decide, the engine di
    BLOCK can never be *accepted* at a human gate — only sent back or rejected. Compliance is a
    non-gating report (ADR-0006). Noisy signals (e.g. PBO) are WARN/FAIL, not BLOCK.
 8. **Tests + lint must pass.** `pytest` green and `ruff check src/ tests/` clean before any commit.
-   All file I/O passes `encoding="utf-8"` (Windows).
+   All file I/O passes `encoding="utf-8"` (Windows); checkpoint/state writes go through
+   `fsutil.atomic_write`. For local end-to-end verification with real agents, run the opt-in live
+   test through `claude -p`: `COGNOS_LIVE=1 pytest tests/live` (skipped by default).
 
 ## The workflow (engine/graph.py)
 ```

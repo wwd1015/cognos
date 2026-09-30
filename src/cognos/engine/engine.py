@@ -200,7 +200,13 @@ class Engine:
             self._save(state)
         events.publish(self.run_dir, "step_start", f"{LABELS[step]} started.", step=step)
         if step in GATES:
-            self._open_gate(step)
+            try:
+                self._open_gate(step)
+            except Exception as exc:  # never leave a gate stuck in 'running'
+                with self.lock:
+                    state = self.state
+                    state.set_step(step, "failed", f"{type(exc).__name__}: {exc}")
+                    self._save(state)
             return
         try:
             result = self._run_stage(step)

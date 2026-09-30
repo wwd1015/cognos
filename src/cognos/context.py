@@ -23,6 +23,7 @@ import joblib
 import pandas as pd
 
 from .artifacts import ArtifactRef, StageResult
+from .fsutil import atomic_write
 
 if TYPE_CHECKING:
     from .agents.contracts import Contract
@@ -110,8 +111,7 @@ class RunContext:
     def save_json(self, relpath: str, obj: Any) -> ArtifactRef:
         path = self.run_dir / relpath
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as fh:
-            json.dump(obj, fh, indent=2, default=str)
+        atomic_write(path, json.dumps(obj, indent=2, default=str))
         return ArtifactRef(name=Path(relpath).stem, kind="json", path=relpath)
 
     def load_json(self, relpath: str) -> Any:
@@ -151,8 +151,7 @@ class RunContext:
     def record(self, result: StageResult) -> StageResult:
         self._results[result.stage] = result
         path = self.stage_dir(result.stage) / "result.json"
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(result.model_dump_json(indent=2))
+        atomic_write(path, result.model_dump_json(indent=2))  # readers never see a torn file
         self._write_manifest()
         self.logger.info(result.token_line())
         return result
@@ -238,6 +237,15 @@ class RunContext:
         if not RunState.exists(self.run_dir):
             return []
         return RunState.load(self.run_dir).open_challenges(stage)
+
+    def sponsor_answers(self) -> list[dict[str, str]]:
+        """Questions the sponsor has answered (or accepted as assumptions) — every agent sees them."""
+        from .engine.state import RunState
+
+        if not RunState.exists(self.run_dir):
+            return []
+        return [{"question": g.question, "answer": g.answer or "", "status": g.status}
+                for g in RunState.load(self.run_dir).gaps if g.status != "open"]
 
     @property
     def runner(self) -> AgentRunner:

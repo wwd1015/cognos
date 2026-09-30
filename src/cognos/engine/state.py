@@ -9,7 +9,6 @@ and re-loads from disk first, so background step threads and UI callbacks never 
 from __future__ import annotations
 
 import json
-import os
 import threading
 import uuid
 from collections import defaultdict
@@ -19,6 +18,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from ..fsutil import atomic_write
 from .graph import DEPS, INVALIDATABLE, SATISFIED, STEPS, descendants
 
 StepStatus = Literal["pending", "running", "done", "awaiting", "stale", "failed", "blocked", "skipped"]
@@ -128,9 +128,7 @@ class RunState(BaseModel):
         self.updated_at = utcnow()
         path = self.path(run_dir)
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
-        tmp.write_text(self.model_dump_json(indent=1), encoding="utf-8")
-        os.replace(tmp, path)
+        atomic_write(path, self.model_dump_json(indent=1))
 
     # --- steps -----------------------------------------------------------------------
     def status_of(self, step: str) -> str:

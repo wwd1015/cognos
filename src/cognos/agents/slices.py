@@ -1,7 +1,8 @@
 """Context slices: exactly what each agent may see.
 
 A slice = project brief + the stage's evidence (passed in by the stage) + ``facts`` restricted to the
-agent's independence scope + the open ``challenges`` routed to its stage. Scope rules:
+agent's independence scope + the sponsor's answers to open questions + the open ``challenges``
+routed to its stage. Scope rules:
 
 - The **modeler** never sees model/backtest/validate facts: it chooses the champion blind to the
   sealed holdout (frozen substrate) and to any stale result of a previous model run.
@@ -57,5 +58,6 @@ def build(ctx, agent: str, data: dict[str, Any], fresh: dict | None = None) -> d
         "project": project_brief(ctx),
         **data,
         "facts": facts_mod.collect(ctx, fresh=fresh, prefixes=FACT_SCOPE[agent]),
+        "sponsor_answers": ctx.sponsor_answers(),
         "challenges": challenges,
     }

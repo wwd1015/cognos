@@ -71,13 +71,19 @@ def data_analyst(sl: dict[str, Any]) -> dict[str, Any]:
         for col in features:
             if col in toks:
                 named[col] = c["id"]
+    confirmed = set()  # the sponsor answered that a suspect is recorded after the outcome
+    for a in sl.get("sponsor_answers", []):
+        text = (a["question"] + " " + a["answer"]).lower()
+        if re.search(r"\b(after|post|not available|leak)", a["answer"].lower()):
+            confirmed |= {col for col in suspects if col.lower() in text}
     decisions: list[dict] = []
     for col in suspects:
-        if col in named or col in current:
+        if col in named or col in current or col in confirmed:
             decisions.append({
                 "column": col, "decision": "exclude",
                 "reason": ("Excluded as requested in challenge " + named[col] if col in named else
-                           "Excluded by an earlier human decision at the data gate."),
+                           "The sponsor confirmed it is recorded after the outcome." if col in confirmed
+                           else "Excluded by an earlier human decision at the data gate."),
                 "evidence": _fact(sl, f"explore.corr.{col}"),
             })
         else:

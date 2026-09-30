@@ -228,3 +228,19 @@ def test_engine_rehydrates_from_run_dir(make_config, runs_dir):
     assert again.state.status_of("gate_data") == "awaiting"
     again.submit_gate("gate_data", "accept")
     assert again.run_until_idle().status_of("gate_design") == "awaiting"
+
+
+def test_sponsor_answer_reaches_the_agent_and_changes_its_recommendation(leak_config, runs_dir):
+    eng = Engine(leak_config, runs_root=runs_dir, mode="interactive")
+    state = eng.run_until_idle()
+    assert "leaky" not in eng.results()["explore"].payload["recommended_exclusions"]
+    gap = next(g for g in state.gaps if g.stage == "explore" and "leaky" in g.question)
+    eng.answer_gap(gap.id, "No - leaky is recorded after the outcome window.")
+    state = eng.run_until_idle()
+    assert state.gap(gap.id).status == "answered"
+    assert "leaky" in eng.results()["explore"].payload["recommended_exclusions"]
+    # the re-run's context carried the answer (call ids share a second, so don't rely on name order)
+    inputs = [p.read_text(encoding="utf-8")
+              for p in (eng.run_dir / "agents").glob("*data_analyst*.input.json")]
+    assert len(inputs) == 2
+    assert sum("recorded after the outcome" in t for t in inputs) == 1

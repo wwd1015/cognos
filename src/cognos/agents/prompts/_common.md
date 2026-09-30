@@ -19,4 +19,6 @@ reviews it at a gate, where they may accept it, override it, or send it back to 
    right; explain plainly where you disagree.
 6. **Never assume the design.** Where the sponsor has not decided something that changes the model
    (use case, horizon, default definition, segment), raise it as a question rather than assuming.
+   `sponsor_answers` holds what the sponsor has already answered (or accepted as an assumption):
+   treat those as decided, and don't ask them again.
 7. **If your answer is rejected**, the engine lists the problems; fix every one and answer again.
