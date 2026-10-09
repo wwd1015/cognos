@@ -9,7 +9,14 @@
   propagation** — a revised decision, an answered question or a challenge marks everything
   downstream stale and the engine re-runs it; a step invalidated mid-run stays stale.
 - **Two modes, one engine**: interactive (pause at every enabled review gate) and autonomous (gates
-  auto-accept the agent's recommendation, recorded as `auto`); gates can be disabled per project.
+  auto-accept the agent's recommendation, recorded as actor `auto` and seat `express` — preparation,
+  not a signature); gates can be disabled per project.
+- **Seats**: data, design and champion belong to the model developer; validation to the independent
+  reviewer; sign-off to the approver. The engine refuses a seat on another seat's gate. `approve`
+  seals `packages/vN.json` once (a digest of the recorded design, exclusions, slate, champion and
+  verdicts). A later invalidation or a re-opened gate supersedes that package; the file stays.
+  Approval is not deployment. Use, horizon, default definition and segment must be answered before
+  anyone can sign.
 - **Verdict gates** `validate` and `review` — and only those — can BLOCK; a BLOCK halts an
   autonomous run and can only be sent back or rejected in an interactive one. `comply` is a
   non-gating report (ADR-0006).
@@ -25,7 +32,8 @@
   reject (sign-off). Accepting a FAIL requires a reason (recorded risk acceptance).
 - **Overrides** shape the effective config; the profile YAML is never edited.
 - **Tracked questions (gaps)**: every unanswered design point and agent question for the sponsor;
-  answer (re-runs the raising stage) or accept as an assumption, from the gate or at any time.
+  answer (re-runs the raising stage) or, for a data question, accept as an assumption. Use,
+  horizon, default definition and segment are sponsor decisions and cannot be assumed.
 - **Decision log**: every agent recommendation (with its backend), human decision and challenge, in
   the OKF bundle (`docs/decisions.md`).
 
@@ -61,20 +69,30 @@
 - Dash + Mantine app for model developers; light and dark themes.
 - **Runs**: every run with status, what it is waiting on, backend, champion, spend; start a run from
   a synthetic demo preset or a project profile, interactive or autonomous, with a chosen backend.
-- **Run workspace**: stage rail (status, verdict, "Review" badges), each stage's engine evidence
-  beside its agent's recommendation (uncertainties, responses to challenges), the gate form, live
-  activity; tabs for questions & challenges (answer, accept as assumption, decision log) and the
-  agent audit (inspect any call's output, context slice, prompt and system prompt).
+- **Run workspace**: one stage rail (status, verdict, and the seat a waiting gate belongs to), each
+  stage's engine evidence beside its agent's recommendation (uncertainties, responses to
+  challenges), the gate form for the seat that owns it, live activity; a seat switch in the page
+  (model developer, independent reviewer, approver). Tabs for questions and challenges (the model
+  developer answers; the four sponsor facts cannot be assumed), the decision log, a record computed
+  on read of who did what, and the agent audit (inspect any call's output, context slice, prompt
+  and system prompt).
 - **Charts** on the validated reference palette: experiment ledger (kept vs discarded, champion
   ringed), coefficients by significance, calibration by score band, validation rubric, PD term
   structure; admissible set, sign checks, statistical battery, framework assessment, slate, SR 11-7 /
   NIST tables; rendered narrative, decision log, model card and white paper.
+- **Out-of-date steps say why**: the decision, answer or validator loop that invalidated a stage is
+  shown on the rail and the panel, and once it has re-run, what the re-run changed (champion,
+  verdict, metrics, findings) against the result it replaced.
+- **Compare runs**: pick two runs (or "Compare with previous run") to see what was decided
+  differently and what it did to the results; `cognos compare A B` prints the same.
+- **Export**: one zip of a run's documents, results, decisions and audit log with a hashed file
+  manifest — never the data or the sealed holdout; `cognos export RUN`.
 - Background execution with a 1-second poll; all state on disk, so refreshes and restarts lose
   nothing.
 
 ## CLI
 - `cognos ui | run [--interactive] [--provider] | demo | status | gate | answer | retry |
-  run-stage | providers | agents | init | explain | report | list-runs`.
+  run-stage | providers | agents | init | explain | report | list-runs | compare | export`.
 - Terminal gate review for `run --interactive` (accept / send back), auto-accept on non-tty stdin
   (never past a BLOCK).
 

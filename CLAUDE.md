@@ -43,6 +43,23 @@ answers → `ctx.config.design`; exclusions → `ctx.profile()`; slate → model
 `overrides.champion`) — the profile YAML is never edited. A changed decision marks the downstream
 steps `stale`; a step invalidated while running stays stale when it finishes.
 
+Seats (`engine/process.py`): developer on data, design and champion; reviewer on validation;
+approver on sign-off. The engine refuses a seat on another seat's gate. Use, horizon, default
+definition and segment cannot be assumed, and `approve` refuses while any of them is open.
+`approve` writes `packages/vN.json` once (a digest of recorded facts). A later invalidation
+supersedes the live pointer and does not rewrite the file. Autonomous acceptance is seat
+`express` — preparation, not a signature, and it does not seal a package. The record
+(`process.journal`) is computed on read from stamps the run already carries.
+
+Every `state.invalidate(steps, why)` must say **why** (use `gates.why(...)` for a gate decision): the
+reason is stored on each stale step (`StepState.rerun_reason`), kept through the re-run, and shown to
+the developer. Before a stage runs again the engine keeps its last result as `result.prev.json`.
+
+Comparisons (`compare.py`: run vs run, re-run vs previous) are mechanical reads of recorded results:
+no judgment, nothing stored, and "better" only where the metric has a direction (`_HIGHER` / `_LOWER`,
+or the run's own metric direction). Exports (`export.py`) never include `data/`, `models/` or binary
+caches — the sealed holdout stays sealed; a new artifact type that should travel must be a text format.
+
 ## Stage contract
 A stage is a `Stage` subclass with `name`, `requires`, `is_gate`, and `run(ctx) -> StageResult`. It
 reads prior outputs via `ctx.require(<stage>).payload` (explore's via `ctx.profile()`), writes
@@ -76,6 +93,8 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 - **New gate action** → `engine/gates.py::ACTIONS` + handler + a UI control in `ui/panels.py`.
 - **New compliance regime** → extend `stages/comply.py`; emit evidence `document`/`review` can trace.
 - **New stage** → single-responsibility; wire `requires`, a graph node, and (optionally) an agent.
+- **New stage metric** → if it has a good direction, add it to `compare._HIGHER` / `_LOWER` and give it a
+  label in `compare.METRIC_LABELS`; otherwise comparisons report it as a difference without a verdict.
 
 ## Integrations
 - **IMPACT** is optional. `integrations/impact_adapter.py` prefers the real `EntityPipeline` and falls
@@ -84,7 +103,7 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 
 ## Front ends
 `service.py` is the only boundary the CLI (`cli.py`) and the Dash + Mantine workbench (`ui/`) use.
-UI panels are pure functions of (result, state, scheme) — keep them testable without a browser
+UI panels are pure functions of (result, state, scheme, seat) — keep them testable without a browser
 (`tests/ui`). Never write `component or fallback`: Dash components define `__len__`, so a childless
 component is falsy — use `graph(fig, placeholder)` / explicit `is None` checks. Charts follow the
 reference palette in `ui/theme.py` (single y-axis, legends for ≥ 2 series, status colors only with an

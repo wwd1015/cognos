@@ -33,3 +33,4 @@ evals/_data/
 
 # Browser-automation scratch (UI checks)
 .playwright-mcp/
+.gstack/

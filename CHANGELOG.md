@@ -3,6 +3,31 @@
 All notable changes to COGNOS are documented here. Format loosely follows Keep a Changelog;
 versioning is SemVer.
 
+## [Unreleased]
+
+### Added
+- **Why a step is out of date.** Every invalidation names its cause (the gate decision, answered
+  question or validator loop) in `StepState.rerun_reason`; the reason stays on the step through
+  the re-run. The rail and the stage panel show it.
+- **What a re-run changed.** Before a stage runs again the engine keeps its last result as
+  `stages/<stage>/result.prev.json`; `service.step_changes` and the stage panel compare the two.
+- **Compare runs** (`cognos compare A B`, `/compare/<a>/<b>` in the workbench, "Compare with
+  previous run" on a run): what was decided differently (gate actions, overrides, config) and what
+  it did to the results (metrics with the difference, verdicts, findings). "Improved" / "worse" is
+  claimed only where the metric has a direction (`compare.py`).
+- **Export a run** (`cognos export RUN`, the Export button): one zip of the documents, stage
+  results and small evidence tables, state (decisions, challenges, questions), config and the agent
+  audit log, with `EXPORT.json` listing every file and its SHA-256. The data directory (the sealed
+  holdout), fitted models and binary caches are never included; agent prompts and raw outputs only
+  with `--with-agent-io`. Sealed packages travel with the export.
+- **Seats and a sealed package.** Each gate belongs to one seat: the model developer (data, design,
+  champion), the independent reviewer (validation), or the approver (sign-off). The workbench shows
+  one map and switches seat; the engine refuses the wrong seat. Use, horizon, default definition
+  and segment cannot be waived. `approve` writes `packages/vN.json` once, bound to a digest of
+  recorded facts. A later edit supersedes that package and does not rewrite the file. Autonomous
+  acceptance is express preparation (`seat=express`), not a signature, and does not seal a package.
+  Approval is not deployment. Who did what — person, agent, or the engine — is computed on read.
+
 ## [1.0.0] — 2026-09-29
 
 **Agents recommend, humans decide, the engine disposes.** v1.0 adopts the design proven in Cyber

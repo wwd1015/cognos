@@ -1,11 +1,9 @@
 # COGNOS
 
-COGNOS is an autonomous, governed model-development system. An LLM **reasoning layer** drives the
-decisions a human modeler would make — design, model choice, and the search for paths that improve
-performance — while a **deterministic engine** grounds, verifies, and records every result so the
-output is reproducible and auditable. Neither layer is optional: the reasoning automates judgment and
-removes humans from the loop; the determinism is what keeps the reasoning honest (it is the
-anti-hallucination mechanism).
+COGNOS is a governed model-development system. **Agents recommend**, people **decide** in named
+seats, and a **deterministic engine** grounds, verifies, and records every result. The reasoning
+layer automates judgment. It does not remove the decision. Finishing a run is not a signature.
+The determinism is what keeps the reasoning honest (it is the anti-hallucination mechanism).
 
 **Primary domain:** commercial model development (e.g. commercial credit-risk: facility / obligor /
 collateral), governed by **SR 11-7 model risk management**. Fair-lending scans are an **optional,
@@ -86,9 +84,19 @@ accepted.
 _Avoid_: calling `comply` a gate; it is a non-gating report.
 
 **Review gate**:
-A human decision point after a stage: `gate_data`, `gate_design`, `gate_champion`,
-`gate_validation`, `gate_signoff`. Interactive runs pause there; autonomous runs auto-accept (and
-record it). Review gates decide; they never BLOCK.
+A human decision point after a stage: `gate_data`, `gate_design`, `gate_champion` (the model
+developer), `gate_validation` (the independent reviewer), `gate_signoff` (the approver).
+Interactive runs pause there. Autonomous runs accept them as **express preparation** and record
+that; express is not a signature. Review gates decide; they never BLOCK.
+
+**Seat**:
+Who may act on a gate. `developer`, `reviewer`, `approver`. The engine refuses a seat acting on
+another seat's gate. Express is the seat autonomous mode records; a person does not pick it.
+
+**Sealed package**:
+What an approver's `approve` binds to, once use, horizon, default definition and segment are
+answered. Written once to `packages/vN.json` with a digest of the recorded facts. A later edit
+marks the live pointer superseded and does not rewrite the file. Approval is not deployment.
 
 **Model-risk readiness report** (the `comply` deliverable):
 An optional, non-gating report that organizes the substantive evidence into the SR 11-7 structure and

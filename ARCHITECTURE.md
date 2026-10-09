@@ -129,7 +129,9 @@ stages through the `RunContext` and writes its outputs as artifacts under `runs/
 ```
 runs/<run_id>/
   config.yaml              # the profile the run was created from (rehydrates the engine)
-  state.json               # RunState: steps, gate decisions, challenges, gaps, overrides, loops, spend
+  state.json               # RunState: steps, gate decisions, challenges, gaps, overrides, loops, spend,
+                           # the live package pointer
+  packages/ vN.json        # sealed decision packages: written once by approve, never rewritten
   events.jsonl             # the activity feed (UI, CLI)
   manifest.json            # run metadata + per-stage verdicts
   summary.json summary.txt # machine- and human-readable run summary
@@ -139,7 +141,14 @@ runs/<run_id>/
   docs/    *.md index.md log.md narrative.md decisions.md  # the OKF white-paper bundle
   stages/<stage>/result.json + artifacts (profile.json, hypotheses.json, design_brief.md,
                                           ledger.tsv/json, search_cache.joblib, diagnostics.json, …)
+  stages/<stage>/result.prev.json          # the result a re-run replaced (kept for comparison)
 ```
+
+Three mechanical readers sit beside the engine. `engine/process.py` maps each gate to a seat
+(developer, reviewer, approver), refuses a seat on another seat's gate, and seals `packages/vN.json`
+on `approve`; a later invalidation supersedes the pointer in `state.json`. `compare.py` restates
+two records and subtracts (run vs run, re-run vs `result.prev.json`). `export.py` zips the text
+record of a run with a SHA-256 listing; `data/`, `models/` and binary caches never travel.
 
 ## The agent layer
 

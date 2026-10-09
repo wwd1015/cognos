@@ -9,11 +9,17 @@ search and statistical testing, outcomes analysis, independent validation, a mod
 report, the white paper, and a docs↔code consistency check.
 
 At every judgment step an **LLM agent recommends** — which columns may be inputs, which econometric
-framework fits, which champion to ship, what a validator would challenge. A **model developer
-decides** at five review gates: accept, edit, override, or challenge the agent and send the work
-back. A **deterministic engine disposes**: it computes every number, keeps the sealed holdout sealed,
-checks every agent answer (and makes the agent retry when it fails), and is the only thing that can
-BLOCK. The white paper records who recommended what, and who decided.
+framework fits, which champion to ship, what a validator would challenge. **People decide in seats**:
+the model developer at data, design and champion; an independent reviewer at validation; an approver
+at sign-off. A seat cannot act on another seat's gate. A **deterministic engine disposes**: it
+computes every number, keeps the sealed holdout sealed, checks every agent answer (and makes the
+agent retry when it fails), and is the only thing that can BLOCK.
+
+Finishing the analysis is not a signature. Autonomous mode is express preparation: the gates are
+accepted and marked as such, and no package is sealed. An approver seals one only after use,
+horizon, default definition and segment are answered. The package file is written once; a later
+edit supersedes it and does not rewrite it. Approval is not deployment. The white paper records
+who recommended what, and which seat decided.
 
 v1.0 adopts the design proven in Cyber Credit Officer — engine-run agents with contracts, human
 gates, a challenger loop, and an audit trail — on top of COGNOS's econometric engine
@@ -73,6 +79,8 @@ cognos init -o cognos.yaml                   # profile template (design brief, a
 cognos explain --config cognos.yaml
 cognos run --config cognos.yaml --interactive
 cognos status --run <run_id>                 # steps, questions, challenges
+cognos compare <run_a> <run_b>               # what was decided differently, and what it changed
+cognos export <run_id>                       # one zip: documents, results, decisions, audit (never the data)
 cognos gate gate_champion --run <run_id> --action override --payload '{"champion": "c3"}' --reason "..."
 cognos gate gate_validation --run <run_id> --action send_back --target model --message "..."
 cognos answer --run <run_id> --gap design-use_case --text "origination underwriting"
