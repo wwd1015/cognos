@@ -1,0 +1,25 @@
+{
+  "coefficients": {
+    "const": -3.463208537640107,
+    "leverage": 0.9781444144278328,
+    "interest_coverage": -0.9807601259489952,
+    "log_assets": -0.3962993038819082,
+    "current_ratio": -0.37698621371284297,
+    "profit_margin": 0.08929499417694292,
+    "sector_industrials": -0.5136879830422452,
+    "sector_retail": -0.012207258959423217,
+    "sector_tech": -0.6663047903832409
+  },
+  "pvalues": {
+    "const": 1.395700516823388e-24,
+    "leverage": 4.800217826876972e-15,
+    "interest_coverage": 2.935221485080354e-05,
+    "log_assets": 0.01224553193610489,
+    "current_ratio": 0.0188398002155011,
+    "profit_margin": 0.591448820370552,
+    "sector_industrials": 0.23580286426364372,
+    "sector_retail": 0.9760850590217487,
+    "sector_tech": 0.16678031710427665
+  },
+  "feature_importances": null
+}

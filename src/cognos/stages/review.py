@@ -29,12 +29,12 @@ def _symbols(py_source: str) -> set[str]:
     except SyntaxError:
         return out
     for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             out.add(node.name)
         elif isinstance(node, ast.ClassDef):
             out.add(node.name)
             for sub in node.body:
-                if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if isinstance(sub, ast.FunctionDef | ast.AsyncFunctionDef):
                     out.add(f"{node.name}.{sub.name}")
                     out.add(sub.name)  # bare method name (anchors often omit the class)
         elif isinstance(node, ast.Assign):
@@ -106,7 +106,7 @@ class ReviewStage(Stage):
                     ))
                     continue
                 if symbol:
-                    syms = _symbols(fpath.read_text())
+                    syms = _symbols(fpath.read_text(encoding="utf-8"))
                     if symbol not in syms:
                         missing_symbols.append(anchor)
                         res.add_finding(Finding(

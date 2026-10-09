@@ -1,5 +1,8 @@
 # Reasoning proposes, the deterministic engine disposes
 
+> **Status:** amended by [ADR-0010](0010-agents-recommend-humans-decide.md) (v1.0): the reasoning
+> layer is now a set of engine-run agents with contracts and checks, and humans decide at review gates.
+
 COGNOS is a two-layer system in which an LLM reasoning layer and a deterministic engine are both
 first-class and interdependent. The reasoning layer **proposes** decisions a human modeler would make
 (design, model choice, feature engineering, and the next experiment to try); the deterministic engine

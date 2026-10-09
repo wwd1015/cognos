@@ -1,0 +1,379 @@
+{
+ "agent": "modeler",
+ "stage": "model",
+ "attempt": 1,
+ "provider": "claude_cli",
+ "model": "opus",
+ "system": "# Role: Modeler (stage 3, model)\n\nThe engine has run a budgeted, leakage-safe search. You choose the champion from `admissible_set`\n(the candidates within one cross-validation standard error of the best) and judge whether it is\n*economically* credible, not just numerically best. You choose **before** the sealed holdout is\nscored and will never see holdout results. Your choice goes to the human at the champion gate.\n\n## You decide\n- `champion`: the `id` of one candidate in `admissible_set`. Under `interpretability: required`,\n  candidates with `role: challenger` (trees) cannot be champion.\n- `sign_checks`: for the chosen candidate's features (its `coefficient_signs`), the expected sign on\n  risk, the observed sign, and your assessment.\n- `rationale` and `concerns`.\n\n## Playbook: champion selection\nExpected sign on PD for common commercial drivers: leverage (Debt/EBITDA) +, interest coverage -,\nliquidity (current or quick ratio) -, profitability (margins) -, size (log assets) -, revolver\nutilization +, collateral coverage -, unemployment +, GDP growth -, distance-to-default -. A wrong\nsign signals collinearity, segment mixing or leakage: prefer a close candidate with consistent signs\nover a marginally better one with a wrong sign, and say so.\n\nWithin the admissible set the differences are statistically indistinguishable, so prefer\nparsimony, interpretability and sign consistency. Cross-validated AUC of 0.70-0.85 is normal for a\n12-month obligor PD model; above 0.90 is suspicious (check the leakage suspects). Regularized\nfamilies report point estimates without honest p-values; don't over-claim significance.\n\n## Guided search (when asked for one experiment)\nPropose one experiment that could beat the current champion on the frozen metric: a family from\n`allowed_families`, optional hyperparameters (name and value as text), and optional transforms over\nthe existing columns using only `np.<fn>` and arithmetic, never the target. Set `stop: true` when\nnothing is worth trying. The engine keeps a proposal only if cross-validation shows it wins.\n\n\n## Rules for every COGNOS agent\n\nYou are one member of a model-development team building a model that will be reviewed under\nSR 11-7. You **recommend**; a deterministic engine checks your answer and a human model developer\nreviews it at a gate, where they may accept it, override it, or send it back to you.\n\n1. **Output.** Your final answer is one JSON object matching the provided schema exactly. No prose\n   outside the JSON. Write every string in plain, professional English a model validator can read\n   cold. Be concise: one to three sentences per text field.\n2. **Numbers come from the engine.** Never compute, estimate, or round a metric yourself. The\n   `facts` object in your context holds every number you may use; cite facts by their id in\n   `evidence` lists. Never invent an id: an unknown id rejects your answer.\n3. **Scope.** Work only from your context. You were deliberately not given some information (for\n   example the sealed holdout); do not speculate about it.\n4. **Uncertainty.** Put what you are unsure about, and why, in `uncertainties`. Say so when a\n   conclusion rests on thin evidence (few events, one sample, missing data).\n5. **Challenges.** If `challenges` is non-empty, answer every challenge in\n   `responses_to_challenges` (one entry per id). Change your recommendation where the challenge is\n   right; explain plainly where you disagree.\n6. **Never assume the design.** Where the sponsor has not decided something that changes the model\n   (use case, horizon, default definition, segment), raise it as a question rather than assuming.\n7. **If your answer is rejected**, the engine lists the problems; fix every one and answer again.\n",
+ "prompt": "Choose the champion from the admissible set and check its coefficient signs against economic priors. You choose on cross-validation evidence only.\n\n## Context\nThe JSON below is your complete context. `facts` holds the only numbers you may cite (by id).\n```json\n{\n \"agent\": \"modeler\",\n \"stage\": \"model\",\n \"project\": {\n  \"name\": \"demo_commercial\",\n  \"description\": \"COGNOS synthetic commercial demo \\u2014 Commercial PD (vintage panel, out-of-time)\",\n  \"task\": \"classification\",\n  \"target\": \"default\",\n  \"metric\": \"roc_auc\",\n  \"metric_direction\": \"maximize\",\n  \"design\": {\n   \"use_case\": \"\",\n   \"horizon\": \"\",\n   \"default_definition\": \"\",\n   \"segment\": \"\",\n   \"interpretability\": \"required\",\n   \"notes\": \"\"\n  },\n  \"risk_tier\": \"high\",\n  \"intended_use\": \"\"\n },\n \"metric\": \"roc_auc\",\n \"metric_direction\": \"maximize\",\n \"interpretability\": \"required\",\n \"admissible_set\": [\n  {\n   \"id\": \"c6\",\n   \"label\": \"ridge_logit(6f;C=0.1,random_state=42)\",\n   \"family\": \"ridge_logit\",\n   \"n_features\": 6,\n   \"features\": [\n    \"leverage\",\n    \"interest_coverage\",\n    \"log_assets\",\n    \"current_ratio\",\n    \"profit_margin\",\n    \"sector\"\n   ],\n   \"cv_mean\": 0.815269,\n   \"cv_std\": 0.080584,\n   \"role\": \"candidate\",\n   \"interpretable\": true,\n   \"transforms\": [],\n   \"coefficient_signs\": [\n    {\n     \"feature\": \"leverage\",\n     \"sign\": \"+\"\n    },\n    {\n     \"feature\": \"interest_coverage\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"log_assets\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"current_ratio\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"profit_margin\",\n     \"sign\": \"+\"\n    }\n   ],\n   \"ratchet_champion\": true\n  },\n  {\n   \"id\": \"c3\",\n   \"label\": \"lasso_logit(6f;C=0.1,random_state=42)\",\n   \"family\": \"lasso_logit\",\n   \"n_features\": 6,\n   \"features\": [\n    \"leverage\",\n    \"interest_coverage\",\n    \"log_assets\",\n    \"current_ratio\",\n    \"profit_margin\",\n    \"sector\"\n   ],\n   \"cv_mean\": 0.811452,\n   \"cv_std\": 0.09179,\n   \"role\": \"candidate\",\n   \"interpretable\": true,\n   \"transforms\": [],\n   \"coefficient_signs\": [\n    {\n     \"feature\": \"leverage\",\n     \"sign\": \"+\"\n    },\n    {\n     \"feature\": \"interest_coverage\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"log_assets\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"current_ratio\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"profit_margin\",\n     \"sign\": \"+\"\n    }\n   ],\n   \"ratchet_champion\": false\n  },\n  {\n   \"id\": \"c7\",\n   \"label\": \"ridge_logit(6f;C=1.0,random_state=42)\",\n   \"family\": \"ridge_logit\",\n   \"n_features\": 6,\n   \"features\": [\n    \"leverage\",\n    \"interest_coverage\",\n    \"log_assets\",\n    \"current_ratio\",\n    \"profit_margin\",\n    \"sector\"\n   ],\n   \"cv_mean\": 0.802913,\n   \"cv_std\": 0.07291,\n   \"role\": \"candidate\",\n   \"interpretable\": true,\n   \"transforms\": [],\n   \"coefficient_signs\": [\n    {\n     \"feature\": \"leverage\",\n     \"sign\": \"+\"\n    },\n    {\n     \"feature\": \"interest_coverage\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"log_assets\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"current_ratio\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"profit_margin\",\n     \"sign\": \"+\"\n    }\n   ],\n   \"ratchet_champion\": false\n  },\n  {\n   \"id\": \"c4\",\n   \"label\": \"lasso_logit(6f;C=1.0,random_state=42)\",\n   \"family\": \"lasso_logit\",\n   \"n_features\": 6,\n   \"features\": [\n    \"leverage\",\n    \"interest_coverage\",\n    \"log_assets\",\n    \"current_ratio\",\n    \"profit_margin\",\n    \"sector\"\n   ],\n   \"cv_mean\": 0.800603,\n   \"cv_std\": 0.074334,\n   \"role\": \"candidate\",\n   \"interpretable\": true,\n   \"transforms\": [],\n   \"coefficient_signs\": [\n    {\n     \"feature\": \"leverage\",\n     \"sign\": \"+\"\n    },\n    {\n     \"feature\": \"interest_coverage\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"log_assets\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"current_ratio\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"profit_margin\",\n     \"sign\": \"+\"\n    }\n   ],\n   \"ratchet_champion\": false\n  },\n  {\n   \"id\": \"c8\",\n   \"label\": \"ridge_logit(6f;C=10.0,random_state=42)\",\n   \"family\": \"ridge_logit\",\n   \"n_features\": 6,\n   \"features\": [\n    \"leverage\",\n    \"interest_coverage\",\n    \"log_assets\",\n    \"current_ratio\",\n    \"profit_margin\",\n    \"sector\"\n   ],\n   \"cv_mean\": 0.797589,\n   \"cv_std\": 0.068181,\n   \"role\": \"candidate\",\n   \"interpretable\": true,\n   \"transforms\": [],\n   \"coefficient_signs\": [\n    {\n     \"feature\": \"leverage\",\n     \"sign\": \"+\"\n    },\n    {\n     \"feature\": \"interest_coverage\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"log_assets\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"current_ratio\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"profit_margin\",\n     \"sign\": \"+\"\n    }\n   ],\n   \"ratchet_champion\": false\n  },\n  {\n   \"id\": \"c5\",\n   \"label\": \"lasso_logit(6f;C=10.0,random_state=42)\",\n   \"family\": \"lasso_logit\",\n   \"n_features\": 6,\n   \"features\": [\n    \"leverage\",\n    \"interest_coverage\",\n    \"log_assets\",\n    \"current_ratio\",\n    \"profit_margin\",\n    \"sector\"\n   ],\n   \"cv_mean\": 0.797187,\n   \"cv_std\": 0.068266,\n   \"role\": \"candidate\",\n   \"interpretable\": true,\n   \"transforms\": [],\n   \"coefficient_signs\": [\n    {\n     \"feature\": \"leverage\",\n     \"sign\": \"+\"\n    },\n    {\n     \"feature\": \"interest_coverage\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"log_assets\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"current_ratio\",\n     \"sign\": \"-\"\n    },\n    {\n     \"feature\": \"profit_margin\",\n     \"sign\": \"+\"\n    }\n   ],\n   \"ratchet_champion\": false\n  }\n ],\n \"n_candidates_tried\": 16,\n \"ledger_top\": [\n  {\n   \"label\": \"ridge_logit(6f;C=0.1,random_state=42)\",\n   \"family\": \"ridge_logit\",\n   \"n_features\": 6,\n   \"cv_mean\": 0.815269,\n   \"status\": \"keep\"\n  },\n  {\n   \"label\": \"lasso_logit(6f;C=0.1,random_state=42)\",\n   \"family\": \"lasso_logit\",\n   \"n_features\": 6,\n   \"cv_mean\": 0.811452,\n   \"status\": \"keep\"\n  },\n  {\n   \"label\": \"ridge_logit(6f;C=1.0,random_state=42)\",\n   \"family\": \"ridge_logit\",\n   \"n_features\": 6,\n   \"cv_mean\": 0.802913,\n   \"status\": \"discard\"\n  },\n  {\n   \"label\": \"lasso_logit(6f;C=1.0,random_state=42)\",\n   \"family\": \"lasso_logit\",\n   \"n_features\": 6,\n   \"cv_mean\": 0.800603,\n   \"status\": \"discard\"\n  },\n  {\n   \"label\": \"ridge_logit(6f;C=10.0,random_state=42)\",\n   \"family\": \"ridge_logit\",\n   \"n_features\": 6,\n   \"cv_mean\": 0.797589,\n   \"status\": \"discard\"\n  },\n  {\n   \"label\": \"lasso_logit(6f;C=10.0,random_state=42)\",\n   \"family\": \"lasso_logit\",\n   \"n_features\": 6,\n   \"cv_mean\": 0.797187,\n   \"status\": \"discard\"\n  },\n  {\n   \"label\": \"probit(6f;random_state=42)\",\n   \"family\": \"probit\",\n   \"n_features\": 6,\n   \"cv_mean\": 0.797187,\n   \"status\": \"keep\"\n  },\n  {\n   \"label\": \"logit(6f;random_state=42)\",\n   \"family\": \"logit\",\n   \"n_features\": 6,\n   \"cv_mean\": 0.796183,\n   \"status\": \"keep\"\n  },\n  {\n   \"label\": \"cloglog(6f;random_state=42)\",\n   \"family\": \"cloglog\",\n   \"n_features\": 6,\n   \"cv_mean\": 0.795881,\n   \"status\": \"discard\"\n  },\n  {\n   \"label\": \"random_forest(6f;max_depth=6,n_estimators=200,random_state=42)\",\n   \"family\": \"random_forest\",\n   \"n_features\": 6,\n   \"cv_mean\": 0.76886,\n   \"status\": \"discard\"\n  }\n ],\n \"facts\": {\n  \"explore.n_rows\": 1200,\n  \"explore.n_features\": 6,\n  \"explore.leakage_suspects\": \"none\",\n  \"explore.positive_rate\": 0.0675,\n  \"explore.corr.leverage\": 0.3751,\n  \"explore.corr.interest_coverage\": -0.1442,\n  \"explore.corr.log_assets\": -0.0972,\n  \"explore.corr.current_ratio\": -0.0612,\n  \"explore.corr.profit_margin\": -0.0075,\n  \"ideate.shape\": \"panel\",\n  \"ideate.n_events\": 81,\n  \"ideate.event_rate\": 0.0675,\n  \"ideate.events_per_variable\": 13.5,\n  \"ideate.families\": \"logit, probit, cloglog, lasso_logit, ridge_logit, gradient_boosting, random_forest\",\n  \"ideate.n_open_questions\": 9\n },\n \"challenges\": []\n}\n```\n\nReply with a single JSON object that matches the required schema.",
+ "context": {
+  "agent": "modeler",
+  "stage": "model",
+  "project": {
+   "name": "demo_commercial",
+   "description": "COGNOS synthetic commercial demo \u2014 Commercial PD (vintage panel, out-of-time)",
+   "task": "classification",
+   "target": "default",
+   "metric": "roc_auc",
+   "metric_direction": "maximize",
+   "design": {
+    "use_case": "",
+    "horizon": "",
+    "default_definition": "",
+    "segment": "",
+    "interpretability": "required",
+    "notes": ""
+   },
+   "risk_tier": "high",
+   "intended_use": ""
+  },
+  "metric": "roc_auc",
+  "metric_direction": "maximize",
+  "interpretability": "required",
+  "admissible_set": [
+   {
+    "id": "c6",
+    "label": "ridge_logit(6f;C=0.1,random_state=42)",
+    "family": "ridge_logit",
+    "n_features": 6,
+    "features": [
+     "leverage",
+     "interest_coverage",
+     "log_assets",
+     "current_ratio",
+     "profit_margin",
+     "sector"
+    ],
+    "cv_mean": 0.815269,
+    "cv_std": 0.080584,
+    "role": "candidate",
+    "interpretable": true,
+    "transforms": [],
+    "coefficient_signs": [
+     {
+      "feature": "leverage",
+      "sign": "+"
+     },
+     {
+      "feature": "interest_coverage",
+      "sign": "-"
+     },
+     {
+      "feature": "log_assets",
+      "sign": "-"
+     },
+     {
+      "feature": "current_ratio",
+      "sign": "-"
+     },
+     {
+      "feature": "profit_margin",
+      "sign": "+"
+     }
+    ],
+    "ratchet_champion": true
+   },
+   {
+    "id": "c3",
+    "label": "lasso_logit(6f;C=0.1,random_state=42)",
+    "family": "lasso_logit",
+    "n_features": 6,
+    "features": [
+     "leverage",
+     "interest_coverage",
+     "log_assets",
+     "current_ratio",
+     "profit_margin",
+     "sector"
+    ],
+    "cv_mean": 0.811452,
+    "cv_std": 0.09179,
+    "role": "candidate",
+    "interpretable": true,
+    "transforms": [],
+    "coefficient_signs": [
+     {
+      "feature": "leverage",
+      "sign": "+"
+     },
+     {
+      "feature": "interest_coverage",
+      "sign": "-"
+     },
+     {
+      "feature": "log_assets",
+      "sign": "-"
+     },
+     {
+      "feature": "current_ratio",
+      "sign": "-"
+     },
+     {
+      "feature": "profit_margin",
+      "sign": "+"
+     }
+    ],
+    "ratchet_champion": false
+   },
+   {
+    "id": "c7",
+    "label": "ridge_logit(6f;C=1.0,random_state=42)",
+    "family": "ridge_logit",
+    "n_features": 6,
+    "features": [
+     "leverage",
+     "interest_coverage",
+     "log_assets",
+     "current_ratio",
+     "profit_margin",
+     "sector"
+    ],
+    "cv_mean": 0.802913,
+    "cv_std": 0.07291,
+    "role": "candidate",
+    "interpretable": true,
+    "transforms": [],
+    "coefficient_signs": [
+     {
+      "feature": "leverage",
+      "sign": "+"
+     },
+     {
+      "feature": "interest_coverage",
+      "sign": "-"
+     },
+     {
+      "feature": "log_assets",
+      "sign": "-"
+     },
+     {
+      "feature": "current_ratio",
+      "sign": "-"
+     },
+     {
+      "feature": "profit_margin",
+      "sign": "+"
+     }
+    ],
+    "ratchet_champion": false
+   },
+   {
+    "id": "c4",
+    "label": "lasso_logit(6f;C=1.0,random_state=42)",
+    "family": "lasso_logit",
+    "n_features": 6,
+    "features": [
+     "leverage",
+     "interest_coverage",
+     "log_assets",
+     "current_ratio",
+     "profit_margin",
+     "sector"
+    ],
+    "cv_mean": 0.800603,
+    "cv_std": 0.074334,
+    "role": "candidate",
+    "interpretable": true,
+    "transforms": [],
+    "coefficient_signs": [
+     {
+      "feature": "leverage",
+      "sign": "+"
+     },
+     {
+      "feature": "interest_coverage",
+      "sign": "-"
+     },
+     {
+      "feature": "log_assets",
+      "sign": "-"
+     },
+     {
+      "feature": "current_ratio",
+      "sign": "-"
+     },
+     {
+      "feature": "profit_margin",
+      "sign": "+"
+     }
+    ],
+    "ratchet_champion": false
+   },
+   {
+    "id": "c8",
+    "label": "ridge_logit(6f;C=10.0,random_state=42)",
+    "family": "ridge_logit",
+    "n_features": 6,
+    "features": [
+     "leverage",
+     "interest_coverage",
+     "log_assets",
+     "current_ratio",
+     "profit_margin",
+     "sector"
+    ],
+    "cv_mean": 0.797589,
+    "cv_std": 0.068181,
+    "role": "candidate",
+    "interpretable": true,
+    "transforms": [],
+    "coefficient_signs": [
+     {
+      "feature": "leverage",
+      "sign": "+"
+     },
+     {
+      "feature": "interest_coverage",
+      "sign": "-"
+     },
+     {
+      "feature": "log_assets",
+      "sign": "-"
+     },
+     {
+      "feature": "current_ratio",
+      "sign": "-"
+     },
+     {
+      "feature": "profit_margin",
+      "sign": "+"
+     }
+    ],
+    "ratchet_champion": false
+   },
+   {
+    "id": "c5",
+    "label": "lasso_logit(6f;C=10.0,random_state=42)",
+    "family": "lasso_logit",
+    "n_features": 6,
+    "features": [
+     "leverage",
+     "interest_coverage",
+     "log_assets",
+     "current_ratio",
+     "profit_margin",
+     "sector"
+    ],
+    "cv_mean": 0.797187,
+    "cv_std": 0.068266,
+    "role": "candidate",
+    "interpretable": true,
+    "transforms": [],
+    "coefficient_signs": [
+     {
+      "feature": "leverage",
+      "sign": "+"
+     },
+     {
+      "feature": "interest_coverage",
+      "sign": "-"
+     },
+     {
+      "feature": "log_assets",
+      "sign": "-"
+     },
+     {
+      "feature": "current_ratio",
+      "sign": "-"
+     },
+     {
+      "feature": "profit_margin",
+      "sign": "+"
+     }
+    ],
+    "ratchet_champion": false
+   }
+  ],
+  "n_candidates_tried": 16,
+  "ledger_top": [
+   {
+    "label": "ridge_logit(6f;C=0.1,random_state=42)",
+    "family": "ridge_logit",
+    "n_features": 6,
+    "cv_mean": 0.815269,
+    "status": "keep"
+   },
+   {
+    "label": "lasso_logit(6f;C=0.1,random_state=42)",
+    "family": "lasso_logit",
+    "n_features": 6,
+    "cv_mean": 0.811452,
+    "status": "keep"
+   },
+   {
+    "label": "ridge_logit(6f;C=1.0,random_state=42)",
+    "family": "ridge_logit",
+    "n_features": 6,
+    "cv_mean": 0.802913,
+    "status": "discard"
+   },
+   {
+    "label": "lasso_logit(6f;C=1.0,random_state=42)",
+    "family": "lasso_logit",
+    "n_features": 6,
+    "cv_mean": 0.800603,
+    "status": "discard"
+   },
+   {
+    "label": "ridge_logit(6f;C=10.0,random_state=42)",
+    "family": "ridge_logit",
+    "n_features": 6,
+    "cv_mean": 0.797589,
+    "status": "discard"
+   },
+   {
+    "label": "lasso_logit(6f;C=10.0,random_state=42)",
+    "family": "lasso_logit",
+    "n_features": 6,
+    "cv_mean": 0.797187,
+    "status": "discard"
+   },
+   {
+    "label": "probit(6f;random_state=42)",
+    "family": "probit",
+    "n_features": 6,
+    "cv_mean": 0.797187,
+    "status": "keep"
+   },
+   {
+    "label": "logit(6f;random_state=42)",
+    "family": "logit",
+    "n_features": 6,
+    "cv_mean": 0.796183,
+    "status": "keep"
+   },
+   {
+    "label": "cloglog(6f;random_state=42)",
+    "family": "cloglog",
+    "n_features": 6,
+    "cv_mean": 0.795881,
+    "status": "discard"
+   },
+   {
+    "label": "random_forest(6f;max_depth=6,n_estimators=200,random_state=42)",
+    "family": "random_forest",
+    "n_features": 6,
+    "cv_mean": 0.76886,
+    "status": "discard"
+   }
+  ],
+  "facts": {
+   "explore.n_rows": 1200,
+   "explore.n_features": 6,
+   "explore.leakage_suspects": "none",
+   "explore.positive_rate": 0.0675,
+   "explore.corr.leverage": 0.3751,
+   "explore.corr.interest_coverage": -0.1442,
+   "explore.corr.log_assets": -0.0972,
+   "explore.corr.current_ratio": -0.0612,
+   "explore.corr.profit_margin": -0.0075,
+   "ideate.shape": "panel",
+   "ideate.n_events": 81,
+   "ideate.event_rate": 0.0675,
+   "ideate.events_per_variable": 13.5,
+   "ideate.families": "logit, probit, cloglog, lasso_logit, ridge_logit, gradient_boosting, random_forest",
+   "ideate.n_open_questions": 9
+  },
+  "challenges": []
+ }
+}

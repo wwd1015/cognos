@@ -4,6 +4,10 @@ Heavy artifacts (datasets, fitted models, result tables, OKF bundles) live on di
 directory and are passed *by reference*; only small structured payloads live in memory. This is
 what lets a stage run in a fresh process (``cognos run-stage ...``) reconstruct everything the
 previous stages produced — the key to COGNOS's stage-by-stage / human-in-the-loop mode.
+
+v1: the context also carries the run's human **overrides** (from ``state.json``) — design answers
+shape the *effective* config, column exclusions shape :meth:`RunContext.profile` — and the single
+seam through which a stage obtains judgment: :meth:`RunContext.recommend` (the agent layer).
 """
 
 from __future__ import annotations
@@ -19,10 +23,13 @@ import joblib
 import pandas as pd
 
 from .artifacts import ArtifactRef, StageResult
+from .fsutil import atomic_write
 
 if TYPE_CHECKING:
-    from .brains.base import Brain
+    from .agents.contracts import Contract
+    from .agents.runner import AgentRunner
     from .config import CognosConfig
+    from .engine.state import Challenge, Overrides
 
 
 def new_run_id() -> str:
@@ -31,22 +38,22 @@ def new_run_id() -> str:
 
 
 class RunContext:
-    """Owns the run directory, the artifact store, checkpoints, and the (optional) LLM brain."""
+    """Owns the run directory, the artifact store, checkpoints, overrides, and the agent runner."""
 
     def __init__(
         self,
         config: CognosConfig,
         run_id: str | None = None,
         runs_root: str | Path | None = None,
-        brain: Brain | None = None,
+        runner: AgentRunner | None = None,
     ) -> None:
-        from .brains import make_brain  # local import to avoid cycles
-
-        self.config = config
+        self.base_config = config
         self.run_id = run_id or new_run_id()
         root = Path(runs_root or config.runs_dir)
         self.run_dir = root / self.run_id
-        self.brain = brain or make_brain(config.brain)
+        self._runner = runner
+        self.overrides = self._load_overrides()
+        self.config = self._effective_config(config, self.overrides)
         self._results: dict[str, StageResult] = {}
         self.logger = logging.getLogger(f"cognos.run.{self.run_id}")
 
@@ -78,8 +85,8 @@ class RunContext:
         return self.run_dir / "stages"
 
     @property
-    def reasoning_dir(self) -> Path:
-        return self.run_dir / "reasoning"
+    def agents_dir(self) -> Path:
+        return self.run_dir / "agents"
 
     @property
     def manifest_path(self) -> Path:
@@ -104,18 +111,17 @@ class RunContext:
     def save_json(self, relpath: str, obj: Any) -> ArtifactRef:
         path = self.run_dir / relpath
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as fh:
-            json.dump(obj, fh, indent=2, default=str)
+        atomic_write(path, json.dumps(obj, indent=2, default=str))
         return ArtifactRef(name=Path(relpath).stem, kind="json", path=relpath)
 
     def load_json(self, relpath: str) -> Any:
-        with open(self.run_dir / relpath) as fh:
+        with open(self.run_dir / relpath, encoding="utf-8") as fh:
             return json.load(fh)
 
     def save_text(self, relpath: str, text: str, kind: str = "text") -> ArtifactRef:
         path = self.run_dir / relpath
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
         return ArtifactRef(name=Path(relpath).stem, kind=kind, path=relpath)
 
     def save_df(self, relpath: str, df: pd.DataFrame, kind: str = "table") -> ArtifactRef:
@@ -145,8 +151,7 @@ class RunContext:
     def record(self, result: StageResult) -> StageResult:
         self._results[result.stage] = result
         path = self.stage_dir(result.stage) / "result.json"
-        with open(path, "w") as fh:
-            fh.write(result.model_dump_json(indent=2))
+        atomic_write(path, result.model_dump_json(indent=2))  # readers never see a torn file
         self._write_manifest()
         self.logger.info(result.token_line())
         return result
@@ -156,7 +161,7 @@ class RunContext:
             return self._results[stage]
         path = self.stages_dir / stage / "result.json"
         if path.exists():
-            res = StageResult.model_validate_json(path.read_text())
+            res = StageResult.model_validate_json(path.read_text(encoding="utf-8"))
             self._results[stage] = res
             return res
         return None
@@ -191,16 +196,71 @@ class RunContext:
         df.to_parquet(cached, index=False)
         return df
 
-    def log_reasoning(self, stage: str, kind: str, prompt: str, response: str) -> None:
-        """Append one LLM exchange to the reasoning transcript (the replay/audit artifact, ADR-0003)."""
-        self.reasoning_dir.mkdir(parents=True, exist_ok=True)
-        rec = {
-            "stage": stage, "kind": kind, "brain": getattr(self.brain, "kind", "?"),
-            "ts": datetime.now(UTC).isoformat(),
-            "prompt": prompt, "response": response,
-        }
-        with open(self.reasoning_dir / "transcript.jsonl", "a") as fh:
-            fh.write(json.dumps(rec) + "\n")
+    # --- v1: overrides, effective config, agent seam ------------------------------
+    def _load_overrides(self) -> Overrides:
+        from .engine.state import Overrides, RunState
+
+        if RunState.exists(self.run_dir):
+            try:
+                return RunState.load(self.run_dir).overrides
+            except Exception:  # a corrupt/partial state file must not break a stage
+                pass
+        return Overrides()
+
+    @staticmethod
+    def _effective_config(config: CognosConfig, overrides: Overrides) -> CognosConfig:
+        """The profile plus human design answers (the YAML itself is never edited)."""
+        if not overrides.design:
+            return config
+        cfg = config.model_copy(deep=True)
+        for field_name, value in overrides.design.items():
+            if hasattr(cfg.design, field_name):
+                setattr(cfg.design, field_name, value)
+        return cfg
+
+    def profile(self) -> dict[str, Any]:
+        """The explore profile as downstream stages must see it: human-excluded columns removed."""
+        base = dict(self.require("explore").payload)
+        excluded = set(self.overrides.exclude_columns)
+        if not excluded:
+            return base
+        for key in ("features", "numeric_features", "categorical_features"):
+            base[key] = [c for c in base.get(key, []) if c not in excluded]
+        base["top_correlations"] = [c for c in base.get("top_correlations", [])
+                                    if c["feature"] not in excluded]
+        base["excluded_columns"] = sorted(excluded)
+        return base
+
+    def challenges_for(self, stage: str) -> list[Challenge]:
+        from .engine.state import RunState
+
+        if not RunState.exists(self.run_dir):
+            return []
+        return RunState.load(self.run_dir).open_challenges(stage)
+
+    def sponsor_answers(self) -> list[dict[str, str]]:
+        """Questions the sponsor has answered (or accepted as assumptions) — every agent sees them."""
+        from .engine.state import RunState
+
+        if not RunState.exists(self.run_dir):
+            return []
+        return [{"question": g.question, "answer": g.answer or "", "status": g.status}
+                for g in RunState.load(self.run_dir).gaps if g.status != "open"]
+
+    @property
+    def runner(self) -> AgentRunner:
+        if self._runner is None:
+            from .agents.runner import AgentRunner
+
+            self._runner = AgentRunner.for_config(self.config, self.run_dir)
+        return self._runner
+
+    def recommend(self, agent: str, data: dict[str, Any], *,
+                  fresh: dict[str, StageResult] | None = None,
+                  check=None) -> Contract:
+        """Ask ``agent`` for its recommendation. The engine validates it (``check`` adds
+        stage-specific rules) and retries with the errors; the result is a validated contract."""
+        return self.runner.recommend(self, agent, data, fresh=fresh, check=check)
 
     def attach_dataset(self, df: pd.DataFrame) -> ArtifactRef:
         """Persist an in-memory DataFrame as the canonical dataset for this run."""
@@ -221,7 +281,7 @@ class RunContext:
                 for s in self.config.stages.enabled
             },
         }
-        with open(self.manifest_path, "w") as fh:
+        with open(self.manifest_path, "w", encoding="utf-8") as fh:
             json.dump(manifest, fh, indent=2)
 
     def _load_existing(self) -> None:

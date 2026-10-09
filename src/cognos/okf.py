@@ -84,7 +84,7 @@ class OKFBundle:
     # --- authoring ---------------------------------------------------------------
     def add(self, concept: OKFConcept) -> OKFConcept:
         self._concepts[concept.name] = concept
-        (self.root / f"{concept.name}.md").write_text(concept.render())
+        (self.root / f"{concept.name}.md").write_text(concept.render(), encoding="utf-8")
         return concept
 
     def log_event(self, kind: str, message: str, when: str | None = None) -> None:
@@ -100,11 +100,11 @@ class OKFBundle:
             label = c.title or name
             desc = f" — {c.description}" if c.description else ""
             lines.append(f"- [{label}](./{name}.md){desc}")
-        (self.root / "index.md").write_text("\n".join(lines) + "\n")
+        (self.root / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def write_log(self) -> None:
         body = "# Change Log\n\n" + "\n\n".join(reversed(self._log)) + "\n"
-        (self.root / "log.md").write_text(body)
+        (self.root / "log.md").write_text(body, encoding="utf-8")
 
     def finalize(self, title: str, description: str = "") -> None:
         self.write_index(title, description)
@@ -121,7 +121,7 @@ class OKFBundle:
         for md in sorted(self.root.glob("*.md")):
             if md.name in ("index.md", "log.md"):
                 continue
-            self._concepts[md.stem] = parse_concept(md.read_text(), name=md.stem)
+            self._concepts[md.stem] = parse_concept(md.read_text(encoding="utf-8"), name=md.stem)
         return self
 
 

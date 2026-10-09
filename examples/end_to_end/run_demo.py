@@ -12,9 +12,8 @@ Shows the pipeline working across three scenarios:
 
 Run:  python examples/end_to_end/run_demo.py
 (Requires `pip install -e .`; optionally the IMPACT library for the real feature-table scoring path —
-without it, COGNOS falls back to its built-in scorer automatically. The LLM-guided search and
-LLM-driven ideation activate only when an LLM brain is configured; this demo runs the deterministic
-engine.)
+without it, COGNOS falls back to its built-in scorer automatically. This demo runs the deterministic
+(heuristic) agents; pass a provider such as claude_cli or anthropic to let LLM agents recommend.)
 """
 
 from __future__ import annotations
@@ -118,9 +117,13 @@ def main() -> None:
     demo_stage_by_stage(workdir)
     banner("DONE")
     print(f"All run artifacts (models, diagnostics, OKF white papers) are under: {workdir}/runs")
-    print("Tip: set an LLM brain (brain.kind: llm + ANTHROPIC_API_KEY) and search.guided: true to let "
-          "the reasoning layer drive feature engineering and the search.")
+    print("Tip: `cognos demo --task commercial --provider claude_cli` lets live LLM agents recommend; "
+          "`cognos ui` lets you decide at each review gate.")
 
 
 if __name__ == "__main__":
+    from cognos.cli import quiet_numerics, utf8_console
+
+    utf8_console()
+    quiet_numerics()
     main()

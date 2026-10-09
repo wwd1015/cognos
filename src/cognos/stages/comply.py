@@ -15,7 +15,7 @@ import numpy as np
 from ..artifacts import Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..runtime.score import score_frame
-from .base import Stage, register_stage
+from .base import Stage, attach_recommendation, register_stage
 
 PASS = "pass"
 WARN = "warn"
@@ -246,6 +246,22 @@ class ComplyStage(Stage):
             "outstanding_human_steps": outstanding_human_steps,
             "report_only": True,
         }
+        # --- the Model-Risk Analyst's reading (non-gating, like the report) ----------
+        res.payload = payload
+        out = ctx.recommend("risk_analyst", {
+            "sr11_7": sr11_7,
+            "nist_ai_rmf": {k: v["status"] for k, v in nist_ai_rmf.items()},
+            "trustworthy": trustworthy,
+            "outstanding_human_steps": outstanding_human_steps,
+            "fair_lending": {k: fair_lending.get(k) for k in ("enabled", "disparate_impact",
+                                                                "passes")},
+            "regimes": list(comp.regimes),
+            "jurisdictions": jurisdictions,
+            "risk_tier": comp.risk_tier,
+        }, fresh={"comply": res})
+        payload["readiness"] = {"level": out.readiness, "narrative": out.narrative,
+                                "priority_actions": [a.model_dump() for a in out.priority_actions]}
+        attach_recommendation(payload, ctx, "risk_analyst", out)
         ref = ctx.save_json("stages/comply/compliance.json", payload)
         res.add_artifact(ref)
         res.payload = payload

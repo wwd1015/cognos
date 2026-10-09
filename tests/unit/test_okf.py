@@ -33,7 +33,7 @@ def test_bundle_finalize_writes_index_and_log(tmp_path):
     b.add(OKFConcept(name="model", type="model", title="Model", body="m"))
     b.log_event("Creation", "bundle created")
     b.finalize("COGNOS White Paper", "desc")
-    index = (tmp_path / "docs" / "index.md").read_text()
+    index = (tmp_path / "docs" / "index.md").read_text(encoding="utf-8")
     assert f"okf_version: {OKF_VERSION}" in index
     assert "[Overview](./overview.md)" in index
     assert (tmp_path / "docs" / "log.md").exists()

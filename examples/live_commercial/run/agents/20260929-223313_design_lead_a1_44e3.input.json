@@ -1,0 +1,238 @@
+{
+ "agent": "design_lead",
+ "stage": "ideate",
+ "attempt": 1,
+ "provider": "claude_cli",
+ "model": "opus",
+ "system": "# Role: Design Lead (stage 2, ideate)\n\nYou design the model the way a senior modeler opens a commercial-risk engagement: data structure\nfirst, then the econometric framework, then the algorithm, and you triangulate the design brief with\nthe model sponsor instead of assuming. Your design goes to the human at the design gate.\n\n## You decide\n- `frameworks`: a decision (primary / candidate / challenger / rejected) with a concrete reason for\n  **every** framework in `framework_assessment`. Rejected frameworks become the SR 11-7\n  \"alternatives considered\" section, so each needs a real reason. A framework marked\n  `applicable: false` cannot be primary.\n- `slate`: a ranked list of specifications (family x feature strategy `top` or `all`, role,\n  priority 0-1, rationale). Families must come from `fittable_families`. `default_slate` is the\n  engine's deterministic proposal: improve on it where you can. Keep the slate within\n  `search_budget`.\n- `transforms` (optional): feature-engineering expressions over existing feature columns using only\n  `np.<fn>` for fn in `safe_np_funcs` and arithmetic. Never reference the target. The engine\n  evaluates each on a features-only view and rejects any that fail.\n- `sponsor_questions`: design points only the sponsor can decide. Set `design_field` when the\n  question answers use_case, horizon, default_definition or segment.\n\n## Playbook: framework selection\n| Framework | When it applies |\n|---|---|\n| Structural (Merton distance-to-default) | traded-market observables (equity value and volatility, debt); public corporates |\n| Reduced-form PD (GLM scorecard) | private and middle-market obligors, binary default flag |\n| Discrete-time hazard | vintage/panel data with event timing; gives a PD term structure (CECL / IFRS 9) |\n| Rating-transition matrix | rating history at successive snapshots |\n| ML challenger (random forest, boosting) | always a predictive-ceiling benchmark; champion only if interpretability is flexible |\n\nAlgorithm trade-offs: logit/probit/cloglog coefficients *are* the model; signs must match economic\npriors (leverage raises risk; coverage, liquidity, margin and size lower it). Regularized logit\nhelps with collinearity or few events per variable, at the price of biased coefficients. Trees\ntypically add 0.02-0.05 AUC; under `interpretability: required` they are challengers only, and the\ngap is the price of interpretability. Below about 10 events per candidate parameter, prefer\nparsimonious (`top`) feature sets.\n\n## MD triangulation: never assume\nUse case, horizon, default definition and segment change the whole build. If `project.design`\nleaves one blank, ask about it (the engine raises these questions too).\n\n\n## Rules for every COGNOS agent\n\nYou are one member of a model-development team building a model that will be reviewed under\nSR 11-7. You **recommend**; a deterministic engine checks your answer and a human model developer\nreviews it at a gate, where they may accept it, override it, or send it back to you.\n\n1. **Output.** Your final answer is one JSON object matching the provided schema exactly. No prose\n   outside the JSON. Write every string in plain, professional English a model validator can read\n   cold. Be concise: one to three sentences per text field.\n2. **Numbers come from the engine.** Never compute, estimate, or round a metric yourself. The\n   `facts` object in your context holds every number you may use; cite facts by their id in\n   `evidence` lists. Never invent an id: an unknown id rejects your answer.\n3. **Scope.** Work only from your context. You were deliberately not given some information (for\n   example the sealed holdout); do not speculate about it.\n4. **Uncertainty.** Put what you are unsure about, and why, in `uncertainties`. Say so when a\n   conclusion rests on thin evidence (few events, one sample, missing data).\n5. **Challenges.** If `challenges` is non-empty, answer every challenge in\n   `responses_to_challenges` (one entry per id). Change your recommendation where the challenge is\n   right; explain plainly where you disagree.\n6. **Never assume the design.** Where the sponsor has not decided something that changes the model\n   (use case, horizon, default definition, segment), raise it as a question rather than assuming.\n7. **If your answer is rejected**, the engine lists the problems; fix every one and answer again.\n",
+ "prompt": "Design the model: decide the role of every econometric framework, rank a slate of engine-fittable specifications, optionally propose feature transforms, and list design questions the sponsor must answer.\n\n## Context\nThe JSON below is your complete context. `facts` holds the only numbers you may cite (by id).\n```json\n{\n \"agent\": \"design_lead\",\n \"stage\": \"ideate\",\n \"project\": {\n  \"name\": \"demo_commercial\",\n  \"description\": \"COGNOS synthetic commercial demo \\u2014 Commercial PD (vintage panel, out-of-time)\",\n  \"task\": \"classification\",\n  \"target\": \"default\",\n  \"metric\": \"roc_auc\",\n  \"metric_direction\": \"maximize\",\n  \"design\": {\n   \"use_case\": \"\",\n   \"horizon\": \"\",\n   \"default_definition\": \"\",\n   \"segment\": \"\",\n   \"interpretability\": \"required\",\n   \"notes\": \"\"\n  },\n  \"risk_tier\": \"high\",\n  \"intended_use\": \"\"\n },\n \"data_structure\": {\n  \"shape\": \"panel\",\n  \"datetime_col\": \"vintage\",\n  \"n_rows\": 1200,\n  \"n_features\": 6,\n  \"n_numeric\": 5,\n  \"n_categorical\": 1,\n  \"leakage_suspects\": [],\n  \"n_events\": 81,\n  \"event_rate\": 0.0675,\n  \"events_per_variable\": 13.5\n },\n \"framework_assessment\": [\n  {\n   \"framework\": \"reduced_form_pd\",\n   \"label\": \"Reduced-form PD (obligor scorecard / GLM)\",\n   \"applicable\": true,\n   \"role\": \"primary\",\n   \"reason\": \"Binary outcome with obligor-level financial and facility covariates \\u2014 the standard framework for commercial PD at origination or surveillance.\"\n  },\n  {\n   \"framework\": \"discrete_time_hazard\",\n   \"label\": \"Discrete-time hazard (survival)\",\n   \"applicable\": \"partial\",\n   \"role\": \"candidate\",\n   \"reason\": \"Time-indexed cohorts present \\u2014 a period-indexed logit reads as a discrete-time hazard; set data.event_time_col (default period per obligor) to unlock the full hazard families and PD term structure.\"\n  },\n  {\n   \"framework\": \"structural_merton\",\n   \"label\": \"Structural (Merton distance-to-default)\",\n   \"applicable\": false,\n   \"role\": \"rejected\",\n   \"reason\": \"Requires traded-market observables (equity value/volatility, liability structure) to compute distance-to-default; none present \\u2014 typical for private middle-market obligors.\"\n  },\n  {\n   \"framework\": \"transition_matrix\",\n   \"label\": \"Rating-transition matrix (migration)\",\n   \"applicable\": false,\n   \"role\": \"rejected\",\n   \"reason\": \"Requires a rating history (grade at successive snapshots, e.g. an internal grade or agency rating panel); none present.\"\n  },\n  {\n   \"framework\": \"ml_challenger\",\n   \"label\": \"Machine-learning challenger (trees/boosting)\",\n   \"applicable\": true,\n   \"role\": \"challenger\",\n   \"reason\": \"Interpretability is required for the deployed model, so nonlinear learners serve as challenger benchmarks quantifying the predictive ceiling.\"\n  }\n ],\n \"fittable_families\": [\n  \"logit\",\n  \"probit\",\n  \"cloglog\",\n  \"ridge_logit\",\n  \"lasso_logit\",\n  \"random_forest\",\n  \"gradient_boosting\"\n ],\n \"default_slate\": [\n  {\n   \"family\": \"logit\",\n   \"feature_strategy\": \"top\",\n   \"role\": \"candidate\",\n   \"priority\": 1.0,\n   \"rationale\": \"Baseline interpretable LOGIT using the strongest clean predictors; defensible and easy to validate. On vintage-indexed data this reads as a discrete-time hazard (Shumway 2001).\"\n  },\n  {\n   \"family\": \"probit\",\n   \"feature_strategy\": \"top\",\n   \"role\": \"candidate\",\n   \"priority\": 0.98,\n   \"rationale\": \"Binary GLM with the probit link using the strongest clean predictors; statsmodels inference with valid p-values.\"\n  },\n  {\n   \"family\": \"cloglog\",\n   \"feature_strategy\": \"top\",\n   \"role\": \"candidate\",\n   \"priority\": 0.97,\n   \"rationale\": \"Binary GLM with the cloglog link using the strongest clean predictors; statsmodels inference with valid p-values. cloglog is the grouped-time proportional-hazards link.\"\n  },\n  {\n   \"family\": \"logit\",\n   \"feature_strategy\": \"all\",\n   \"role\": \"candidate\",\n   \"priority\": 0.95,\n   \"rationale\": \"Baseline interpretable LOGIT using all features; defensible and easy to validate. On vintage-indexed data this reads as a discrete-time hazard (Shumway 2001).\"\n  },\n  {\n   \"family\": \"probit\",\n   \"feature_strategy\": \"all\",\n   \"role\": \"candidate\",\n   \"priority\": 0.93,\n   \"rationale\": \"Binary GLM with the probit link using all features; statsmodels inference with valid p-values.\"\n  },\n  {\n   \"family\": \"lasso_logit\",\n   \"feature_strategy\": \"top\",\n   \"role\": \"candidate\",\n   \"priority\": 0.93,\n   \"rationale\": \"Regularized linear (lasso_logit) using the strongest clean predictors to control variance/collinearity.\"\n  },\n  {\n   \"family\": \"cloglog\",\n   \"feature_strategy\": \"all\",\n   \"role\": \"candidate\",\n   \"priority\": 0.92,\n   \"rationale\": \"Binary GLM with the cloglog link using all features; statsmodels inference with valid p-values. cloglog is the grouped-time proportional-hazards link.\"\n  },\n  {\n   \"family\": \"ridge_logit\",\n   \"feature_strategy\": \"top\",\n   \"role\": \"candidate\",\n   \"priority\": 0.9,\n   \"rationale\": \"Regularized linear (ridge_logit) using the strongest clean predictors to control variance/collinearity.\"\n  },\n  {\n   \"family\": \"lasso_logit\",\n   \"feature_strategy\": \"all\",\n   \"role\": \"candidate\",\n   \"priority\": 0.88,\n   \"rationale\": \"Regularized linear (lasso_logit) using all features to control variance/collinearity.\"\n  },\n  {\n   \"family\": \"ridge_logit\",\n   \"feature_strategy\": \"all\",\n   \"role\": \"candidate\",\n   \"priority\": 0.85,\n   \"rationale\": \"Regularized linear (ridge_logit) using all features to control variance/collinearity.\"\n  }\n ],\n \"features\": [\n  \"leverage\",\n  \"interest_coverage\",\n  \"current_ratio\",\n  \"log_assets\",\n  \"profit_margin\",\n  \"sector\"\n ],\n \"clean_top_features\": [\n  \"leverage\",\n  \"interest_coverage\",\n  \"log_assets\",\n  \"current_ratio\",\n  \"profit_margin\"\n ],\n \"open_questions\": [\n  {\n   \"id\": \"design-use_case\",\n   \"question\": \"What decision will the model support (origination underwriting, portfolio surveillance, CECL/IFRS 9, IRB, stress testing)? The use case fixes the target definition, horizon, and documentation depth.\",\n   \"source\": \"design-brief\"\n  },\n  {\n   \"id\": \"design-horizon\",\n   \"question\": \"What outcome window defines the target (e.g. 12-month default)? The window must match how the target column was labelled.\",\n   \"source\": \"design-brief\"\n  },\n  {\n   \"id\": \"design-default_definition\",\n   \"question\": \"What event definition labels 'default' (e.g. 90+ DPD, nonaccrual, bankruptcy)? Validation re-derives risk from this.\",\n   \"source\": \"design-brief\"\n  },\n  {\n   \"id\": \"design-segment\",\n   \"question\": \"What portfolio segment does this sample represent (C&I, CRE, small business\\u2026)? Pooling heterogeneous segments biases coefficients.\",\n   \"source\": \"design-brief\"\n  }\n ],\n \"safe_np_funcs\": [\n  \"abs\",\n  \"cbrt\",\n  \"ceil\",\n  \"clip\",\n  \"exp\",\n  \"expm1\",\n  \"floor\",\n  \"log\",\n  \"log10\",\n  \"log1p\",\n  \"maximum\",\n  \"minimum\",\n  \"round\",\n  \"sign\",\n  \"sqrt\",\n  \"square\",\n  \"tanh\",\n  \"where\"\n ],\n \"search_budget\": 24,\n \"interpretability\": \"required\",\n \"facts\": {\n  \"explore.n_rows\": 1200,\n  \"explore.n_features\": 6,\n  \"explore.leakage_suspects\": \"none\",\n  \"explore.positive_rate\": 0.0675,\n  \"explore.corr.leverage\": 0.3751,\n  \"explore.corr.interest_coverage\": -0.1442,\n  \"explore.corr.log_assets\": -0.0972,\n  \"explore.corr.current_ratio\": -0.0612,\n  \"explore.corr.profit_margin\": -0.0075,\n  \"ideate.shape\": \"panel\",\n  \"ideate.n_events\": 81,\n  \"ideate.event_rate\": 0.0675,\n  \"ideate.events_per_variable\": 13.5,\n  \"ideate.families\": \"logit, probit, cloglog, lasso_logit, ridge_logit\",\n  \"ideate.n_open_questions\": 4\n },\n \"challenges\": []\n}\n```\n\nReply with a single JSON object that matches the required schema.",
+ "context": {
+  "agent": "design_lead",
+  "stage": "ideate",
+  "project": {
+   "name": "demo_commercial",
+   "description": "COGNOS synthetic commercial demo \u2014 Commercial PD (vintage panel, out-of-time)",
+   "task": "classification",
+   "target": "default",
+   "metric": "roc_auc",
+   "metric_direction": "maximize",
+   "design": {
+    "use_case": "",
+    "horizon": "",
+    "default_definition": "",
+    "segment": "",
+    "interpretability": "required",
+    "notes": ""
+   },
+   "risk_tier": "high",
+   "intended_use": ""
+  },
+  "data_structure": {
+   "shape": "panel",
+   "datetime_col": "vintage",
+   "n_rows": 1200,
+   "n_features": 6,
+   "n_numeric": 5,
+   "n_categorical": 1,
+   "leakage_suspects": [],
+   "n_events": 81,
+   "event_rate": 0.0675,
+   "events_per_variable": 13.5
+  },
+  "framework_assessment": [
+   {
+    "framework": "reduced_form_pd",
+    "label": "Reduced-form PD (obligor scorecard / GLM)",
+    "applicable": true,
+    "role": "primary",
+    "reason": "Binary outcome with obligor-level financial and facility covariates \u2014 the standard framework for commercial PD at origination or surveillance."
+   },
+   {
+    "framework": "discrete_time_hazard",
+    "label": "Discrete-time hazard (survival)",
+    "applicable": "partial",
+    "role": "candidate",
+    "reason": "Time-indexed cohorts present \u2014 a period-indexed logit reads as a discrete-time hazard; set data.event_time_col (default period per obligor) to unlock the full hazard families and PD term structure."
+   },
+   {
+    "framework": "structural_merton",
+    "label": "Structural (Merton distance-to-default)",
+    "applicable": false,
+    "role": "rejected",
+    "reason": "Requires traded-market observables (equity value/volatility, liability structure) to compute distance-to-default; none present \u2014 typical for private middle-market obligors."
+   },
+   {
+    "framework": "transition_matrix",
+    "label": "Rating-transition matrix (migration)",
+    "applicable": false,
+    "role": "rejected",
+    "reason": "Requires a rating history (grade at successive snapshots, e.g. an internal grade or agency rating panel); none present."
+   },
+   {
+    "framework": "ml_challenger",
+    "label": "Machine-learning challenger (trees/boosting)",
+    "applicable": true,
+    "role": "challenger",
+    "reason": "Interpretability is required for the deployed model, so nonlinear learners serve as challenger benchmarks quantifying the predictive ceiling."
+   }
+  ],
+  "fittable_families": [
+   "logit",
+   "probit",
+   "cloglog",
+   "ridge_logit",
+   "lasso_logit",
+   "random_forest",
+   "gradient_boosting"
+  ],
+  "default_slate": [
+   {
+    "family": "logit",
+    "feature_strategy": "top",
+    "role": "candidate",
+    "priority": 1.0,
+    "rationale": "Baseline interpretable LOGIT using the strongest clean predictors; defensible and easy to validate. On vintage-indexed data this reads as a discrete-time hazard (Shumway 2001)."
+   },
+   {
+    "family": "probit",
+    "feature_strategy": "top",
+    "role": "candidate",
+    "priority": 0.98,
+    "rationale": "Binary GLM with the probit link using the strongest clean predictors; statsmodels inference with valid p-values."
+   },
+   {
+    "family": "cloglog",
+    "feature_strategy": "top",
+    "role": "candidate",
+    "priority": 0.97,
+    "rationale": "Binary GLM with the cloglog link using the strongest clean predictors; statsmodels inference with valid p-values. cloglog is the grouped-time proportional-hazards link."
+   },
+   {
+    "family": "logit",
+    "feature_strategy": "all",
+    "role": "candidate",
+    "priority": 0.95,
+    "rationale": "Baseline interpretable LOGIT using all features; defensible and easy to validate. On vintage-indexed data this reads as a discrete-time hazard (Shumway 2001)."
+   },
+   {
+    "family": "probit",
+    "feature_strategy": "all",
+    "role": "candidate",
+    "priority": 0.93,
+    "rationale": "Binary GLM with the probit link using all features; statsmodels inference with valid p-values."
+   },
+   {
+    "family": "lasso_logit",
+    "feature_strategy": "top",
+    "role": "candidate",
+    "priority": 0.93,
+    "rationale": "Regularized linear (lasso_logit) using the strongest clean predictors to control variance/collinearity."
+   },
+   {
+    "family": "cloglog",
+    "feature_strategy": "all",
+    "role": "candidate",
+    "priority": 0.92,
+    "rationale": "Binary GLM with the cloglog link using all features; statsmodels inference with valid p-values. cloglog is the grouped-time proportional-hazards link."
+   },
+   {
+    "family": "ridge_logit",
+    "feature_strategy": "top",
+    "role": "candidate",
+    "priority": 0.9,
+    "rationale": "Regularized linear (ridge_logit) using the strongest clean predictors to control variance/collinearity."
+   },
+   {
+    "family": "lasso_logit",
+    "feature_strategy": "all",
+    "role": "candidate",
+    "priority": 0.88,
+    "rationale": "Regularized linear (lasso_logit) using all features to control variance/collinearity."
+   },
+   {
+    "family": "ridge_logit",
+    "feature_strategy": "all",
+    "role": "candidate",
+    "priority": 0.85,
+    "rationale": "Regularized linear (ridge_logit) using all features to control variance/collinearity."
+   }
+  ],
+  "features": [
+   "leverage",
+   "interest_coverage",
+   "current_ratio",
+   "log_assets",
+   "profit_margin",
+   "sector"
+  ],
+  "clean_top_features": [
+   "leverage",
+   "interest_coverage",
+   "log_assets",
+   "current_ratio",
+   "profit_margin"
+  ],
+  "open_questions": [
+   {
+    "id": "design-use_case",
+    "question": "What decision will the model support (origination underwriting, portfolio surveillance, CECL/IFRS 9, IRB, stress testing)? The use case fixes the target definition, horizon, and documentation depth.",
+    "source": "design-brief"
+   },
+   {
+    "id": "design-horizon",
+    "question": "What outcome window defines the target (e.g. 12-month default)? The window must match how the target column was labelled.",
+    "source": "design-brief"
+   },
+   {
+    "id": "design-default_definition",
+    "question": "What event definition labels 'default' (e.g. 90+ DPD, nonaccrual, bankruptcy)? Validation re-derives risk from this.",
+    "source": "design-brief"
+   },
+   {
+    "id": "design-segment",
+    "question": "What portfolio segment does this sample represent (C&I, CRE, small business\u2026)? Pooling heterogeneous segments biases coefficients.",
+    "source": "design-brief"
+   }
+  ],
+  "safe_np_funcs": [
+   "abs",
+   "cbrt",
+   "ceil",
+   "clip",
+   "exp",
+   "expm1",
+   "floor",
+   "log",
+   "log10",
+   "log1p",
+   "maximum",
+   "minimum",
+   "round",
+   "sign",
+   "sqrt",
+   "square",
+   "tanh",
+   "where"
+  ],
+  "search_budget": 24,
+  "interpretability": "required",
+  "facts": {
+   "explore.n_rows": 1200,
+   "explore.n_features": 6,
+   "explore.leakage_suspects": "none",
+   "explore.positive_rate": 0.0675,
+   "explore.corr.leverage": 0.3751,
+   "explore.corr.interest_coverage": -0.1442,
+   "explore.corr.log_assets": -0.0972,
+   "explore.corr.current_ratio": -0.0612,
+   "explore.corr.profit_margin": -0.0075,
+   "ideate.shape": "panel",
+   "ideate.n_events": 81,
+   "ideate.event_rate": 0.0675,
+   "ideate.events_per_variable": 13.5,
+   "ideate.families": "logit, probit, cloglog, lasso_logit, ridge_logit",
+   "ideate.n_open_questions": 4
+  },
+  "challenges": []
+ }
+}

@@ -33,10 +33,12 @@ cognos demo --task commercial       # scenario 1 (out-of-time outcomes analysis)
 cognos demo --task regression
 ```
 
-To let the **reasoning layer** drive the work (LLM-driven feature engineering + LLM-guided search),
-configure an LLM brain (`brain.kind: llm` + `ANTHROPIC_API_KEY`) and set `search.guided: true`. The
-LLM only *proposes*; the deterministic engine verifies every proposal before it is kept, and records
-the prompt/response trajectory to `runs/<id>/reasoning/transcript.jsonl` for replay and audit.
+To let **LLM agents** make the recommendations, pass a provider (`cognos demo --provider
+claude_cli`, or `agents.provider: anthropic` + `ANTHROPIC_API_KEY` in a profile; `cognos providers`
+lists what is available) and optionally set `search.guided: true` so the modeler proposes extra
+experiments. Agents only *recommend*; the engine checks every answer before it counts, and records
+every call under `runs/<id>/agents/` for audit and replay. Add `--interactive` (or use `cognos ui`)
+to decide at the review gates yourself.
 
 All artifacts (fitted models, diagnostics, experiment ledgers, OKF white papers) are written under the
 printed working directory's `runs/<run_id>/`.

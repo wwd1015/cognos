@@ -1,11 +1,9 @@
 # COGNOS
 
-COGNOS is an autonomous, governed model-development system. An LLM **reasoning layer** drives the
-decisions a human modeler would make — design, model choice, and the search for paths that improve
-performance — while a **deterministic engine** grounds, verifies, and records every result so the
-output is reproducible and auditable. Neither layer is optional: the reasoning automates judgment and
-removes humans from the loop; the determinism is what keeps the reasoning honest (it is the
-anti-hallucination mechanism).
+COGNOS is a governed model-development system. **Agents recommend**, people **decide** in named
+seats, and a **deterministic engine** grounds, verifies, and records every result. The reasoning
+layer automates judgment. It does not remove the decision. Finishing a run is not a signature.
+The determinism is what keeps the reasoning honest (it is the anti-hallucination mechanism).
 
 **Primary domain:** commercial model development (e.g. commercial credit-risk: facility / obligor /
 collateral), governed by **SR 11-7 model risk management**. Fair-lending scans are an **optional,
@@ -15,17 +13,63 @@ see [ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md)
 
 ## Language
 
+**Agent**:
+One member of the reasoning layer, bound to a stage: Data Analyst (explore), Design Lead (ideate),
+Modeler (model), Outcomes Analyst (backtest), Independent Validator (validate), Model-Risk Analyst
+(comply), Technical Writer (document). An agent has a role prompt, an output contract, a context
+slice, engine checks, and a deterministic (heuristic) implementation. It **recommends**; it never
+decides and never computes a recorded number.
+_Avoid_: "the brain" (v0.x), "subagent" (v1 agents run inside the engine, not as Claude Code
+subagents).
+
 **Reasoning Layer** (a.k.a. the agents):
-The LLM-driven decision layer. It proposes design choices, model specifications, and improvement
-hypotheses, and explores paths toward better performance. Its purpose is automation of judgment —
-reducing dependence on a human modeler.
+The set of agents. It recommends design choices, model specifications, champions and challenges.
+Its purpose is automation of judgment; the human keeps the decision.
 _Avoid_: "the LLM garnish", "optional AI layer".
+
+**Recommendation**:
+An agent's validated answer for a stage (its contract instance), recorded in the stage payload with
+the backend that produced it. The human accepts, edits, overrides or challenges it at the stage's
+review gate.
+
+**Provider** (agent backend):
+What runs the agents: `heuristic` (deterministic, offline), `replay` (recorded outputs),
+`claude_cli`, `anthropic`, or an OpenAI-compatible API. Chosen per run; `auto` picks the first
+available.
+
+**Fact**:
+A number (or short value) the engine computed, exposed to agents under a stable id
+(`model.cv_mean`). Agents cite facts by id; the writer's prose uses `{{fact:<id>}}` placeholders.
+"No LLM math" means every recorded number is a fact.
+
+**Challenge**:
+Pushback routed to a stage's agent — a human send-back or a high-severity validator finding. The
+agent must answer every open challenge (`responses_to_challenges`); validator challenges loop back
+automatically a bounded number of times.
+
+**Gap** (open question):
+A design or data point only the sponsor can decide (use case, horizon, default definition,
+segment, an unconfirmed leakage suspect…). Answered — filling the design brief and re-running the
+stage that raised it — or accepted as an assumption; never silently assumed.
+
+**Override**:
+A human decision stored in `state.json` that shapes the effective config (exclusions, slate,
+design answers, champion). The profile YAML is never edited.
+
+**Admissible set**:
+The evaluated candidates within one cross-validation standard error of the best (one-standard-error
+rule). The modeler chooses the champion from it, before the sealed holdout is scored.
+
+**Stale**:
+A step whose inputs changed after it ran (a revised decision, an answered gap, a challenge). The
+engine re-runs stale steps; a step invalidated while running stays stale.
 
 **Deterministic Engine**:
 The non-LLM core that fits models, scores them on a frozen metric and sealed holdout, runs the
 statistical battery, and persists artifacts. Its purpose is reproducibility, auditability, and
 **grounding the reasoning layer against hallucination**.
-_Avoid_: "the fallback", "the heuristic path" (it is not a fallback; it is the substrate).
+_Avoid_: "the fallback" (it is not a fallback; it is the substrate). Not to be confused
+with the heuristic *agents*, which are the offline implementation of the agent contracts.
 
 **Propose / dispose** (the core loop):
 The reasoning layer may only **propose** (specifications, transforms, hypotheses, prose). The
@@ -33,10 +77,26 @@ deterministic engine **disposes** — it fits, scores, tests, and is the sole au
 and on any metric or verdict that becomes a fact. Every state-changing action passes through
 deterministic evaluation. This is the invariant that bounds hallucination.
 
-**Gate**:
-A stage that can BLOCK the pipeline (autonomous) or pause for human approval (interactive). The gates
-are **`validate`** (technical soundness) and **`review`** (docs↔code consistency) — and *only* those.
+**Verdict gate**:
+A stage that can BLOCK the pipeline: **`validate`** (confirmed target leakage) and **`review`**
+(stale docs↔code references) — and *only* those. A BLOCK can be sent back or rejected, never
+accepted.
 _Avoid_: calling `comply` a gate; it is a non-gating report.
+
+**Review gate**:
+A human decision point after a stage: `gate_data`, `gate_design`, `gate_champion` (the model
+developer), `gate_validation` (the independent reviewer), `gate_signoff` (the approver).
+Interactive runs pause there. Autonomous runs accept them as **express preparation** and record
+that; express is not a signature. Review gates decide; they never BLOCK.
+
+**Seat**:
+Who may act on a gate. `developer`, `reviewer`, `approver`. The engine refuses a seat acting on
+another seat's gate. Express is the seat autonomous mode records; a person does not pick it.
+
+**Sealed package**:
+What an approver's `approve` binds to, once use, horizon, default definition and segment are
+answered. Written once to `packages/vN.json` with a digest of the recorded facts. A later edit
+marks the live pointer superseded and does not rewrite the file. Approval is not deployment.
 
 **Model-risk readiness report** (the `comply` deliverable):
 An optional, non-gating report that organizes the substantive evidence into the SR 11-7 structure and

@@ -1,0 +1,178 @@
+{
+ "agent": "outcomes_analyst",
+ "stage": "backtest",
+ "attempt": 1,
+ "provider": "claude_cli",
+ "model": "opus",
+ "system": "# Role: Outcomes Analyst (stage 4, backtest)\n\nThe engine scored the champion on the evaluation sample (out-of-time when a date column exists) and\ncomputed discrimination, calibration and stability. You read the numbers like a model-risk analyst\nand cite facts for every finding.\n\n## Playbook: SR 11-7 outcomes analysis\n- **Discrimination.** Gini = 2 x AUC - 1. Commercial obligor models typically land at Gini 40-70%\n  (AUC 0.70-0.85) and KS 25-50. Gini above 85-90% on an out-of-time sample is a leakage alarm. A few\n  points of degradation from CV to out-of-time is normal; a collapse suggests regime change or an\n  unstable feature.\n- **Calibration.** Compare predicted PD with the realized default rate and describe the direction of\n  any bias. With few events per bucket, calibration tests are noisy.\n- **Stability (PSI).** Below 0.10 stable; 0.10-0.25 monitor; above 0.25 significant shift\n  (recalibration candidate). The newest cohorts may be right-censored, which depresses realized\n  default rates.\n- **Portfolio and stress sections** (when present) are conditional on the model's PDs: calibration\n  bias flows into the loss distribution. Adverse shocks must move PD in the economically right\n  direction.\n- PBO and the Deflated Sharpe ratio are trading statistics, not part of a PD outcomes analysis.\n\nRaise a finding only when it matters to the decision; severity high means the model should not be\nused as-is.\n\n\n## Rules for every COGNOS agent\n\nYou are one member of a model-development team building a model that will be reviewed under\nSR 11-7. You **recommend**; a deterministic engine checks your answer and a human model developer\nreviews it at a gate, where they may accept it, override it, or send it back to you.\n\n1. **Output.** Your final answer is one JSON object matching the provided schema exactly. No prose\n   outside the JSON. Write every string in plain, professional English a model validator can read\n   cold. Be concise: one to three sentences per text field.\n2. **Numbers come from the engine.** Never compute, estimate, or round a metric yourself. The\n   `facts` object in your context holds every number you may use; cite facts by their id in\n   `evidence` lists. Never invent an id: an unknown id rejects your answer.\n3. **Scope.** Work only from your context. You were deliberately not given some information (for\n   example the sealed holdout); do not speculate about it.\n4. **Uncertainty.** Put what you are unsure about, and why, in `uncertainties`. Say so when a\n   conclusion rests on thin evidence (few events, one sample, missing data).\n5. **Challenges.** If `challenges` is non-empty, answer every challenge in\n   `responses_to_challenges` (one entry per id). Change your recommendation where the challenge is\n   right; explain plainly where you disagree.\n6. **Never assume the design.** Where the sponsor has not decided something that changes the model\n   (use case, horizon, default definition, segment), raise it as a question rather than assuming.\n7. **If your answer is rejected**, the engine lists the problems; fix every one and answer again.\n",
+ "prompt": "Interpret the outcomes analysis (discrimination, calibration, stability) of the champion on the evaluation sample and raise findings.\n\n## Context\nThe JSON below is your complete context. `facts` holds the only numbers you may cite (by id).\n```json\n{\n \"agent\": \"outcomes_analyst\",\n \"stage\": \"backtest\",\n \"project\": {\n  \"name\": \"demo_commercial\",\n  \"description\": \"COGNOS synthetic commercial demo \\u2014 Commercial PD (vintage panel, out-of-time)\",\n  \"task\": \"classification\",\n  \"target\": \"default\",\n  \"metric\": \"roc_auc\",\n  \"metric_direction\": \"maximize\",\n  \"design\": {\n   \"use_case\": \"\",\n   \"horizon\": \"\",\n   \"default_definition\": \"\",\n   \"segment\": \"\",\n   \"interpretability\": \"required\",\n   \"notes\": \"\"\n  },\n  \"risk_tier\": \"high\",\n  \"intended_use\": \"\"\n },\n \"evaluation_sample\": \"out_of_time\",\n \"outcomes\": {\n  \"gini\": 0.7548526240115025,\n  \"ks\": 0.6265276779295471,\n  \"auc\": 0.8774263120057513,\n  \"expected_calibration_error\": 0.05588368830928309,\n  \"psi\": 0.02380025076523046,\n  \"psi_label\": \"stable\",\n  \"calibration_table\": [\n   {\n    \"band\": 0,\n    \"n\": 24,\n    \"predicted\": 0.005738663752307458,\n    \"observed\": 0.0\n   },\n   {\n    \"band\": 1,\n    \"n\": 24,\n    \"predicted\": 0.010976040771570978,\n    \"observed\": 0.0\n   },\n   {\n    \"band\": 2,\n    \"n\": 24,\n    \"predicted\": 0.016795597844491233,\n    \"observed\": 0.0\n   },\n   {\n    \"band\": 3,\n    \"n\": 24,\n    \"predicted\": 0.02179328328256827,\n    \"observed\": 0.08333333333333333\n   },\n   {\n    \"band\": 4,\n    \"n\": 24,\n    \"predicted\": 0.02848422176587392,\n    \"observed\": 0.041666666666666664\n   },\n   {\n    \"band\": 5,\n    \"n\": 24,\n    \"predicted\": 0.03690515989040765,\n    \"observed\": 0.0\n   },\n   {\n    \"band\": 6,\n    \"n\": 24,\n    \"predicted\": 0.048362038505252225,\n    \"observed\": 0.041666666666666664\n   },\n   {\n    \"band\": 7,\n    \"n\": 24,\n    \"predicted\": 0.06742336663362834,\n    \"observed\": 0.125\n   },\n   {\n    \"band\": 8,\n    \"n\": 24,\n    \"predicted\": 0.09930920671214993,\n    \"observed\": 0.16666666666666666\n   },\n   {\n    \"band\": 9,\n    \"n\": 24,\n    \"predicted\": 0.34293053927697814,\n    \"observed\": 0.625\n   }\n  ]\n },\n \"walk_forward\": {\n  \"scheme\": \"out_of_time\",\n  \"fold_scores\": [\n   0.7815168257157208,\n   0.8382722250125565,\n   0.683073832245103,\n   0.8473129080863887,\n   0.9261677548970366\n  ],\n  \"mean\": 0.8152687091913611,\n  \"std\": 0.08058444749500875\n },\n \"portfolio\": null,\n \"stress\": null,\n \"engine_findings\": [],\n \"facts\": {\n  \"explore.n_rows\": 1200,\n  \"explore.n_features\": 6,\n  \"explore.leakage_suspects\": \"none\",\n  \"explore.positive_rate\": 0.0675,\n  \"explore.corr.leverage\": 0.3751,\n  \"explore.corr.interest_coverage\": -0.1442,\n  \"explore.corr.log_assets\": -0.0972,\n  \"explore.corr.current_ratio\": -0.0612,\n  \"explore.corr.profit_margin\": -0.0075,\n  \"ideate.shape\": \"panel\",\n  \"ideate.n_events\": 81,\n  \"ideate.event_rate\": 0.0675,\n  \"ideate.events_per_variable\": 13.5,\n  \"ideate.families\": \"logit, probit, cloglog, lasso_logit, ridge_logit, gradient_boosting, random_forest\",\n  \"ideate.n_open_questions\": 9,\n  \"model.metric\": \"roc_auc\",\n  \"model.champion_family\": \"ridge_logit\",\n  \"model.champion_label\": \"ridge_logit(6f;C=0.1,random_state=42)\",\n  \"model.n_champion_features\": 6,\n  \"model.cv_mean\": 0.8153,\n  \"model.cv_std\": 0.0806,\n  \"model.n_candidates_tried\": 16,\n  \"model.n_train\": 960,\n  \"model.holdout_metric\": 0.8774,\n  \"model.n_holdout\": 240,\n  \"model.holdout_evaluations\": 1,\n  \"model.coef.const\": -3.4632,\n  \"model.coef.leverage\": 0.9781,\n  \"model.coef.interest_coverage\": -0.9808,\n  \"model.coef.log_assets\": -0.3963,\n  \"model.coef.current_ratio\": -0.377,\n  \"model.coef.profit_margin\": 0.0893,\n  \"model.coef.sector_industrials\": -0.5137,\n  \"model.coef.sector_retail\": -0.0122,\n  \"model.coef.sector_tech\": -0.6663,\n  \"model.p.const\": 0.0,\n  \"model.p.leverage\": 0.0,\n  \"model.p.interest_coverage\": 0.0,\n  \"model.p.log_assets\": 0.0122,\n  \"model.p.current_ratio\": 0.0188,\n  \"model.p.profit_margin\": 0.5914,\n  \"model.p.sector_industrials\": 0.2358,\n  \"model.p.sector_retail\": 0.9761,\n  \"model.p.sector_tech\": 0.1668,\n  \"model.diagnostics_passed\": 2,\n  \"model.diagnostics_run\": 2,\n  \"model.test.max_vif\": \"passed\",\n  \"model.test.condition_number\": \"passed\",\n  \"backtest.evaluation_sample\": \"out_of_time\",\n  \"backtest.oos_metric\": 0.8774,\n  \"backtest.gini\": 0.7549,\n  \"backtest.ks\": 0.6265,\n  \"backtest.auc\": 0.8774,\n  \"backtest.expected_calibration_error\": 0.0559,\n  \"backtest.psi\": 0.0238,\n  \"backtest.psi_label\": \"stable\",\n  \"backtest.walk_forward_mean\": 0.8153,\n  \"backtest.walk_forward_std\": 0.0806\n },\n \"challenges\": []\n}\n```\n\nReply with a single JSON object that matches the required schema.",
+ "context": {
+  "agent": "outcomes_analyst",
+  "stage": "backtest",
+  "project": {
+   "name": "demo_commercial",
+   "description": "COGNOS synthetic commercial demo \u2014 Commercial PD (vintage panel, out-of-time)",
+   "task": "classification",
+   "target": "default",
+   "metric": "roc_auc",
+   "metric_direction": "maximize",
+   "design": {
+    "use_case": "",
+    "horizon": "",
+    "default_definition": "",
+    "segment": "",
+    "interpretability": "required",
+    "notes": ""
+   },
+   "risk_tier": "high",
+   "intended_use": ""
+  },
+  "evaluation_sample": "out_of_time",
+  "outcomes": {
+   "gini": 0.7548526240115025,
+   "ks": 0.6265276779295471,
+   "auc": 0.8774263120057513,
+   "expected_calibration_error": 0.05588368830928309,
+   "psi": 0.02380025076523046,
+   "psi_label": "stable",
+   "calibration_table": [
+    {
+     "band": 0,
+     "n": 24,
+     "predicted": 0.005738663752307458,
+     "observed": 0.0
+    },
+    {
+     "band": 1,
+     "n": 24,
+     "predicted": 0.010976040771570978,
+     "observed": 0.0
+    },
+    {
+     "band": 2,
+     "n": 24,
+     "predicted": 0.016795597844491233,
+     "observed": 0.0
+    },
+    {
+     "band": 3,
+     "n": 24,
+     "predicted": 0.02179328328256827,
+     "observed": 0.08333333333333333
+    },
+    {
+     "band": 4,
+     "n": 24,
+     "predicted": 0.02848422176587392,
+     "observed": 0.041666666666666664
+    },
+    {
+     "band": 5,
+     "n": 24,
+     "predicted": 0.03690515989040765,
+     "observed": 0.0
+    },
+    {
+     "band": 6,
+     "n": 24,
+     "predicted": 0.048362038505252225,
+     "observed": 0.041666666666666664
+    },
+    {
+     "band": 7,
+     "n": 24,
+     "predicted": 0.06742336663362834,
+     "observed": 0.125
+    },
+    {
+     "band": 8,
+     "n": 24,
+     "predicted": 0.09930920671214993,
+     "observed": 0.16666666666666666
+    },
+    {
+     "band": 9,
+     "n": 24,
+     "predicted": 0.34293053927697814,
+     "observed": 0.625
+    }
+   ]
+  },
+  "walk_forward": {
+   "scheme": "out_of_time",
+   "fold_scores": [
+    0.7815168257157208,
+    0.8382722250125565,
+    0.683073832245103,
+    0.8473129080863887,
+    0.9261677548970366
+   ],
+   "mean": 0.8152687091913611,
+   "std": 0.08058444749500875
+  },
+  "portfolio": null,
+  "stress": null,
+  "engine_findings": [],
+  "facts": {
+   "explore.n_rows": 1200,
+   "explore.n_features": 6,
+   "explore.leakage_suspects": "none",
+   "explore.positive_rate": 0.0675,
+   "explore.corr.leverage": 0.3751,
+   "explore.corr.interest_coverage": -0.1442,
+   "explore.corr.log_assets": -0.0972,
+   "explore.corr.current_ratio": -0.0612,
+   "explore.corr.profit_margin": -0.0075,
+   "ideate.shape": "panel",
+   "ideate.n_events": 81,
+   "ideate.event_rate": 0.0675,
+   "ideate.events_per_variable": 13.5,
+   "ideate.families": "logit, probit, cloglog, lasso_logit, ridge_logit, gradient_boosting, random_forest",
+   "ideate.n_open_questions": 9,
+   "model.metric": "roc_auc",
+   "model.champion_family": "ridge_logit",
+   "model.champion_label": "ridge_logit(6f;C=0.1,random_state=42)",
+   "model.n_champion_features": 6,
+   "model.cv_mean": 0.8153,
+   "model.cv_std": 0.0806,
+   "model.n_candidates_tried": 16,
+   "model.n_train": 960,
+   "model.holdout_metric": 0.8774,
+   "model.n_holdout": 240,
+   "model.holdout_evaluations": 1,
+   "model.coef.const": -3.4632,
+   "model.coef.leverage": 0.9781,
+   "model.coef.interest_coverage": -0.9808,
+   "model.coef.log_assets": -0.3963,
+   "model.coef.current_ratio": -0.377,
+   "model.coef.profit_margin": 0.0893,
+   "model.coef.sector_industrials": -0.5137,
+   "model.coef.sector_retail": -0.0122,
+   "model.coef.sector_tech": -0.6663,
+   "model.p.const": 0.0,
+   "model.p.leverage": 0.0,
+   "model.p.interest_coverage": 0.0,
+   "model.p.log_assets": 0.0122,
+   "model.p.current_ratio": 0.0188,
+   "model.p.profit_margin": 0.5914,
+   "model.p.sector_industrials": 0.2358,
+   "model.p.sector_retail": 0.9761,
+   "model.p.sector_tech": 0.1668,
+   "model.diagnostics_passed": 2,
+   "model.diagnostics_run": 2,
+   "model.test.max_vif": "passed",
+   "model.test.condition_number": "passed",
+   "backtest.evaluation_sample": "out_of_time",
+   "backtest.oos_metric": 0.8774,
+   "backtest.gini": 0.7549,
+   "backtest.ks": 0.6265,
+   "backtest.auc": 0.8774,
+   "backtest.expected_calibration_error": 0.0559,
+   "backtest.psi": 0.0238,
+   "backtest.psi_label": "stable",
+   "backtest.walk_forward_mean": 0.8153,
+   "backtest.walk_forward_std": 0.0806
+  },
+  "challenges": []
+ }
+}

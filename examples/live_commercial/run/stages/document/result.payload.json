@@ -1,0 +1,17 @@
+{
+  "concepts": [
+    "overview",
+    "narrative",
+    "decisions",
+    "dataset",
+    "methodology",
+    "model",
+    "coefficients",
+    "diagnostics",
+    "backtest",
+    "validation",
+    "compliance",
+    "limitations",
+    "model_card"
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "stage": "document",
+  "verdict": "PASS",
+  "summary": "Wrote OKF bundle with 13 concepts, a Google Model Card, and 5 docs<->code anchor(s).",
+  "metrics": {
+    "n_concepts": 13,
+    "n_code_links": 5
+  },
+  "payload": {
+    "narrative_sections": {
+      "executive_summary": "This paper documents a reduced-form probability-of-default scorecard for private commercial obligors. The target is a binary default flag on a vintage-indexed panel of 1200 observations with 6 candidate features and 81 defaults (an event rate of 0.0675). The champion is ridge_logit using all 6 features, chosen from 16 candidates by walk-forward cross-validated ROC AUC (mean 0.8153, standard deviation 0.0806).\n\nOn the out-of-time sample of 240 observations, which was evaluated 1 time, the model reached an AUC of 0.8774, a Gini of 0.7549 and a KS of 0.6265. Its expected calibration error was 0.0559, and a PSI of 0.0238 (stable) showed the score distribution holding steady.\n\nThe validation verdict is WARN, with 6 findings, and 3 compliance items remain outstanding. The intended use, outcome horizon, default definition and portfolio segment have not been specified by the sponsor. Until they are, the model is suitable only as a development benchmark and not for credit decisions.",
+      "methodology_rationale": "**Purpose and use.** The sponsor has not set the use case, horizon, default definition or segment; these remain open questions (9 recorded). No production use is in scope until they are answered. Uses outside this scope include:\n- pricing\n- regulatory capital\n- stress testing\n- lifetime-loss accounting\n- any portfolio other than the one sampled\n\n**Data.** The panel has 1200 rows and a default rate of 0.0675. No columns were excluded. The leakage screen found none suspects. How the target was labelled (the event definition and outcome window) is undocumented and must be confirmed by the sponsor.\n\n**Framework.** A GLM scorecard is the standard interpretable framework for private obligors with financial-ratio and sector covariates, and interpretability is a stated requirement. A ridge penalty stabilises the estimates given the modest event count. The data were split into 960 training rows and 240 out-of-time rows.\n\n**Coefficients.** The drivers carry economically sensible signs and are significant:\n- leverage: 0.9781, p = 0\n- interest coverage: -0.9808, p = 0\n- log assets: -0.3963, p = 0.0122\n- current ratio: -0.377, p = 0.0188\n\nProfit margin is not significant (p = 0.5914), and neither are the sector indicators (p = 0.2358, 0.9761 and 0.1668). The model passed 2 of 2 diagnostics, covering VIF and the condition number.",
+      "alternatives_considered": "**Discrete-time hazard: candidate, not yet developed.** Because the data are indexed by vintage, a logit or cloglog on this panel can be read as a discrete-time hazard. Probit, cloglog, lasso and unpenalised logit were all among the families tried (logit, probit, cloglog, lasso_logit, ridge_logit, gradient_boosting, random_forest). A full hazard model and a PD term structure need an event-time column. That column matters if the use case turns out to be lifetime-loss accounting.\n\n**Structural (Merton): rejected.** These private obligors have no traded equity value, equity volatility or liability structure, so distance-to-default cannot be computed.\n\n**Rating-transition matrices: rejected.** The data hold no rating history across successive snapshots.\n\n**Machine-learning challengers: benchmarks only.** Random forest and gradient boosting were run solely to measure the predictive ceiling, because interpretability is required. This context does not record their scores. The challenger gap, which is the price of interpretability, therefore cannot be quantified here and should be added from the model engine's challenger comparison table.",
+      "limitations": "**Events per variable.** With 81 defaults, the model has 13.5 events per variable. That is adequate but thin, and it limits how precisely the weaker coefficients can be estimated.\n\n**Performance stability.** Walk-forward AUC varies noticeably across folds (standard deviation 0.0806). The out-of-time AUC (0.8774) exceeds the cross-validated mean (0.8153). Because it rests on a single sample of 240 rows, it should not be read as the expected level of performance.\n\n**Censoring and regime coverage.** Right-censoring cannot be assessed because there is no event-time column. The sample's coverage of economic regimes is undocumented, so behaviour in a downturn is untested.\n\n**Weak variables.** Profit margin has an insignificant, counter-intuitive positive coefficient (0.0893). The sector effects are not significant, and whether sectors should be pooled is unresolved.\n\n**Open sponsor questions.** The use case, horizon, default definition, segment and event-time availability all remain open. Any of these answers could change the target and the model.",
+      "use_and_monitoring": "**Monitoring.** Once a use is approved, the following should be tracked:\n- discrimination: AUC, Gini and KS against the out-of-time baseline of 0.8774, 0.7549 and 0.6265\n- calibration: expected calibration error against the baseline of 0.0559\n- population stability: PSI against the baseline of 0.0238\n\nMonitoring should run on each new vintage. A material PSI shift, a fall in discrimination, or calibration drift should trigger recalibration or redevelopment. Specific thresholds and cadence depend on the use case and must be set by the sponsor and model risk management. The compliance review rated ongoing monitoring warn, so a formal monitoring plan is an outstanding item. Conceptual soundness (pass) and outcomes analysis (pass) were both rated as passing.\n\n**Governance record.** All four gates (data, design, champion and validation) were accepted automatically in autonomous mode. No human developer reviewed them, and none of the model's challenges were logged. A validator should treat these gates as not yet reviewed by a human: each needs human sign-off before the model is used."
+    },
+    "recommendation": {
+      "agent": "writer",
+      "call_id": "20260929-223519_writer_a1_75bd",
+      "attempts": 1,
+      "provider": "claude_cli",
+      "model": "opus",
+      "kind": "claude_cli",
+      "output": {
+        "summary": "I recommend documenting the ridge-penalised logistic scorecard ({{fact:model.champion_label}}) as the champion for commercial probability of default. It is interpretable, its coefficient signs make economic sense, and it ranks risk well on the out-of-time sample. It should not be approved for any specific decision yet. The sponsor has not set the use case, horizon, default definition or segment, all four gates were accepted automatically with no human review, and validation returned a WARN with open compliance items.",
+        "uncertainties": [
+          "The intended use, horizon, default definition and segment are undefined, so the fitness-for-purpose claims and the monitoring thresholds cannot be finalised.",
+          "The out-of-time AUC comes from a single sample of about two hundred forty rows and sits above the cross-validated mean, so it may overstate the performance to expect.",
+          "The ML challenger scores are not in my context, so this paper cannot state the size of the interpretability gap.",
+          "The content of the validation findings and the outstanding compliance items was not provided; I have only their counts.",
+          "Every gate was accepted automatically, so no human judgment has been recorded on the design or the choice of champion."
+        ],
+        "responses_to_challenges": [],
+        "sections": [
+          {
+            "section": "executive_summary",
+            "markdown": "This paper documents a reduced-form probability-of-default scorecard for private commercial obligors. The target is a binary default flag on a vintage-indexed panel of {{fact:explore.n_rows}} observations with {{fact:explore.n_features}} candidate features and {{fact:ideate.n_events}} defaults (an event rate of {{fact:ideate.event_rate}}). The champion is {{fact:model.champion_family}} using all {{fact:model.n_champion_features}} features, chosen from {{fact:model.n_candidates_tried}} candidates by walk-forward cross-validated ROC AUC (mean {{fact:model.cv_mean}}, standard deviation {{fact:model.cv_std}}).\n\nOn the out-of-time sample of {{fact:model.n_holdout}} observations, which was evaluated {{fact:model.holdout_evaluations}} time, the model reached an AUC of {{fact:backtest.auc}}, a Gini of {{fact:backtest.gini}} and a KS of {{fact:backtest.ks}}. Its expected calibration error was {{fact:backtest.expected_calibration_error}}, and a PSI of {{fact:backtest.psi}} ({{fact:backtest.psi_label}}) showed the score distribution holding steady.\n\nThe validation verdict is {{fact:validate.verdict}}, with {{fact:validate.n_findings}} findings, and {{fact:comply.n_outstanding}} compliance items remain outstanding. The intended use, outcome horizon, default definition and portfolio segment have not been specified by the sponsor. Until they are, the model is suitable only as a development benchmark and not for credit decisions."
+          },
+          {
+            "section": "methodology_rationale",
+            "markdown": "**Purpose and use.** The sponsor has not set the use case, horizon, default definition or segment; these remain open questions ({{fact:ideate.n_open_questions}} recorded). No production use is in scope until they are answered. Uses outside this scope include:\n- pricing\n- regulatory capital\n- stress testing\n- lifetime-loss accounting\n- any portfolio other than the one sampled\n\n**Data.** The panel has {{fact:explore.n_rows}} rows and a default rate of {{fact:explore.positive_rate}}. No columns were excluded. The leakage screen found {{fact:explore.leakage_suspects}} suspects. How the target was labelled (the event definition and outcome window) is undocumented and must be confirmed by the sponsor.\n\n**Framework.** A GLM scorecard is the standard interpretable framework for private obligors with financial-ratio and sector covariates, and interpretability is a stated requirement. A ridge penalty stabilises the estimates given the modest event count. The data were split into {{fact:model.n_train}} training rows and {{fact:model.n_holdout}} out-of-time rows.\n\n**Coefficients.** The drivers carry economically sensible signs and are significant:\n- leverage: {{fact:model.coef.leverage}}, p = {{fact:model.p.leverage}}\n- interest coverage: {{fact:model.coef.interest_coverage}}, p = {{fact:model.p.interest_coverage}}\n- log assets: {{fact:model.coef.log_assets}}, p = {{fact:model.p.log_assets}}\n- current ratio: {{fact:model.coef.current_ratio}}, p = {{fact:model.p.current_ratio}}\n\nProfit margin is not significant (p = {{fact:model.p.profit_margin}}), and neither are the sector indicators (p = {{fact:model.p.sector_industrials}}, {{fact:model.p.sector_retail}} and {{fact:model.p.sector_tech}}). The model passed {{fact:model.diagnostics_passed}} of {{fact:model.diagnostics_run}} diagnostics, covering VIF and the condition number."
+          },
+          {
+            "section": "alternatives_considered",
+            "markdown": "**Discrete-time hazard: candidate, not yet developed.** Because the data are indexed by vintage, a logit or cloglog on this panel can be read as a discrete-time hazard. Probit, cloglog, lasso and unpenalised logit were all among the families tried ({{fact:ideate.families}}). A full hazard model and a PD term structure need an event-time column. That column matters if the use case turns out to be lifetime-loss accounting.\n\n**Structural (Merton): rejected.** These private obligors have no traded equity value, equity volatility or liability structure, so distance-to-default cannot be computed.\n\n**Rating-transition matrices: rejected.** The data hold no rating history across successive snapshots.\n\n**Machine-learning challengers: benchmarks only.** Random forest and gradient boosting were run solely to measure the predictive ceiling, because interpretability is required. This context does not record their scores. The challenger gap, which is the price of interpretability, therefore cannot be quantified here and should be added from the model engine's challenger comparison table."
+          },
+          {
+            "section": "limitations",
+            "markdown": "**Events per variable.** With {{fact:ideate.n_events}} defaults, the model has {{fact:ideate.events_per_variable}} events per variable. That is adequate but thin, and it limits how precisely the weaker coefficients can be estimated.\n\n**Performance stability.** Walk-forward AUC varies noticeably across folds (standard deviation {{fact:backtest.walk_forward_std}}). The out-of-time AUC ({{fact:backtest.oos_metric}}) exceeds the cross-validated mean ({{fact:backtest.walk_forward_mean}}). Because it rests on a single sample of {{fact:model.n_holdout}} rows, it should not be read as the expected level of performance.\n\n**Censoring and regime coverage.** Right-censoring cannot be assessed because there is no event-time column. The sample's coverage of economic regimes is undocumented, so behaviour in a downturn is untested.\n\n**Weak variables.** Profit margin has an insignificant, counter-intuitive positive coefficient ({{fact:model.coef.profit_margin}}). The sector effects are not significant, and whether sectors should be pooled is unresolved.\n\n**Open sponsor questions.** The use case, horizon, default definition, segment and event-time availability all remain open. Any of these answers could change the target and the model."
+          },
+          {
+            "section": "use_and_monitoring",
+            "markdown": "**Monitoring.** Once a use is approved, the following should be tracked:\n- discrimination: AUC, Gini and KS against the out-of-time baseline of {{fact:backtest.auc}}, {{fact:backtest.gini}} and {{fact:backtest.ks}}\n- calibration: expected calibration error against the baseline of {{fact:backtest.expected_calibration_error}}\n- population stability: PSI against the baseline of {{fact:backtest.psi}}\n\nMonitoring should run on each new vintage. A material PSI shift, a fall in discrimination, or calibration drift should trigger recalibration or redevelopment. Specific thresholds and cadence depend on the use case and must be set by the sponsor and model risk management. The compliance review rated ongoing monitoring {{fact:comply.sr11_7.ongoing_monitoring}}, so a formal monitoring plan is an outstanding item. Conceptual soundness ({{fact:comply.sr11_7.conceptual_soundness}}) and outcomes analysis ({{fact:comply.sr11_7.outcomes_analysis}}) were both rated as passing.\n\n**Governance record.** All four gates (data, design, champion and validation) were accepted automatically in autonomous mode. No human developer reviewed them, and none of the model's challenges were logged. A validator should treat these gates as not yet reviewed by a human: each needs human sign-off before the model is used."
+          }
+        ]
+      }
+    },
+    "bundle_dir": "docs",
+    "n_concepts": 13,
+    "concepts": [
+      "overview",
+      "narrative",
+      "decisions",
+      "dataset",
+      "methodology",
+      "model",
+      "coefficients",
+      "diagnostics",
+      "backtest",
+      "validation",
+      "compliance",
+      "limitations",
+      "model_card"
+    ],
+    "model_card": "docs/model_card.md",
+    "code_links": [
+      "src/cognos/modeling/search.py#ratchet_search",
+      "src/cognos/runtime/score.py#score_row",
+      "src/cognos/stages/backtest.py",
+      "src/cognos/stages/model.py",
+      "src/cognos/stages/stat_tests.py#run_battery"
+    ],
+    "has_code_links": true,
+    "whitepaper": "stages/document/whitepaper.md"
+  },
+  "findings": [],
+  "artifacts": [
+    {
+      "name": "whitepaper",
+      "kind": "text",
+      "path": "stages/document/whitepaper.md",
+      "description": ""
+    },
+    {
+      "name": "okf_bundle",
+      "kind": "okf",
+      "path": "docs",
+      "description": "OKF white-paper bundle (index.md + concepts)."
+    }
+  ],
+  "started_at": "2026-09-30T02:35:19.197112+00:00",
+  "ended_at": "2026-09-30T02:35:55.575191+00:00",
+  "duration_s": 36.378115,
+  "error": null
+}

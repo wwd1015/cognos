@@ -1,0 +1,17 @@
+idx	label	family	n_features	metric	metric_value	cv_std	adjusted	status	description
+0	logit(6f;random_state=42)	logit	6	roc_auc	0.796183	0.067530	0.796183	keep	logit/top
+1	probit(6f;random_state=42)	probit	6	roc_auc	0.797187	0.070772	0.797187	keep	probit/top
+2	cloglog(6f;random_state=42)	cloglog	6	roc_auc	0.795881	0.068656	0.795881	discard	cloglog/top
+3	lasso_logit(6f;C=0.1,random_state=42)	lasso_logit	6	roc_auc	0.811452	0.091790	0.811452	keep	lasso_logit/top
+4	lasso_logit(6f;C=1.0,random_state=42)	lasso_logit	6	roc_auc	0.800603	0.074334	0.800603	discard	lasso_logit/top
+5	lasso_logit(6f;C=10.0,random_state=42)	lasso_logit	6	roc_auc	0.797187	0.068266	0.797187	discard	lasso_logit/top
+6	ridge_logit(6f;C=0.1,random_state=42)	ridge_logit	6	roc_auc	0.815269	0.080584	0.815269	keep	ridge_logit/top
+7	ridge_logit(6f;C=1.0,random_state=42)	ridge_logit	6	roc_auc	0.802913	0.072910	0.802913	discard	ridge_logit/top
+8	ridge_logit(6f;C=10.0,random_state=42)	ridge_logit	6	roc_auc	0.797589	0.068181	0.797589	discard	ridge_logit/top
+9	gradient_boosting(6f;learning_rate=0.05,max_depth=2,random_state=42)	gradient_boosting	6	roc_auc	0.766801	0.112659	0.766801	discard	gradient_boosting/top
+10	gradient_boosting(6f;learning_rate=0.1,max_depth=2,random_state=42)	gradient_boosting	6	roc_auc	0.765645	0.103548	0.765645	discard	gradient_boosting/top
+11	gradient_boosting(6f;learning_rate=0.05,max_depth=3,random_state=42)	gradient_boosting	6	roc_auc	0.760824	0.100351	0.760824	discard	gradient_boosting/top
+12	gradient_boosting(6f;learning_rate=0.1,max_depth=3,random_state=42)	gradient_boosting	6	roc_auc	0.738724	0.091980	0.738724	discard	gradient_boosting/top
+13	random_forest(6f;max_depth=None,n_estimators=200,random_state=42)	random_forest	6	roc_auc	0.764641	0.111870	0.764641	discard	random_forest/top
+14	random_forest(6f;max_depth=6,n_estimators=200,random_state=42)	random_forest	6	roc_auc	0.768860	0.117020	0.768860	discard	random_forest/top
+15	random_forest(6f;max_depth=12,n_estimators=200,random_state=42)	random_forest	6	roc_auc	0.760321	0.110480	0.760321	discard	random_forest/top

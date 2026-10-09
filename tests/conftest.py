@@ -14,6 +14,29 @@ def _write_csv(tmp_path, df, name) -> str:
     return str(path)
 
 
+@pytest.fixture(autouse=True)
+def _offline_agents(monkeypatch):
+    """Tests never need a key or network: pin the deterministic (heuristic) agents."""
+    monkeypatch.setenv("COGNOS_PROVIDER", "heuristic")
+
+
+@pytest.fixture
+def replay_dir(tmp_path, monkeypatch):
+    """Factory: replay_dir({agent: output | [outputs...]}) -> a recorded-output directory, with the
+    replay provider selected (agents without a recording fall back to the heuristic agent)."""
+    import json
+
+    def _make(recordings: dict) -> str:
+        d = tmp_path / "recorded"
+        d.mkdir(exist_ok=True)
+        for agent, out in recordings.items():
+            (d / f"{agent}.json").write_text(json.dumps(out), encoding="utf-8")
+        monkeypatch.setenv("COGNOS_PROVIDER", "replay")
+        return str(d)
+
+    return _make
+
+
 @pytest.fixture
 def runs_dir(tmp_path) -> str:
     return str(tmp_path / "runs")
@@ -63,6 +86,20 @@ def make_config(tmp_path):
         return CognosConfig.from_dict(raw)
 
     return _make
+
+
+def _fill_brief(cfg):
+    """Fill the four sponsor decisions a package cannot be sealed without."""
+    cfg.design.use_case = cfg.design.use_case or "origination underwriting"
+    cfg.design.horizon = cfg.design.horizon or "12-month"
+    cfg.design.default_definition = cfg.design.default_definition or "90+ DPD or nonaccrual"
+    cfg.design.segment = cfg.design.segment or "test book"
+    return cfg
+
+
+@pytest.fixture
+def apply_brief():
+    return _fill_brief
 
 
 @pytest.fixture

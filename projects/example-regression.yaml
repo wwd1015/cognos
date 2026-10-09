@@ -1,8 +1,8 @@
 # example-regression.yaml — a COGNOS project profile for a plain statistical
 # regression problem. This is the COGNOS analogue of deputy's projects/<name>.yaml:
 # the ONE place project-specific knowledge lives. The stage agents and the
-# orchestrator are project-agnostic — adding a new modeling problem means writing
-# one YAML like this, never editing .claude/agents/.
+# engine are project-agnostic — adding a new modeling problem means writing
+# one YAML like this, never editing the agents or the engine.
 #
 # Data: the eval harness writes a synthetic regression CSV to evals/_data/regression.csv
 # (see evals/score.py). You can also generate the same shape ad hoc with:

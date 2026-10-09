@@ -85,7 +85,7 @@ def cli_env() -> dict[str, str]:
 # Case loading
 # --------------------------------------------------------------------------- #
 def load_cases(path: Path) -> list[dict[str, Any]]:
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     if _HAVE_YAML:
         data = yaml.safe_load(text)
     else:
@@ -298,7 +298,7 @@ def run_case(case: dict[str, Any], python: str, keep_runs: bool) -> CaseResult:
 
         # Prefer the on-disk summary.txt (canonical); fall back to stdout.
         summary_path = find_summary(runs_dir)
-        summary_text = summary_path.read_text() if summary_path else combined
+        summary_text = summary_path.read_text(encoding="utf-8") if summary_path else combined
         final_verdict, stages_ran, stage_verdicts = parse_summary(summary_text)
 
         if final_verdict is None:
@@ -396,7 +396,7 @@ def write_report(path: Path, results: list[CaseResult]) -> None:
         "cases": [r.to_dict() for r in results],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n")
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 # --------------------------------------------------------------------------- #

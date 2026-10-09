@@ -15,6 +15,6 @@
     "0.999": 0.08550225000000046
   },
   "mc_stderr_el": 0.00011336263754478096,
-  "irb_capital_mean": 0.07101601344614146,
+  "irb_capital_mean": 0.07101601344614127,
   "note": "losses as a fraction of total EAD; PDs are model scores (see calibration section)"
 }

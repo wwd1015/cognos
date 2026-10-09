@@ -7,8 +7,11 @@ five-axis rubric (leakage, overfitting, stability, diagnostics, significance), r
 every issue, and applies a strict decision rule where any confirmed leakage or backtest-overfitting
 signal BLOCKs the pipeline outright.
 
-The whole stage runs deterministically offline; the optional LLM "does this model make sense"
-narrative is purely additive and never affects the verdict.
+v1: after the deterministic rubric, the **Independent Validator** agent adds the judgment a rubric
+cannot. Its slice holds artifacts and engine metrics only — never the modeler's rationale. Its
+findings cite facts and name the stage that must change; high-severity ones are routed back to that
+stage's agent by the engine (``routed_findings``). An agent can raise FAIL/WARN but never BLOCK:
+BLOCK stays reserved for the engine's confirmed-leakage rule (CLAUDE.md non-negotiable #6).
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import math
 
 from ..artifacts import Finding, Severity, StageResult, Verdict
 from ..context import RunContext
-from .base import Stage, register_stage
+from .base import Stage, attach_recommendation, register_stage
 
 # Decision thresholds (kept explicit so the rubric is auditable).
 PBO_BLOCK = 0.5  # P(backtest overfitting) above a coin-flip => not credible
@@ -167,7 +170,7 @@ class ValidateStage(Stage):
             if p is None or _is_nan(p):
                 bad.append(f"p-value({name})")
         for name, c in coefficients.items():
-            if c is None or _is_nan(c) or (isinstance(c, (int, float)) and abs(float(c)) > ABSURD_COEF):
+            if c is None or _is_nan(c) or (isinstance(c, int | float) and abs(float(c)) > ABSURD_COEF):
                 bad.append(f"coef({name})")
         if bad:
             res.add_finding(Finding(
@@ -209,27 +212,63 @@ class ValidateStage(Stage):
             verdict = Verdict.PASS
         res.verdict = verdict
 
-        # --- optional LLM narrative (additive only; guarded) ---------------------
-        llm_review = None
-        if ctx.brain.available:
-            try:
-                prompt = (
-                    "You are an independent model validator (SR 11-7 effective challenge). In 3-4 sentences, "
-                    "say whether this model makes sense and where you would push back.\n"
-                    f"Champion: {champion.get('family')} on {len(champ_features)} features.\n"
-                    f"CV metric: {cv_mean}; sealed-holdout metric: {holdout}.\n"
-                    f"Rubric (0-1): {rubric}; overall {overall_score:.2f}.\n"
-                    f"Findings: {[f.line() for f in res.findings]}\n"
-                    f"Proposed verdict: {verdict.value}."
-                )
-                llm_review = ctx.brain.generate(prompt, max_tokens=400).strip()
-            except Exception as exc:  # narrative is best-effort; never fail the gate on it
-                llm_review = None
-                res.add_finding(Finding(
-                    id="llm-review-skipped", severity=Severity.INFO, category="validation",
-                    message=f"LLM validation narrative unavailable ({type(exc).__name__}); "
-                            f"deterministic rubric used.",
-                ))
+        # --- sealed-holdout reuse (re-selection after seeing it) -------------------
+        n_eval = int(model.get("holdout_evaluations") or 1)
+        if n_eval > 1:
+            res.add_finding(Finding(
+                id="holdout-reuse", severity=Severity.LOW, category="overfitting",
+                message=f"The sealed holdout has been evaluated {n_eval} times in this run (re-runs, "
+                        "send-backs or a champion override); a choice made after seeing it is no "
+                        "longer a single-shot estimate.",
+                confidence=0.9,
+                suggestion="Report the holdout metric as indicative; confirm on fresh out-of-time data.",
+            ))
+            if verdict == Verdict.PASS:
+                verdict = Verdict.WARN
+
+        # --- the Independent Validator's challenge (never sees the modeler's rationale) ---
+        ideate = ctx.get("ideate")
+        ip = ideate.payload if ideate is not None else {}
+        res.verdict = verdict
+        res.payload = {"rubric": rubric, "overall_score": overall_score, "decision": verdict.value}
+        diagnostics = model.get("diagnostics") or {}
+        out = ctx.recommend("validator", {
+            "engine_verdict": verdict.value,
+            "rubric": rubric,
+            "blockers": blockers,
+            "engine_findings": [{"id": f.id, "severity": f.severity.value, "category": f.category,
+                                 "message": f.message} for f in res.findings],
+            "champion": {"family": champion.get("family"), "features": champ_features,
+                         "n_features": len(champ_features)},
+            "interpretability": ctx.config.design.interpretability,
+            "data_structure": ip.get("data_structure"),
+            "framework_choices": ip.get("framework_choices"),
+            "n_candidates_tried": model.get("n_candidates_tried"),
+            "admissible_set_size": len(model.get("admissible_set") or []),
+            "champion_source": model.get("champion_source"),
+            "challenger_benchmark": model.get("challenger_benchmark"),
+            "failed_diagnostics": diagnostics.get("failed_tests", []),
+            "holdout_evaluations": n_eval,
+        }, fresh={"validate": res})
+        sev = {"low": Severity.LOW, "medium": Severity.MEDIUM, "high": Severity.HIGH}
+        routed = []
+        for f in out.findings:
+            res.add_finding(Finding(
+                id=f"val-{f.id}", severity=sev[f.severity], category=f"challenge/{f.category}",
+                message=f.message, location=f.target_stage if f.target_stage != "none" else None,
+                confidence=0.7, suggestion=f.remedy,
+            ))
+            if f.severity == "high" and f.target_stage != "none":
+                routed.append({"id": f"val-{f.id}", "severity": f.severity, "message": f.message,
+                               "evidence": f.evidence, "target_stage": f.target_stage,
+                               "remedy": f.remedy})
+        # The agent can escalate to FAIL/WARN; only the engine BLOCKs.
+        if verdict != Verdict.BLOCK:
+            if any(f.severity == "high" for f in out.findings):
+                verdict = Verdict.FAIL
+            elif out.findings and verdict == Verdict.PASS:
+                verdict = Verdict.WARN
+        res.verdict = verdict
 
         payload = {
             "rubric": rubric,
@@ -238,8 +277,10 @@ class ValidateStage(Stage):
             "blockers": blockers,
             "n_findings": len(res.findings),
         }
-        if llm_review:
-            payload["llm_review"] = llm_review
+        payload["routed_findings"] = routed
+        payload["validator"] = {"assessment": out.assessment, "recommendation": out.recommendation,
+                                "conditions": out.conditions}
+        attach_recommendation(payload, ctx, "validator", out)
 
         ref = ctx.save_json("stages/validate/validation.json", payload)
         res.add_artifact(ref)

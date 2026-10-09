@@ -1,25 +1,100 @@
 # COGNOS — comprehensive feature list
 
-## Pipeline & orchestration
-- Eight-stage model-development lifecycle: `explore → ideate → model → backtest → validate → comply → document → review`.
-- Mechanical orchestrator: deterministic sequencing, gate handling, escalation (judgment lives in agents).
-- **Two operating modes**, one control flow:
-  - Autonomous end-to-end run (`cognos run`) for quick prototypes.
-  - Stage-by-stage / human-in-the-loop: every stage independently invocable (`cognos run-stage`), plus `--interactive` gate pauses (approve / reject).
-- **Gates** (`validate`, `review` — and *only* those) that can BLOCK a run or pause for human approval; `comply` is a non-gating report (ADR-0006).
-- **Reasoning steps are HITL pause points** too: the LLM-driven `ideate` step and opt-in LLM-guided search are natural human-in-the-loop review points, not just the gates (ADR-0003).
-- **Checkpoint + resume-from-failure**: each stage persists its result; re-running a `run_id` reuses completed stages.
-- Per-run directory with full provenance (manifest, summary, data, models, docs, per-stage artifacts).
-- Greppable verdict tokens + machine-readable run summary for tooling/CI.
-- Per-project YAML profile (`CognosConfig`) — the only place project specifics live; agents are project-agnostic.
+## Workflow engine (v1.0)
+- Eight-stage lifecycle `explore → ideate → model → backtest → validate → comply → document → review`
+  interleaved with **five human review gates**: `gate_data`, `gate_design`, `gate_champion`,
+  `gate_validation`, `gate_signoff` (ADR-0010).
+- **Mechanical engine** (`engine/`): a step graph with dependencies, statuses
+  (pending / running / done / awaiting / stale / failed / blocked / skipped), and **stale
+  propagation** — a revised decision, an answered question or a challenge marks everything
+  downstream stale and the engine re-runs it; a step invalidated mid-run stays stale.
+- **Two modes, one engine**: interactive (pause at every enabled review gate) and autonomous (gates
+  auto-accept the agent's recommendation, recorded as actor `auto` and seat `express` — preparation,
+  not a signature); gates can be disabled per project.
+- **Seats**: data, design and champion belong to the model developer; validation to the independent
+  reviewer; sign-off to the approver. The engine refuses a seat on another seat's gate. `approve`
+  seals `packages/vN.json` once (a digest of the recorded design, exclusions, slate, champion and
+  verdicts). A later invalidation or a re-opened gate supersedes that package; the file stays.
+  Approval is not deployment. Use, horizon, default definition and segment must be answered before
+  anyone can sign.
+- **Verdict gates** `validate` and `review` — and only those — can BLOCK; a BLOCK halts an
+  autonomous run and can only be sent back or rejected in an interactive one. `comply` is a
+  non-gating report (ADR-0006).
+- **Durable run state** (`state.json`): steps, gate decisions, challenges, gaps, overrides, loop
+  counters, spend. Any process — CLI, UI after a restart — resumes exactly; `cognos run-stage` still
+  re-runs a single stage; failed steps retry; decided gates can be re-opened and revised.
+- Activity feed (`events.jsonl`), per-run directory with full provenance, greppable verdict tokens,
+  machine-readable run summary; per-project YAML profile (`CognosConfig`).
 
-## Reasoning layer (propose / dispose)
-- **Two-layer system** (ADR-0001): an LLM **reasoning layer** *proposes* (design, model choice, feature engineering, the next experiment) and a deterministic **engine** *disposes* (fits, scores on the frozen metric + sealed holdout, runs the statistical battery; sole authority on what is kept). Both are first-class; the determinism is the anti-hallucination mechanism.
-- **Two staged depths of LLM involvement**: (A) LLM-driven **ideation** emitting *executable* feature-engineering transforms (not just prose); (B) opt-in **LLM-guided search** (`search.guided`) where the LLM is the mutation function proposing the next experiment from the ledger. Deterministic grid search is the baseline + the test double.
-- **Target-hidden transform execution** (ADR-0002): LLM-authored transforms run against a features-only view (`X`); the target `y` is never in scope, so they cannot leak the target — even onto the labelled holdout. Implemented as a safe **AST-whitelisted expression executor** (`modeling/transforms.py`) over feature columns + a fixed set of `np.<fn>` functions.
-- **Round-trips to serving**: a kept transform persists verbatim to an IMPACT derived field, is stored on the champion + the deployed scorer, and is re-applied target-hidden at serve time (train- and serve-time feature logic are identical).
-- **Recorded reasoning trajectory** (ADR-0003): every proposal (prompts + responses + model id) is logged to `runs/<id>/reasoning/transcript.jsonl` for replay/audit; the analysis re-derives bit-identically offline with no LLM, while the trajectory is non-deterministic and human-gated. The LLM is required to automate the search, never to reproduce the result.
-- **`ScriptedBrain` test double**: replays canned responses so the reasoning-driven path is deterministically testable; running with no LLM is the deterministic substrate + test double, not a degraded product.
+## Human decisions
+- **Gate actions**: accept, edit (exclusions, slate, design answers), override (champion, from the
+  admissible set, reason required), send back (a challenge to explore / ideate / model), approve and
+  reject (sign-off). Accepting a FAIL requires a reason (recorded risk acceptance).
+- **Overrides** shape the effective config; the profile YAML is never edited.
+- **Tracked questions (gaps)**: every unanswered design point and agent question for the sponsor;
+  answer (re-runs the raising stage) or, for a data question, accept as an assumption. Use,
+  horizon, default definition and segment are sponsor decisions and cannot be assumed.
+- **Decision log**: every agent recommendation (with its backend), human decision and challenge, in
+  the OKF bundle (`docs/decisions.md`).
+
+## Agents (propose / dispose)
+- **Seven stage agents** — Data Analyst, Design Lead, Modeler (+ guided-search role), Outcomes
+  Analyst, Independent Validator, Model-Risk Analyst, Technical Writer — each with a role prompt
+  (commercial-risk playbook), a Pydantic output contract, an independence-scoped context slice,
+  engine checks, and a deterministic heuristic implementation.
+- **Validate-and-retry**: a contract violation or failed engine check (unknown fact id, champion
+  outside the admissible set, unfittable family, excluded target, unanswered challenge, typed metric
+  in prose…) is fed back and retried; exhausted retries fail the step visibly.
+- **Challenges**: human send-backs and high-severity validator findings reach the responsible agent,
+  which must answer each; validator findings loop back automatically (bounded,
+  `workflow.auto_challenge_loops`).
+- **Independence**: the modeler's slice has no model/backtest/holdout facts (it chooses before the
+  holdout is scored); the validator's slice never contains the modeler's rationale.
+- **No LLM math**: facts by id; `{{fact:<id>}}` placeholders rendered by the engine.
+- **Providers**: `heuristic` (offline), `replay` (recorded outputs), `claude_cli` (`claude -p`,
+  isolated), `anthropic` (structured outputs, adaptive thinking, refusal fallbacks), OpenAI-compatible
+  (OpenAI, xAI, OpenRouter, Ollama); `auto` resolution; per-call time limit; per-run spend budget.
+- **Agent audit**: every attempt's prompt, context slice and raw output + `audit.jsonl` (status,
+  backend, model, prompt/context hashes, duration, cost).
+- **Agent-guided search** (opt-in `search.guided`): the modeler proposes experiments; the engine
+  applies them target-hidden, scores them with leakage-safe CV, and keeps only winners, which enter
+  the admissible set.
+- **Target-hidden transform execution** (ADR-0002): agent-authored transforms run on a features-only
+  view through an AST-whitelisted executor; kept transforms round-trip to IMPACT and the deployed
+  scorer.
+- **Two-tier reproducibility** (ADR-0003): the analysis re-derives offline with no LLM; the
+  recommendations and decisions are recorded and replayable (`replay`).
+
+## Workbench (`cognos ui`)
+- Dash + Mantine app for model developers; light and dark themes.
+- **Runs**: every run with status, what it is waiting on, backend, champion, spend; start a run from
+  a synthetic demo preset or a project profile, interactive or autonomous, with a chosen backend.
+- **Run workspace**: one stage rail (status, verdict, and the seat a waiting gate belongs to), each
+  stage's engine evidence beside its agent's recommendation (uncertainties, responses to
+  challenges), the gate form for the seat that owns it, live activity; a seat switch in the page
+  (model developer, independent reviewer, approver). Tabs for questions and challenges (the model
+  developer answers; the four sponsor facts cannot be assumed), the decision log, a record computed
+  on read of who did what, and the agent audit (inspect any call's output, context slice, prompt
+  and system prompt).
+- **Charts** on the validated reference palette: experiment ledger (kept vs discarded, champion
+  ringed), coefficients by significance, calibration by score band, validation rubric, PD term
+  structure; admissible set, sign checks, statistical battery, framework assessment, slate, SR 11-7 /
+  NIST tables; rendered narrative, decision log, model card and white paper.
+- **Out-of-date steps say why**: the decision, answer or validator loop that invalidated a stage is
+  shown on the rail and the panel, and once it has re-run, what the re-run changed (champion,
+  verdict, metrics, findings) against the result it replaced.
+- **Compare runs**: pick two runs (or "Compare with previous run") to see what was decided
+  differently and what it did to the results; `cognos compare A B` prints the same.
+- **Export**: one zip of a run's documents, results, decisions and audit log with a hashed file
+  manifest — never the data or the sealed holdout; `cognos export RUN`.
+- Background execution with a 1-second poll; all state on disk, so refreshes and restarts lose
+  nothing.
+
+## CLI
+- `cognos ui | run [--interactive] [--provider] | demo | status | gate | answer | retry |
+  run-stage | providers | agents | init | explain | report | list-runs | compare | export`.
+- Terminal gate review for `run --interactive` (accept / send back), auto-accept on non-tty stdin
+  (never past a BLOCK).
 
 ## Data exploration (`explore`)
 - Schema/dtype/missingness profiling; numeric distribution summaries.
@@ -140,7 +215,8 @@
 - **Documents only what shipped** (ADR-0007): the single interpretable champion (with its persisted target-hidden transforms); any ensemble appears only as an explicit, labelled challenger benchmark, never as the deliverable.
 - **Coefficients reported from the full-rank inference design** so the documented significances are statistically valid.
 - **Outcomes analysis** (Gini/KS, calibration/ECE, PSI on the OOT sample) is the backtest section for credit models; trading metrics appear only in opt-in returns mode.
-- **Two-tier reproducibility note** (ADR-0003): the analysis is reproducible offline with no LLM; the reasoning trajectory (`runs/<id>/reasoning/transcript.jsonl`) is recorded for replay/audit.
+- **Two-tier reproducibility note** (ADR-0003): the analysis is reproducible offline with no LLM; the recommendations (`runs/<id>/agents/`) and decisions (decision log) are recorded for audit and replay.
+- **Narrative + decision log** (v1.0): the Technical Writer's prose with engine-rendered `{{fact:…}}` numbers, and every agent recommendation, human decision and challenge.
 - **Google Model Card** (all 9 sections).
 - **EU AI Act Annex IV** technical-documentation pack (when EU is in scope).
 - **Docs↔code links**: `{@code:path#symbol}` anchors trace white-paper paragraphs to deployment code, plus cross-linked OKF concepts forming a knowledge graph.
@@ -153,15 +229,16 @@
 - **BLOCK** when documentation claims code that does not exist (stale references) — keeps docs and code in sync.
 
 ## Engine, integrations, and developer experience
-- **Pluggable brain**: deterministic by default (offline, no API key — the substrate, not a fallback); a `ScriptedBrain` test double for deterministic testing of the reasoning path; optional Claude (`anthropic`) backend that degrades gracefully.
+- **Pluggable agent backends**: deterministic heuristic agents (offline, no API key — the substrate, not a fallback), `replay` for deterministic testing of the LLM path, `claude_cli`, `anthropic`, and OpenAI-compatible APIs; an unavailable backend is never a crash.
 - **autoforge protocol** reimplemented: `name: value` stdout parsing, experiment ledger, generic ratchet loop.
 - Typed config (Pydantic v2) with auto metric/direction resolution and YAML round-trip.
-- CLI: `run`, `run-stage`, `demo`, `init`, `explain`, `report`, `list-runs`, `agents`.
+- CLI: see *CLI* above.
 - **Demo tasks** including **`commercial`** (SR 11-7 + OOT outcomes analysis), **`cni`** — the flagship C&I showcase with an answered design brief, event timing (hazard families), Vasicek portfolio simulation, and two macro stress scenarios (ADR-0004, ADR-0008) — and **`migration`**: rating-migration loss forecasting on an S&P-style agency panel (transition matrix, term structure, EL forecast, regime conditioning; ADR-0009). The consumer fair-lending `credit` demo exercises an off-by-default module, not the primary path.
-- Python API: `run_pipeline`, `Orchestrator`, `RunContext`, `CognosConfig`.
+- Python API: `cognos.service` (runs, gates, answers, state), `cognos.engine.Engine`, `RunContext`, `CognosConfig`; `run_pipeline` / `Orchestrator` as a compatibility wrapper.
 - Synthetic data generators (regression, classification, time series, commercial credit-risk with a vintage/date column for OOT calibration/PSI, a **C&I portfolio** with event timing + optional market observables + a deliberate post-outcome leak, and consumer credit-with-protected-attribute for the optional fair-lending module) for tests and demos.
 - **Worked examples**: `examples/commercial_credit/` (private middle-market arc: leakage catch → MD triangulation → full pipeline), `examples/public_obligor_pd/` (public-obligor book: every econometric + structural + simulation capability in one run), and `examples/rating_migration_loss/` (the corporate loss-forecast engagement: internal-data insufficiency → external S&P-style agency data → migration matrix, term structure, EL forecast through all eight stages), all with captured real artifacts under `sample_output/`.
-- **Claude-Code-native agent layer**: declarative `.claude/agents/*.md`, an orchestrator slash command, PreToolUse safety hooks, per-project profiles (deputy-style).
+- **Recorded live example** `examples/live_commercial/`: a full run by live Claude agents (every call's input and raw output), replayable offline.
+- **Developer safety hooks** (`.claude/hooks`): PreToolUse backstops against destroying or publishing run artifacts and leaking secrets while working on COGNOS itself.
 - **Eval harness** for autonomous runs (assert verdicts/gates per case).
 - Comprehensive test suite (unit + integration) and a runnable end-to-end example.
 - MIT licensed; `uv`/`pip` installable; Python ≥ 3.11.

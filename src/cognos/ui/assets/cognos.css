@@ -1,0 +1,31 @@
+/* COGNOS workbench — small additions on top of Mantine. */
+:root {
+  --cognos-page: #f6f6f3;
+  --cognos-gate: var(--mantine-color-violet-5);
+}
+[data-mantine-color-scheme="dark"] {
+  --cognos-page: #0d0d0d;
+}
+body { background: var(--cognos-page); }
+.mantine-AppShell-main { background: var(--cognos-page); }
+
+.cognos-rail .mantine-NavLink-root { border-radius: var(--mantine-radius-md); margin-bottom: 2px; }
+.cognos-rail .mantine-NavLink-description { font-size: 11px; }
+
+.cognos-gate { border-left: 3px solid var(--mantine-color-gray-4); }
+.cognos-gate-open {
+  border-left: 3px solid var(--cognos-gate);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cognos-gate) 25%, transparent);
+}
+.cognos-rec { border-left: 3px solid var(--mantine-color-indigo-4); }
+
+.cognos-md table { font-size: 13px; }
+.cognos-md pre, .cognos-md code { font-size: 12px; }
+.cognos-md h1 { font-size: 1.4rem; }
+.cognos-md h2 { font-size: 1.15rem; margin-top: 1.2em; }
+
+.mantine-Code-root[data-block] { max-height: 60vh; overflow: auto; white-space: pre-wrap; }
+
+@keyframes cognos-spin { to { transform: rotate(360deg); } }
+.spin { animation: cognos-spin 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

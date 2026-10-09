@@ -87,8 +87,9 @@ def test_interactive_reject_halts(leak_config, runs_dir):
     assert "document" not in summary.stages_run
 
 
-def test_interactive_approve_overrides_block(leak_config, runs_dir):
+def test_interactive_approve_cannot_override_block(leak_config, runs_dir):
     orch = Orchestrator(leak_config, runs_root=runs_dir)
     summary = orch.run(interactive=True, gate_handler=lambda r: "approve")
-    # approving overrides the validate leakage BLOCK and continues to documentation/review
-    assert "document" in summary.stages_run and "review" in summary.stages_run
+    # v1: a BLOCK (confirmed leakage) is never overridable by approval; the run stays halted.
+    assert summary.final_verdict == Verdict.BLOCK
+    assert "document" not in summary.stages_run

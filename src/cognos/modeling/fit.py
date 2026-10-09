@@ -131,6 +131,17 @@ class SMBinaryGLM(ClassifierMixin, BaseEstimator):
         return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
 
 
+def _penalty(kind: str) -> dict[str, Any]:
+    """LogisticRegression regularization kwargs: sklearn >= 1.8 deprecates ``penalty`` in favour
+    of ``l1_ratio`` (0 = ridge, 1 = lasso); older versions only understand ``penalty``."""
+    import sklearn
+
+    major, minor = (int(x) for x in sklearn.__version__.split(".")[:2])
+    if (major, minor) >= (1, 8):
+        return {"l1_ratio": 1.0 if kind == "l1" else 0.0}
+    return {"penalty": kind}
+
+
 def _estimator(family: str, is_classification: bool, hp: dict[str, Any]):
     rs = hp.get("random_state", 42)
     if family == "ols":
@@ -153,9 +164,10 @@ def _estimator(family: str, is_classification: bool, hp: dict[str, Any]):
     if family in BINARY_GLM_LINKS:
         return SMBinaryGLM(link=family, maxiter=hp.get("maxiter", 200))
     if family == "ridge_logit":
-        return LogisticRegression(C=hp.get("C", 1.0), penalty="l2", max_iter=2000)
+        return LogisticRegression(C=hp.get("C", 1.0), max_iter=2000, **_penalty("l2"))
     if family == "lasso_logit":
-        return LogisticRegression(C=hp.get("C", 1.0), penalty="l1", solver="liblinear", max_iter=2000)
+        return LogisticRegression(C=hp.get("C", 1.0), solver="liblinear", max_iter=2000,
+                                  **_penalty("l1"))
     if family == "random_forest":
         cls = RandomForestClassifier if is_classification else RandomForestRegressor
         return cls(n_estimators=hp.get("n_estimators", 200), max_depth=hp.get("max_depth", None),

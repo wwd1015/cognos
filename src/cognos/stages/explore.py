@@ -4,6 +4,11 @@ Profiles the dataset (shape, dtypes, missingness, distributions, correlations) a
 risks the downstream modeling/validation stages must respect — especially **target-leakage suspects**
 (features near-perfectly correlated with the target), which the research identified as the #1 way
 automated systems silently overfit.
+
+v1: the engine computes the profile; the **Data Analyst** agent then recommends keep/exclude for
+every leakage suspect (and any other column that should not be an input) and raises questions for
+the sponsor. Exclusions take effect only when the human accepts them at ``gate_data``; downstream
+stages read the filtered view via ``RunContext.profile()``.
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ import pandas as pd
 from ..artifacts import Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..datautil import coerce_target, select_features
-from .base import Stage, register_stage
+from .base import Stage, attach_recommendation, questions_from, register_stage
 
 LEAKAGE_CORR = 0.98
 HIGH_MISSING = 0.30
@@ -111,6 +116,26 @@ class ExploreStage(Stage):
             "top_correlations": corrs[:15],
             "leakage_suspects": leakage,
         }
+        # --- the Data Analyst's recommendation (engine-checked) --------------------
+        res.payload = profile
+        constant = [c for c in numeric_cols if f"const-{c}" in {f.id for f in res.findings}]
+        out = ctx.recommend("data_analyst", {
+            "columns": list(df.columns),
+            "features": features,
+            "leakage_suspects": leakage,
+            "top_correlations": corrs[:15],
+            "missing_high": {c: round(f, 4) for c, f in missing.items() if f >= HIGH_MISSING},
+            "constant_features": constant,
+            "target_summary": target_summary,
+            "dtypes": {c: dtypes[c] for c in features},
+            "current_exclusions": list(ctx.overrides.exclude_columns),
+        }, fresh={"explore": res})
+        profile["recommended_exclusions"] = [d.column for d in out.column_decisions
+                                             if d.decision == "exclude"]
+        profile["column_decisions"] = [d.model_dump() for d in out.column_decisions]
+        profile["questions"] = questions_from(out.questions_for_sponsor, category="data",
+                                              reentry="explore", prefix="data")
+        attach_recommendation(profile, ctx, "data_analyst", out)
         ref = ctx.save_json("stages/explore/profile.json", profile)
         res.add_artifact(ref)
         res.payload = profile
@@ -119,6 +144,7 @@ class ExploreStage(Stage):
         res.verdict = Verdict.WARN if res.findings else Verdict.PASS
         res.summary = (
             f"Profiled {profile['n_rows']} rows x {profile['n_cols']} cols; {len(features)} features; "
-            f"{len(leakage)} leakage suspect(s); {len(res.findings)} data-quality finding(s)."
+            f"{len(leakage)} leakage suspect(s); {len(res.findings)} data-quality finding(s). "
+            f"Data Analyst recommends excluding {len(profile['recommended_exclusions'])} column(s)."
         )
         return res

@@ -30,3 +30,7 @@ evals/_data/
 
 # Local secrets
 .env
+
+# Browser-automation scratch (UI checks)
+.playwright-mcp/
+.gstack/

@@ -1,116 +1,92 @@
-"""The mechanical orchestrator.
+"""Compatibility wrapper over the v1 workflow engine (``cognos.engine``).
 
-Like deputy's slash-command orchestrator, this is deliberately *mechanical*: it sequences stages in
-the legal lifecycle order, persists each StageResult to disk (checkpoint), honours gate verdicts, and
-escalates — judgment lives in the stage agents, determinism lives here. One control flow serves both
-modes: autonomous (gates auto-approve; BLOCK optionally halts) and interactive/step-by-step (gates
-pause for a human approve/reject via ``gate_handler``). Because every stage checkpoints, a failed run
-resumes from where it stopped instead of restarting.
+v0.x code drove an ``Orchestrator`` that sequenced the eight stages and paused only at the two
+verdict gates. It still works: the wrapper runs the engine with the human review gates auto-accepted
+(the agents' recommendations stand) and, when ``interactive`` with a ``gate_handler``, asks the
+handler about a non-OK ``validate``/``review`` verdict. v1 semantics apply to that answer: a FAIL or
+WARN may be approved, a **BLOCK cannot** — approving it halts the run exactly like a rejection
+(CLAUDE.md non-negotiable #6). New code should use :class:`cognos.engine.Engine` or
+:mod:`cognos.service`, which expose the full gate actions (edit, override, send back).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
 
 from .artifacts import RunSummary, StageResult, Verdict
-from .config import CognosConfig, Mode
+from .config import CognosConfig
 from .context import RunContext
+from .engine import Engine
+from .engine.graph import GATE_OF_STAGE
 
 GateHandler = Callable[[StageResult], str]  # returns "approve" | "reject"
 
-_SEVERITY_ORDER = {
-    Verdict.PASS: 0, Verdict.SKIP: 0, Verdict.WARN: 1,
-    Verdict.OPEN_QUESTIONS: 2, Verdict.FAIL: 3, Verdict.BLOCK: 4, Verdict.ERROR: 5,
-}
-
 
 def _import_stages() -> None:
-    """Ensure all stage modules are imported so the registry is populated."""
-    from . import stages  # noqa: F401
+    from . import stages
 
-    if hasattr(stages, "load_all"):
-        stages.load_all()
+    stages.load_all()
 
 
 class Orchestrator:
     def __init__(self, config: CognosConfig, runs_root: str | None = None,
-                 run_id: str | None = None, brain=None) -> None:
+                 run_id: str | None = None, provider: str | None = None, runner=None) -> None:
         _import_stages()
         self.config = config
-        self.ctx = RunContext(config, run_id=run_id, runs_root=runs_root, brain=brain)
+        self.engine = Engine(config, run_id=run_id, runs_root=runs_root, provider=provider,
+                             mode="autonomous", runner=runner)
 
-    # --- full pipeline -----------------------------------------------------------
-    def run(
-        self,
-        stages: list[str] | None = None,
-        *,
-        interactive: bool | None = None,
-        gate_handler: GateHandler | None = None,
-        force: bool = False,
-    ) -> RunSummary:
-        from .stages.base import make_stage
+    @property
+    def ctx(self) -> RunContext:
+        return self.engine.context()
 
-        cfg = self.config
-        interactive = (cfg.mode == Mode.INTERACTIVE) if interactive is None else interactive
-        plan = stages or cfg.stages.enabled
-        summary = RunSummary(run_id=self.ctx.run_id, mode="interactive" if interactive else "autonomous",
-                             project=cfg.name)
-        worst = Verdict.PASS
-
-        for name in plan:
-            if not force and self.ctx.has(name):
-                result = self.ctx.get(name)  # resume: reuse checkpoint
-            else:
-                result = make_stage(name).run_guarded(self.ctx)
-                self.ctx.record(result)
-            summary.stages_run.append(name)
-            summary.verdicts[name] = result.verdict.value
-            if _SEVERITY_ORDER[result.verdict] > _SEVERITY_ORDER[worst]:
-                worst = result.verdict
-            if name == "model":
-                summary.champion_metric = result.metrics.get("cv_mean")
-                summary.champion_metric_name = cfg.metric.name
-
-            decision = self._handle_gate(name, result, interactive, gate_handler)
-            if decision == "halt":
+    def run(self, stages: list[str] | None = None, *, interactive: bool | None = None,
+            gate_handler: GateHandler | None = None, force: bool = False) -> RunSummary:
+        eng = self.engine
+        if force:
+            eng.reset()
+        if stages:
+            with eng.lock:
+                state = eng.state
+                for s in state.steps:
+                    base = s if s in GATE_OF_STAGE else next(
+                        (st for st, g in GATE_OF_STAGE.items() if g == s), s)
+                    if base not in stages and state.status_of(s) in ("pending", "stale"):
+                        state.set_step(s, "skipped", "not in the requested stage list")
+                eng._save(state)
+        if not (interactive and gate_handler is not None):
+            eng.run_until_idle()
+            return eng.summary()
+        # Legacy interactive mode: step manually so a verdict gate can halt what follows it.
+        for _ in range(200):
+            ready = eng.ready_steps()
+            if not ready:
                 break
+            step = ready[0]
+            eng._execute(step)
+            if step not in self.config.stages.gates:
+                continue
+            res = eng.results().get(step)
+            if res is None or res.verdict.ok:
+                continue
+            if gate_handler(res) != "approve" or res.verdict == Verdict.BLOCK:
+                with eng.lock:  # rejected, or a BLOCK (never overridable): halt the run
+                    state = eng.state
+                    for s, st in state.steps.items():
+                        if st.status in ("pending", "stale"):
+                            state.set_step(s, "skipped", f"halted at the {step} gate")
+                    state.status = "rejected"
+                    state.halted_reason = f"halted at the {step} gate ({res.verdict.value})"
+                    state.save(eng.run_dir)
+                break
+        eng._write_summary()
+        return eng.summary()
 
-        summary.final_verdict = worst
-        summary.n_findings = sum(
-            len(self.ctx.get(s).findings) for s in summary.stages_run if self.ctx.get(s)
-        )
-        summary.ended_at = datetime.now(UTC).isoformat()
-        self.ctx.save_json("summary.json", summary.model_dump(mode="json"))
-        self.ctx.save_text("summary.txt", summary.token_block())
-        return summary
-
-    def _handle_gate(self, name: str, result: StageResult, interactive: bool,
-                     gate_handler: GateHandler | None) -> str:
-        cfg = self.config
-        if result.verdict == Verdict.ERROR:
-            return "halt"
-        is_gate = name in cfg.stages.gates
-        if not is_gate or result.verdict.ok:
-            return "continue"
-        # Gate raised a non-OK verdict.
-        if interactive and gate_handler is not None:
-            return "continue" if gate_handler(result) == "approve" else "halt"
-        # Autonomous: halt only on BLOCK (when configured); FAIL/OPEN_QUESTIONS are recorded but the
-        # prototype run proceeds so the user still gets docs/consistency output.
-        if result.verdict == Verdict.BLOCK and cfg.stages.halt_on_block:
-            return "halt"
-        return "continue"
-
-    # --- single stage (stage-by-stage / human-in-the-loop) -----------------------
     def run_stage(self, name: str, *, force: bool = True) -> StageResult:
-        from .stages.base import make_stage
-
-        if not force and self.ctx.has(name):
-            return self.ctx.get(name)
-        result = make_stage(name).run_guarded(self.ctx)
-        self.ctx.record(result)
-        return result
+        ctx = self.ctx
+        if not force and ctx.has(name):
+            return ctx.get(name)
+        return self.engine.run_stage(name)
 
 
 def run_pipeline(
@@ -118,12 +94,12 @@ def run_pipeline(
     *,
     runs_root: str | None = None,
     run_id: str | None = None,
-    brain=None,
+    provider: str | None = None,
     interactive: bool = False,
     gate_handler: GateHandler | None = None,
     stages: list[str] | None = None,
 ) -> tuple[RunContext, RunSummary]:
     """Convenience: build an orchestrator, run the pipeline, return (context, summary)."""
-    orch = Orchestrator(config, runs_root=runs_root, run_id=run_id, brain=brain)
+    orch = Orchestrator(config, runs_root=runs_root, run_id=run_id, provider=provider)
     summary = orch.run(stages, interactive=interactive, gate_handler=gate_handler)
     return orch.ctx, summary

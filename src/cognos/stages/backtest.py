@@ -6,6 +6,9 @@ produce a standardized scored feature table (transparent built-in fallback when 
 (Gini/KS), calibration (expected vs observed), and population stability (PSI). Trading-strategy
 metrics (Probability of Backtest Overfitting, Deflated Sharpe) are computed only in an explicit
 returns/trading mode, since they presume a P&L series. See ADR-0005.
+
+v1: the **Outcomes Analyst** agent interprets the numbers (discrimination, calibration, stability)
+and may raise findings that cite facts; the numbers themselves are the engine's.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ from ..modeling.backtest_stats import deflated_sharpe_ratio, pbo_cscv
 from ..modeling.credit_metrics import credit_outcomes
 from ..modeling.metrics import score
 from ..runtime.score import score_frame
-from .base import Stage, register_stage
+from .base import Stage, attach_recommendation, register_stage
 
 
 @register_stage
@@ -53,7 +56,7 @@ class BacktestStage(Stage):
         ctx.save_df("stages/backtest/scored.parquet", impact_res.scored_df)
         if impact_res.config_path:
             res.add_artifact(ctx.save_text(
-                "stages/backtest/impact_entity.yaml", open(impact_res.config_path).read(), kind="text"))
+                "stages/backtest/impact_entity.yaml", open(impact_res.config_path, encoding="utf-8").read(), kind="text"))
         if impact_res.validation.get("error_count", 0):
             res.add_finding(Finding(id="impact-validation", severity=Severity.MEDIUM, category="data-quality",
                                     message=f"IMPACT reported {impact_res.validation['error_count']} validation error(s)."))
@@ -139,6 +142,28 @@ class BacktestStage(Stage):
             "trading": trading,
             "n_trials": model.get("n_candidates_tried"),
         }
+        # --- the Outcomes Analyst's reading (engine-checked; cites facts) ----------
+        res.payload = payload
+        oa = outcomes or {}
+        out = ctx.recommend("outcomes_analyst", {
+            "evaluation_sample": payload["evaluation_sample"],
+            "outcomes": {k: oa.get(k) for k in ("gini", "ks", "auc", "expected_calibration_error",
+                                                "psi", "psi_label", "calibration_table")},
+            "walk_forward": walk_forward,
+            "portfolio": ({k: portfolio.get(k) for k in ("expected_loss", "var", "es", "confidence")}
+                          if portfolio else None),
+            "stress": ([{k: sc.get(k) for k in ("name", "mean_pd", "delta_pd")}
+                        for sc in stress["scenarios"]] if stress else None),
+            "engine_findings": [f.line() for f in res.findings],
+        }, fresh={"backtest": res})
+        sev = {"low": Severity.LOW, "medium": Severity.MEDIUM, "high": Severity.HIGH}
+        for f in out.findings:
+            res.add_finding(Finding(id=f"oa-{f.id}", severity=sev[f.severity], category=f.category,
+                                    message=f.message, location="outcomes_analyst",
+                                    suggestion="Evidence: " + ", ".join(f.evidence)))
+        payload["interpretation"] = {"discrimination": out.discrimination,
+                                     "calibration": out.calibration, "stability": out.stability}
+        attach_recommendation(payload, ctx, "outcomes_analyst", out)
         res.add_artifact(ctx.save_json("stages/backtest/backtest.json", payload))
         res.payload = payload
         res.metrics = {"oos_metric": oos_metric, "used_impact": impact_res.used_impact,

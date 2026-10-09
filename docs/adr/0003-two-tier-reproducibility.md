@@ -1,5 +1,9 @@
 # Reproducibility is two-tier: deterministic analysis, human-gated reasoning
 
+> **v1.0 note ([ADR-0010](0010-agents-recommend-humans-decide.md)):** the reasoning trajectory is now
+> the agent audit (`runs/<id>/agents/`: every attempt's prompt, context slice and raw output) plus the
+> decision log; the `replay` provider re-runs a recorded trajectory deterministically.
+
 Reproducibility and auditability are core, but an LLM-in-the-loop search is not bit-reproducible. We
 split the guarantee in two:
 

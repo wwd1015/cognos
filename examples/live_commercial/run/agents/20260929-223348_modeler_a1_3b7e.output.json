@@ -1,0 +1,85 @@
+{
+ "raw": {
+  "summary": "I recommend c6 (ridge logit, C=0.1) as champion. It has the best cross-validated AUC and is the current ratchet champion. It uses the same six features as every other admissible candidate, and all six candidates are interpretable. Four of its five signed coefficients match economic priors. Profit margin has the wrong sign (+) in every admissible candidate, so I raise it as an open issue for the gate rather than a reason to pick a different candidate.",
+  "champion": "c6",
+  "rationale": "All six admissible candidates use the same features and show the same coefficient signs. The only real choice is the family and regularization strength. c6 has the highest cross-validated AUC, which falls in the normal range for a 12-month obligor PD model, and no leakage suspects were flagged (explore.leakage_suspects). Its stronger ridge penalty suits a sample with only 81 events. No admissible candidate has consistent signs on profit margin, so switching candidates would not fix that problem.",
+  "sign_checks": [
+   {
+    "feature": "leverage",
+    "expected": "+",
+    "observed": "+",
+    "assessment": "consistent"
+   },
+   {
+    "feature": "interest_coverage",
+    "expected": "-",
+    "observed": "-",
+    "assessment": "consistent"
+   },
+   {
+    "feature": "log_assets",
+    "expected": "-",
+    "observed": "-",
+    "assessment": "consistent"
+   },
+   {
+    "feature": "current_ratio",
+    "expected": "-",
+    "observed": "-",
+    "assessment": "consistent"
+   },
+   {
+    "feature": "profit_margin",
+    "expected": "-",
+    "observed": "+",
+    "assessment": "wrong_sign"
+   },
+   {
+    "feature": "sector",
+    "expected": "none",
+    "observed": "n/a",
+    "assessment": "no_prior"
+   }
+  ],
+  "concerns": [
+   {
+    "statement": "Profit margin has a positive coefficient on PD, the opposite of the economic prior. Its correlation with default on its own is essentially zero, so the sign is most likely caused by collinearity with interest coverage or leverage rather than a real effect. The next experiment should test the same model with profit margin removed.",
+    "evidence": [
+     "explore.corr.profit_margin",
+     "explore.corr.interest_coverage",
+     "explore.corr.leverage"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "statement": "The model is fitted on few default events and about 13.5 events per variable. Fold-to-fold variation in cross-validated AUC is large compared with the gaps between candidates, so the ranking within the admissible set is not reliable.",
+    "evidence": [
+     "ideate.n_events",
+     "ideate.events_per_variable",
+     "explore.n_rows"
+    ],
+    "confidence": "high"
+   },
+   {
+    "statement": "The sponsor has not specified the use case, horizon, default definition or segment, and several design questions remain open. The champion may need to be revisited once these are decided.",
+    "evidence": [
+     "ideate.n_open_questions"
+    ],
+    "confidence": "high"
+   }
+  ],
+  "uncertainties": [
+   "The data do not tell me whether the wrong sign on profit margin comes from collinearity, from mixing sectors, or from a real effect; I do not have pairwise feature correlations or sector-level results.",
+   "Regularized coefficients are point estimates without honest p-values, so I cannot say whether the profit margin coefficient is meaningfully different from zero.",
+   "The design fields (use case, horizon, default definition, segment) are blank, and these could change which features and target definition are appropriate."
+  ],
+  "responses_to_challenges": []
+ },
+ "meta": {
+  "model": "opus",
+  "turns": 2,
+  "cost_usd": 0.0614758,
+  "input_tokens": 2,
+  "output_tokens": 1415
+ }
+}

@@ -19,8 +19,8 @@ real model-development engagement:
      OKF white paper → docs↔code review.
 
 Run:  python examples/commercial_credit/run_demo.py [--save-sample]
-(Requires `pip install -e .`. Runs fully offline with the deterministic engine; an LLM brain adds
-proposed transforms and a design review on top, never instead.)
+(Requires `pip install -e .`. Runs fully offline with the deterministic agents; LLM agents (any
+provider) recommend on top of the same engine checks, never instead.)
 
 `--save-sample` refreshes examples/commercial_credit/sample_output/ with the real artifacts
 (design brief, open questions, run summary) so the repository carries a captured example.
@@ -177,8 +177,8 @@ def save_sample(orch: Orchestrator, summary, naive_orch: Orchestrator) -> None:
     ide = naive_orch.ctx.require("ideate").payload
     lines = ["# Open design questions (ideate, before the MD answered)", ""]
     lines += [f"- **[{q['id']}]** {q['question']}" for q in ide["open_questions"]]
-    (out / "open_questions_before_answers.md").write_text("\n".join(lines) + "\n")
-    (out / "run_summary.txt").write_text(summary.token_block() + "\n")
+    (out / "open_questions_before_answers.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (out / "run_summary.txt").write_text(summary.token_block() + "\n", encoding="utf-8")
     print(f"\n  Sample artifacts refreshed under {out}")
 
 
@@ -204,4 +204,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    from cognos.cli import quiet_numerics, utf8_console
+
+    utf8_console()
+    quiet_numerics()
     main()
