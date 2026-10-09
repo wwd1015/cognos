@@ -170,7 +170,7 @@ class ValidateStage(Stage):
             if p is None or _is_nan(p):
                 bad.append(f"p-value({name})")
         for name, c in coefficients.items():
-            if c is None or _is_nan(c) or (isinstance(c, (int, float)) and abs(float(c)) > ABSURD_COEF):
+            if c is None or _is_nan(c) or (isinstance(c, int | float) and abs(float(c)) > ABSURD_COEF):
                 bad.append(f"coef({name})")
         if bad:
             res.add_finding(Finding(

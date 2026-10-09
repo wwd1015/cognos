@@ -32,7 +32,7 @@ def _cited(out: Contract) -> list[str]:
     ids: list[str] = []
 
     def walk(o: Any) -> None:
-        if isinstance(o, (Claim, AgentFinding, ColumnDecision)):
+        if isinstance(o, Claim | AgentFinding | ColumnDecision):
             ids.extend(o.evidence)
         if isinstance(o, Contract):
             for name in type(o).model_fields:

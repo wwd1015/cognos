@@ -509,8 +509,9 @@ class DocumentStage(Stage):
         from ..engine.state import RunState
 
         state = RunState.load(ctx.run_dir) if RunState.exists(ctx.run_dir) else None
-        decisions = [{"gate": d.gate, "action": d.action, "actor": d.actor, "reason": d.reason,
-                      "at": d.at} for d in (state.decisions if state else [])]
+        decisions = [{"gate": d.gate, "action": d.action, "actor": d.actor,
+                      "seat": d.seat or d.actor, "reason": d.reason, "at": d.at}
+                     for d in (state.decisions if state else [])]
         challenge_log = [{"id": c.id, "source": c.source, "stage": c.target_stage,
                           "severity": c.severity, "message": c.message, "status": c.status,
                           "response": c.response} for c in (state.challenges if state else [])]
@@ -550,12 +551,14 @@ class DocumentStage(Stage):
                              else f"{rec.get('provider', '')}:{rec.get('model', '')}",
                              str(rec.get("output", {}).get("summary", "")).replace("|", "/")])
         log = ["# Decision log", "",
-               "Agents recommend; the engine checks; a human decides at each gate.", "",
+               "Agents recommend. A person decides in a seat: the model developer, the "
+               "independent reviewer, or the approver. Express preparation accepts gates so a "
+               "run can finish; that is not a signature. A sealed package is the signature.", "",
                "## Agent recommendations", "",
                _table(["Stage", "Agent", "Backend", "Recommendation"], recs), "",
-               "## Human gate decisions", "",
-               _table(["Gate", "Action", "Actor", "Reason", "At"],
-                      [[d["gate"], d["action"], d["actor"], d["reason"].replace("|", "/") or "-",
+               "## Gate decisions", "",
+               _table(["Gate", "Action", "Seat", "Reason", "At"],
+                      [[d["gate"], d["action"], d["seat"], d["reason"].replace("|", "/") or "-",
                         d["at"]] for d in decisions]), "",
                "## Challenges and responses", "",
                _table(["Id", "Source", "Stage", "Severity", "Challenge", "Status", "Response"],

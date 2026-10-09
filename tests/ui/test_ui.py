@@ -99,3 +99,48 @@ def test_failed_step_offers_retry(root):
     st.set_step("explore", "failed", "boom")
     assert '"retry"' in _serialize(stage_panel("explore", None, st, "light"))
     assert isinstance(st, RunState)
+
+
+def test_compare_page_and_rerun_note_render(root):
+    from cognos.ui.panels import compare_page, rerun_note
+
+    cfg = service.demo_config("commercial", root, n=600, search_budget=6)
+    first = service.create_run(cfg, mode="autonomous", provider="heuristic")
+    service.run_until_idle(first)
+    second = service.create_run(cfg, mode="interactive", provider="heuristic")
+    service.run_until_idle(second)
+    prof = service.results(second)["explore"].payload
+    drop = [c for c in prof["features"] if c not in prof.get("recommended_exclusions", [])][0]
+    service.submit_gate(second, "gate_data", "edit", {"exclude_columns": [drop]}, "what if", background=False)
+    service.run_until_idle(second)
+
+    page = _serialize(compare_page(service.compare(first, second)))
+    assert "Compare runs" in page and first in page and second in page
+    assert "Decided differently" in page and "Excluded columns" in page and drop in page
+    assert "has not finished" in page  # the second run is waiting at a gate, and the page says so
+    assert f"/compare/{second}/{first}" in page  # swap
+    # the picker offers both runs; the workspace links to the previous run and offers the export
+    assert first in _serialize(ui.compare_picker()) and second in _serialize(ui.compare_picker())
+    actions = _serialize(ui.run_actions(second))
+    assert f"/compare/{first}/{second}" in actions and "export-btn" in actions
+    assert "/compare/" not in _serialize(ui.run_actions(first))  # nothing earlier to compare with
+
+    # revise the decision: the rail and the panel say why the stage is out of date...
+    service.submit_gate(second, "gate_design", "accept", background=False)
+    service.run_until_idle(second)
+    service.reopen(second, "gate_data")
+    service.submit_gate(second, "gate_data", "accept", background=False)
+    st = service.state(second)
+    assert st.status_of("model") == "stale"
+    assert "Review data decisions: recommended exclusions accepted" in _serialize(ui.rail(st, "model"))
+    panel = _serialize(stage_panel("model", service.results(second)["model"], st, "light"))
+    assert "This stage will re-run because" in panel and "recommended exclusions accepted" in panel
+    assert rerun_note("model", st, None) is None  # not while it is still stale
+    # ...and once it has re-run, what that changed
+    service.run_until_idle(second)
+    service.submit_gate(second, "gate_design", "accept", background=False)
+    st = service.run_until_idle(second)
+    changes = service.step_changes(second, "model")
+    panel = _serialize(stage_panel("model", service.results(second)["model"], st, "dark", changes))
+    assert "What the re-run changed" in panel and "Ran again because" in panel
+    assert rerun_note("explore", st, None) is None  # explore ran once

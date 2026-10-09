@@ -157,18 +157,19 @@ def run_until_idle(run_id: str, root: str | Path | None = None) -> RunState:
 
 def submit_gate(run_id: str, gate: str, action: str, payload: dict | None = None,
                 reason: str = "", *, root: str | Path | None = None,
-                background: bool = True) -> RunState:
+                background: bool = True, seat: str | None = None) -> RunState:
     eng = engine(run_id, root)
-    state = eng.submit_gate(gate, action, payload, reason)
+    state = eng.submit_gate(gate, action, payload, reason, seat=seat)
     if background:
         eng.start()
     return state
 
 
 def answer_gap(run_id: str, gap_id: str, answer: str, *, assume: bool = False,
-               root: str | Path | None = None, background: bool = True) -> RunState:
+               root: str | Path | None = None, background: bool = True,
+               seat: str | None = None) -> RunState:
     eng = engine(run_id, root)
-    state = eng.answer_gap(gap_id, answer, assume=assume)
+    state = eng.answer_gap(gap_id, answer, assume=assume, seat=seat)
     if background:
         eng.start()
     return state
@@ -183,8 +184,9 @@ def retry(run_id: str, step: str, root: str | Path | None = None,
     return state
 
 
-def reopen(run_id: str, gate: str, root: str | Path | None = None) -> RunState:
-    return engine(run_id, root).reopen(gate)
+def reopen(run_id: str, gate: str, root: str | Path | None = None,
+           *, seat: str | None = None) -> RunState:
+    return engine(run_id, root).reopen(gate, seat=seat)
 
 
 def state(run_id: str, root: str | Path | None = None) -> RunState:
@@ -205,6 +207,70 @@ def results(run_id: str, root: str | Path | None = None) -> dict[str, StageResul
         if path.exists():
             out[stage] = StageResult.model_validate_json(path.read_text(encoding="utf-8"))
     return out
+
+
+def _results_in(run_dir: Path, name: str = "result.json") -> dict[str, StageResult]:
+    out = {}
+    for stage in STAGES:
+        path = run_dir / "stages" / stage / name
+        try:
+            out[stage] = StageResult.model_validate_json(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):
+            continue
+    return out
+
+
+def _config_dict(run_dir: Path) -> dict | None:
+    import yaml
+
+    try:
+        return yaml.safe_load((run_dir / "config.yaml").read_text(encoding="utf-8"))
+    except (FileNotFoundError, yaml.YAMLError):
+        return None
+
+
+def compare(run_a: str, run_b: str, root: str | Path | None = None) -> dict[str, Any]:
+    """Run ``run_b`` against ``run_a``: what was decided differently and what it did to the
+    results. Read from disk; nothing is stored."""
+    from . import compare as cmp
+
+    da, db = runs_root(root) / run_a, runs_root(root) / run_b
+    return cmp.compare_runs(RunState.load(da), _results_in(da), _config_dict(da),
+                            RunState.load(db), _results_in(db), _config_dict(db))
+
+
+def step_changes(run_id: str, stage: str, root: str | Path | None = None) -> dict[str, Any] | None:
+    """What the last re-run of ``stage`` changed against the result it replaced (None on a first
+    run). The engine keeps the replaced result as ``result.prev.json``."""
+    from . import compare as cmp
+
+    d = runs_root(root) / run_id
+    return cmp.step_changes(stage, _results_in(d, "result.prev.json").get(stage), _results_in(d).get(stage))
+
+
+def previous_run(run_id: str, root: str | Path | None = None) -> str | None:
+    """The most recent earlier run of the same project (the natural thing to compare with)."""
+    rows = [r for r in list_runs(root) if not r["legacy"]]
+    me = next((r for r in rows if r["run_id"] == run_id), None)
+    if me is None:
+        return None
+    def born(rid: str) -> tuple[int, str]:
+        # config.yaml is written once, when the run is created: finer than the id's one-second stamp
+        try:
+            return (runs_root(root) / rid / "config.yaml").stat().st_mtime_ns, rid
+        except OSError:
+            return 0, rid
+
+    older = [r["run_id"] for r in rows if r["project"] == me["project"] and born(r["run_id"]) < born(run_id)]
+    return max(older, key=born) if older else None
+
+
+def export_run(run_id: str, dest: str | Path | None = None, root: str | Path | None = None, *,
+               agent_io: bool = False) -> Path:
+    """One zip of the run's documents, results, decisions and audit log (never the data)."""
+    from .export import export_run as _export
+
+    return _export(runs_root(root) / run_id, dest, agent_io=agent_io)
 
 
 def run_events(run_id: str, since: float = 0.0, root: str | Path | None = None,

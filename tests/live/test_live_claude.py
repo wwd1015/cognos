@@ -33,6 +33,10 @@ def test_interactive_run_with_live_claude_agents(tmp_path, monkeypatch):
     monkeypatch.setenv("COGNOS_PROVIDER", "claude_cli")
     root = tmp_path / "runs"
     cfg = service.demo_config("commercial", root, n=800, search_budget=6)
+    cfg.design.use_case = "origination underwriting"
+    cfg.design.horizon = "12-month PD"
+    cfg.design.default_definition = "90+ DPD or nonaccrual within 12 months"
+    cfg.design.segment = "C&I middle-market"
     run_id = service.create_run(cfg, mode="interactive", provider="claude_cli", root=root)
 
     state = service.run_until_idle(run_id, root)

@@ -39,6 +39,9 @@ class StepState(BaseModel):
     message: str | None = None
     verdict: str | None = None  # a stage's verdict (PASS/WARN/FAIL/BLOCK/ERROR) once it finishes
     runs: int = 0
+    # Why this step was last invalidated (the decision, answer or challenge that made it stale).
+    # Kept through the re-run, so "why did this change?" still has an answer once it is done.
+    rerun_reason: str | None = None
     updated_at: str = Field(default_factory=utcnow)
 
 
@@ -47,9 +50,25 @@ class GateDecision(BaseModel):
     gate: str
     action: str  # accept | edit | override | send_back | approve | reject
     actor: Literal["human", "auto"] = "human"
+    # developer | reviewer | approver | express. Empty on decisions recorded before seats.
+    seat: str = ""
     reason: str = ""
     payload: dict[str, Any] = Field(default_factory=dict)
     at: str = Field(default_factory=utcnow)
+
+
+class PackageSeal(BaseModel):
+    """The live pointer at the newest sealed package. The file under ``packages/`` is never
+    rewritten; a later change only flips this pointer to ``superseded``."""
+
+    version: int
+    digest: str
+    sealed_at: str = Field(default_factory=utcnow)
+    seat: str = "approver"
+    preparation: Literal["human", "express"] = "human"
+    status: Literal["sealed", "superseded"] = "sealed"
+    superseded_because: str = ""
+    path: str = ""  # packages/vN.json, relative to the run directory
 
 
 class Challenge(BaseModel):
@@ -107,6 +126,7 @@ class RunState(BaseModel):
     challenges: list[Challenge] = Field(default_factory=list)
     gaps: list[Gap] = Field(default_factory=list)
     overrides: Overrides = Field(default_factory=Overrides)
+    package: PackageSeal | None = None  # set only by an approver's approve
     loops: dict[str, int] = Field(default_factory=dict)
     spend_usd: float = 0.0
 
@@ -136,10 +156,11 @@ class RunState(BaseModel):
         return st.status if st else "pending"
 
     def set_step(self, step: str, status: str, message: str | None = None, *,
-                 verdict: str | None = None) -> None:
+                 verdict: str | None = None, rerun_reason: str | None = None) -> None:
         prev = self.steps.get(step) or StepState()
         self.steps[step] = StepState(
             status=status, message=message,
+            rerun_reason=rerun_reason if rerun_reason is not None else prev.rerun_reason,
             verdict=verdict if verdict is not None else (None if status in ("pending", "stale")
                                                          else prev.verdict),
             runs=prev.runs + (1 if status == "running" else 0),
@@ -148,14 +169,18 @@ class RunState(BaseModel):
     def deps_satisfied(self, step: str) -> bool:
         return all(self.status_of(d) in SATISFIED for d in DEPS[step])
 
-    def invalidate(self, steps: list[str]) -> list[str]:
-        """Mark steps and everything downstream stale (only those that produced output)."""
+    def invalidate(self, steps: list[str], why: str = "an earlier input changed") -> list[str]:
+        """Mark steps and everything downstream stale (only those that produced output). ``why``
+        names the cause — a decision, an answer, a challenge — and stays on each step."""
         marked: list[str] = []
         for s in steps:
             for d in [s, *descendants(s)]:
                 if d not in marked and self.status_of(d) in INVALIDATABLE:
-                    self.set_step(d, "stale", "an earlier input changed")
+                    self.set_step(d, "stale", why, rerun_reason=why)
                     marked.append(d)
+        if marked:
+            from .process import supersede
+            supersede(self, why)
         return marked
 
     # --- challenges & gaps ----------------------------------------------------------

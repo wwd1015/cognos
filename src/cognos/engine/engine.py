@@ -20,7 +20,8 @@ from typing import Any
 from ..artifacts import RunSummary, StageResult, Verdict
 from ..config import CognosConfig, Mode
 from ..context import RunContext, new_run_id
-from . import events, gates
+from ..fsutil import atomic_write
+from . import events, gates, process
 from .graph import GATE_OF_STAGE, GATES, LABELS, STAGE_OF_GATE, STAGES, STEPS, descendants
 from .state import Challenge, Gap, GateDecision, RunState, run_lock
 
@@ -208,12 +209,22 @@ class Engine:
                     state.set_step(step, "failed", f"{type(exc).__name__}: {exc}")
                     self._save(state)
             return
+        self._keep_previous(step)
         try:
             result = self._run_stage(step)
         except Exception as exc:  # the stage framework already converts crashes to ERROR
             result = StageResult(stage=step, verdict=Verdict.ERROR,
                                  summary=f"{type(exc).__name__}: {exc}")
         self._finish_stage(step, result, open_ids)
+
+    def _keep_previous(self, stage: str) -> None:
+        """Before a stage runs again, keep its last result beside it (``result.prev.json``), so a
+        re-run can be compared with what it replaced. By reference on disk; state stays small."""
+        path = self.run_dir / "stages" / stage / "result.json"
+        try:
+            atomic_write(path.with_name("result.prev.json"), path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            pass  # first run of this stage
 
     def _run_stage(self, stage: str) -> StageResult:
         from ..stages.base import make_stage
@@ -295,7 +306,9 @@ class Engine:
                 message=f["message"], evidence=f.get("evidence", []), remedy=f.get("remedy")))
             targets.append(f["target_stage"])
         first = min(targets, key=STEPS.index)
-        state.invalidate([first])
+        state.invalidate([first], f"{LABELS['validate']}: {len(routed)} high-severity finding(s) sent back to "
+                                  f"{', '.join(LABELS[t] for t in sorted(set(targets), key=STEPS.index))} "
+                                  f"(loop {loops + 1} of {limit})")
         events.publish(self.run_dir, "challenge",
                        f"Validator sent {len(routed)} finding(s) back to {', '.join(sorted(set(targets)))} "
                        f"(loop {loops + 1} of {limit}).", step="validate")
@@ -320,13 +333,15 @@ class Engine:
                     state.set_step(gate, "failed", str(exc))
                     self._save(state)
                     return
-                state.decisions.append(GateDecision(gate=gate, action=action, actor="auto",
-                                                    reason="autonomous mode"))
-                state.set_step(gate, "done", "auto-accepted (autonomous mode)")
-                state.invalidate([s for s in invalidate if s != gate])
+                state.decisions.append(GateDecision(
+                    gate=gate, action=action, actor="auto", seat="express",
+                    reason="express preparation (not a signature)"))
+                state.set_step(gate, "done", "accepted by express preparation")
+                state.invalidate([s for s in invalidate if s != gate],
+                                 gates.why(gate, action, {}) + " (autonomous mode)")
                 self._save(state)
-                events.publish(self.run_dir, "gate_decision", f"{LABELS[gate]}: auto-accepted.",
-                               step=gate)
+                events.publish(self.run_dir, "gate_decision",
+                               f"{LABELS[gate]}: accepted by express preparation.", step=gate)
                 return
             state.set_step(gate, "awaiting", "waiting for your decision")
             self._save(state)
@@ -334,21 +349,32 @@ class Engine:
                        step=gate)
 
     def submit_gate(self, gate: str, action: str, payload: dict[str, Any] | None = None,
-                    reason: str = "") -> RunState:
+                    reason: str = "", *, seat: str | None = None) -> RunState:
         if gate not in GATES:
             raise gates.GateError(f"unknown gate {gate!r}")
+        seat = process.resolve_seat(gate, seat)
         with self.lock:
             state = self.state
             if state.status_of(gate) != "awaiting":
                 raise gates.GateError(f"{gate} is not awaiting a decision "
                                       f"(it is {state.status_of(gate)})")
+            if action == "approve":
+                missing = process.missing_design(self.config, state)
+                if missing:
+                    raise gates.GateError(
+                        "The design brief is still open (" + ", ".join(missing) + "). "
+                        "Answer use, horizon, default definition and segment before anyone can sign.")
             invalidate, done = gates.handle(state, gate, action, payload or {}, reason,
                                             self.results())
-            state.decisions.append(GateDecision(gate=gate, action=action, actor="human",
-                                                reason=reason, payload=payload or {}))
+            state.decisions.append(GateDecision(
+                gate=gate, action=action, actor="human", seat=seat,
+                reason=reason, payload=payload or {}))
+            if action == "approve" and done:
+                process.seal_package(state, self.config, self.results(), self.run_dir)
             if done:
-                state.set_step(gate, "done", f"{action} by reviewer")
-            state.invalidate([s for s in invalidate if s != gate] if done else invalidate)
+                state.set_step(gate, "done", f"{action} by the {process.seat_label(seat)}")
+            why = gates.why(gate, action, payload, reason)
+            state.invalidate([s for s in invalidate if s != gate] if done else invalidate, why)
             if not done and state.status_of(gate) == "awaiting":
                 state.set_step(gate, "stale", "re-opens after the re-run")
             self._save(state)
@@ -357,14 +383,18 @@ class Engine:
                        step=gate, action=action)
         return self.state
 
-    def reopen(self, gate: str) -> RunState:
+    def reopen(self, gate: str, *, seat: str | None = None) -> RunState:
         """Re-open a decided gate so the human can revise it; a changed decision marks the work
-        downstream stale."""
+        downstream stale. Re-opening a sealed run supersedes the package."""
+        if gate not in GATES:
+            raise gates.GateError(f"unknown gate {gate!r}")
+        seat = process.resolve_seat(gate, seat)
         with self.lock:
             state = self.state
-            if gate not in GATES or state.status_of(gate) != "done":
+            if state.status_of(gate) != "done":
                 raise gates.GateError(f"{gate} is {state.status_of(gate)}; only a decided gate "
                                       "can be re-opened")
+            process.supersede(state, f"{LABELS[gate]} re-opened by the {process.seat_label(seat)}")
             if state.status in ("approved", "rejected"):
                 state.status = "running"
             state.set_step(gate, "awaiting", "re-opened for revision")
@@ -373,13 +403,19 @@ class Engine:
                        step=gate)
         return self.state
 
-    def answer_gap(self, gap_id: str, answer: str, *, assume: bool = False) -> RunState:
-        """Answer (or accept as an assumption) an open question at any time."""
+    def answer_gap(self, gap_id: str, answer: str, *, assume: bool = False,
+                   seat: str | None = None) -> RunState:
+        """Answer (or, for a data question, accept as an assumption) an open question.
+        Sponsor questions belong to the model developer."""
+        if seat not in (None, "", "developer"):
+            raise gates.GateError("Sponsor questions are answered by the model developer.")
         with self.lock:
             state = self.state
             rerun = gates.apply_answers(state, {gap_id: answer}, assume=assume)
             ran = [s for s in rerun if state.status_of(s) not in ("pending", "skipped")]
-            state.invalidate(ran)
+            gap = state.gap(gap_id)
+            state.invalidate(ran, f"Question {gap_id} answered"
+                             + (f": “{gates._clip(gap.question, 90)}” → {gates._clip(answer, 60)}" if gap else ""))
             self._save(state)
         events.publish(self.run_dir, "gap_answered",
                        f"Question {gap_id} {'accepted as an assumption' if assume else 'answered'}.")
@@ -398,6 +434,7 @@ class Engine:
         """Force a full re-run (compat: ``Orchestrator.run(force=True)``)."""
         with self.lock:
             state = self.state
+            process.supersede(state, "the run was reset")
             for step in STEPS:
                 if state.status_of(step) != "skipped":
                     state.set_step(step, "pending")

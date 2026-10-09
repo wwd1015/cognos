@@ -27,7 +27,7 @@ def _clean(value: Any) -> Any:
         if math.isnan(value) or math.isinf(value):
             return None
         return round(value, 4)
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return ", ".join(str(v) for v in value) if value else "none"
     try:
         f = float(value)

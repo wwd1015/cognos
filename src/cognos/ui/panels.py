@@ -11,10 +11,12 @@ import json
 from typing import Any
 
 import dash_mantine_components as dmc
+from dash import dcc
 
 from .. import service
 from ..artifacts import StageResult
 from ..engine.graph import LABELS, SEND_BACK_TARGETS
+from ..engine.process import SEAT_OF_GATE, preparation_of, seat_label
 from ..engine.state import RunState
 from . import charts
 from .components import (
@@ -27,6 +29,7 @@ from .components import (
     markdown,
     pct,
     recommendation_card,
+    run_badge,
     section,
     step_badge,
     table,
@@ -89,14 +92,21 @@ def _send_back(gate: str, choose_target: bool) -> Any:
 
 
 def gate_block(gate: str, state: RunState, res: StageResult | None, body: list | None = None,
-               primary: list | None = None, *, send_back: bool = True) -> Any:
-    """The human decision for a stage: form when awaiting, record when decided."""
+               primary: list | None = None, *, send_back: bool = True,
+               seat: str = "developer") -> Any:
+    """The human decision for a stage: form when awaiting, record when decided.
+
+    ``seat`` is the role the workbench is acting as. A page that belongs to another seat
+    stays readable and its controls are absent; the engine refuses the action too.
+    """
     status = state.status_of(gate)
     last = state.last_decision(gate)
+    owner = SEAT_OF_GATE.get(gate, "")
+    mine = seat == owner
     header = dmc.Group([
         dmc.Group([dmc.ThemeIcon(icon("tabler:user-check", 16), variant="light", radius="xl",
                                  color="violet"),
-                   dmc.Text(f"Your decision — {LABELS[gate]}", fw=650)], gap="xs"),
+                   dmc.Text(f"{LABELS[gate]} — {seat_label(owner)}", fw=650)], gap="xs"),
         step_badge(status),
     ], justify="space-between", mb="xs")
     if status == "skipped":
@@ -111,16 +121,32 @@ def gate_block(gate: str, state: RunState, res: StageResult | None, body: list |
                                            "Re-run interactively to send the work back.",
                                            color="red", variant="light")], className="cognos-gate")
     if status == "done":
-        who = "you" if last and last.actor == "human" else "auto (autonomous mode)"
+        if last and last.seat == "express":
+            who = "express preparation (not a signature)"
+        elif last and last.seat:
+            who = f"the {seat_label(last.seat)}"
+        elif last and last.actor == "human":
+            who = "a person"
+        else:
+            who = "express preparation"
         rec = [dmc.Text([dmc.Text(last.action.replace("_", " "), fw=650, span=True),
                          f" by {who}", f" — {last.reason}" if last and last.reason else ""],
                         size="sm")] if last else [empty("Decided.")]
-        return dmc.Card([header, *rec,
-                         dmc.Group([dmc.Button("Revise decision", id={"type": "reopen", "gate": gate},
-                                               variant="subtle", size="xs",
-                                               leftSection=icon("tabler:edit"))], mt="xs")],
-                        className="cognos-gate")
-    # awaiting
+        revise = (dmc.Group([dmc.Button("Revise decision", id={"type": "reopen", "gate": gate},
+                                        variant="subtle", size="xs",
+                                        leftSection=icon("tabler:edit"))], mt="xs")
+                  if mine else dmc.Text(f"The {seat_label(owner)} can revise this.",
+                                        size="xs", c="dimmed", mt="xs"))
+        return dmc.Card([header, *rec, revise], className="cognos-gate")
+    if not mine:
+        return dmc.Card([
+            header, *(body or []),
+            dmc.Alert(f"This decision belongs to the {seat_label(owner)}. "
+                      "Switch seat to act. The evidence above stays open to read.",
+                      color="gray", variant="light", mt="sm",
+                      icon=icon("tabler:lock")),
+        ], className="cognos-gate cognos-gate-open")
+    # awaiting, and this seat owns it
     parts = [header, *(body or []),
              dmc.Textarea(id=_field(gate, "reason"), label="Reason (recorded in the decision log)",
                           autosize=True, minRows=1, mt="sm"),
@@ -131,7 +157,7 @@ def gate_block(gate: str, state: RunState, res: StageResult | None, body: list |
 
 
 # --- explore ------------------------------------------------------------------------------
-def explore_panel(res: StageResult, state: RunState, scheme: str) -> list:
+def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
     ts = p.get("target_summary") or {}
     suspects = set(p.get("leakage_suspects", []))
@@ -161,7 +187,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str) -> list:
         dmc.List([dmc.ListItem(c["statement"]) for c in out.get("data_quality", [])], size="sm")
         if out.get("data_quality") else None,
     ], gap="xs")
-    gate = gate_block("gate_data", state, res, body=[
+    gate = gate_block("gate_data", state, res, seat=seat, body=[
         dmc.MultiSelect(id=_field("gate_data", "exclude"), label="Columns to exclude from modeling",
                         data=[{"value": c, "label": c} for c in p.get("features", [])],
                         value=list(state.overrides.exclude_columns
@@ -190,7 +216,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str) -> list:
 
 
 # --- ideate -------------------------------------------------------------------------------
-def ideate_panel(res: StageResult, state: RunState, scheme: str) -> list:
+def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
     ds = p.get("data_structure") or {}
     choices = {c["framework"]: c for c in p.get("framework_choices", [])}
@@ -216,7 +242,7 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str) -> list:
                               description=f"fills design.{g.design_field}" if g.design_field else
                               ("answered" if g.status != "open" else None))
                 for g in open_gaps]
-    gate = gate_block("gate_design", state, res, body=[
+    gate = gate_block("gate_design", state, res, seat=seat, body=[
         dmc.CheckboxGroup(dmc.Stack([dmc.Checkbox(label=f"{h['id']} · {h['family']} / "
                                                         f"{h['feature_strategy']} ({h['role']})",
                                                   value=h["id"])
@@ -256,7 +282,7 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str) -> list:
 
 
 # --- model --------------------------------------------------------------------------------
-def model_panel(res: StageResult, state: RunState, scheme: str) -> list:
+def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
     metric = p.get("metric", "metric")
     ledger = json.loads(service.read_artifact(state.run_id, "stages/model/ledger.json",
@@ -288,7 +314,7 @@ def model_panel(res: StageResult, state: RunState, scheme: str) -> list:
                   "skipped" if t.get("passed") is None else ("passed" if t["passed"] else "failed"),
                   fmt(t.get("pvalue"), 4), dmc.Text(t.get("interpretation", ""), size="xs")]
                  for t in diag.get("tests", [])]
-    gate = gate_block("gate_champion", state, res, body=[
+    gate = gate_block("gate_champion", state, res, seat=seat, body=[
         dmc.RadioGroup(dmc.Stack([dmc.Radio(label=f"{c['id']} · {c['label']} — CV {c['cv_mean']:.4f}",
                                             value=c["id"], disabled=c["role"] == "challenger")
                                   for c in adm], gap=4),
@@ -339,7 +365,7 @@ def model_panel(res: StageResult, state: RunState, scheme: str) -> list:
 
 
 # --- backtest -----------------------------------------------------------------------------
-def backtest_panel(res: StageResult, state: RunState, scheme: str) -> list:
+def backtest_panel(res: StageResult, state: RunState, scheme: str, _seat: str = "developer") -> list:
     p = res.payload or {}
     oa = p.get("outcomes_analysis") or {}
     interp = p.get("interpretation") or {}
@@ -372,7 +398,7 @@ def backtest_panel(res: StageResult, state: RunState, scheme: str) -> list:
 
 
 # --- validate -----------------------------------------------------------------------------
-def validate_panel(res: StageResult, state: RunState, scheme: str) -> list:
+def validate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
     v = p.get("validator") or {}
     verdict = res.verdict.value
@@ -392,7 +418,7 @@ def validate_panel(res: StageResult, state: RunState, scheme: str) -> list:
     ], gap="xs") if v else None
     loops = state.loops.get("validator", 0)
     routed = p.get("routed_findings") or []
-    gate = gate_block("gate_validation", state, res, primary=[
+    gate = gate_block("gate_validation", state, res, seat=seat, primary=[
         dmc.Button("Accept (record the risk)", id=_act("gate_validation", "accept"),
                    leftSection=icon("tabler:check"), disabled=verdict == "BLOCK"),
         dmc.Button("Reject the model", id=_act("gate_validation", "reject"), color="red",
@@ -414,7 +440,7 @@ def validate_panel(res: StageResult, state: RunState, scheme: str) -> list:
 
 
 # --- comply / document / review ------------------------------------------------------------
-def comply_panel(res: StageResult, state: RunState, scheme: str) -> list:
+def comply_panel(res: StageResult, state: RunState, scheme: str, _seat: str = "developer") -> list:
     p = res.payload or {}
     r = p.get("readiness") or {}
     sr = p.get("sr11_7") or {}
@@ -440,7 +466,7 @@ def comply_panel(res: StageResult, state: RunState, scheme: str) -> list:
     ]
 
 
-def document_panel(res: StageResult, state: RunState, scheme: str) -> list:
+def document_panel(res: StageResult, state: RunState, scheme: str, _seat: str = "developer") -> list:
     root = None  # the app points service.runs_root at its runs dir (COGNOS_RUNS_DIR)
     tabs = [("narrative", "Narrative", "docs/narrative.md"),
             ("decisions", "Decision log", "docs/decisions.md"),
@@ -461,17 +487,34 @@ def document_panel(res: StageResult, state: RunState, scheme: str) -> list:
     ]
 
 
-def review_panel(res: StageResult, state: RunState, scheme: str) -> list:
+def review_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
-    gate = gate_block("gate_signoff", state, res, primary=[
+    gate = gate_block("gate_signoff", state, res, seat=seat, primary=[
         dmc.Button("Approve & sign off", id=_act("gate_signoff", "approve"), color="green",
                    leftSection=icon("tabler:signature"), disabled=res.verdict.value == "BLOCK"),
         dmc.Button("Reject", id=_act("gate_signoff", "reject"), color="red", variant="light",
                    leftSection=icon("tabler:x")),
     ], send_back=False)
+    sealed = state.package
+    package_note = None
+    if sealed is not None and sealed.status == "sealed":
+        prep = " Express prepared the analysis." if sealed.preparation == "express" else ""
+        package_note = dmc.Alert(
+            f"Package v{sealed.version} is sealed ({sealed.digest[:12]}).{prep} "
+            "A later edit supersedes it; the file is not rewritten. Approval is not deployment.",
+            color="green", variant="light", icon=icon("tabler:rosette-discount-check"))
+    elif state.status == "completed" and sealed is None:
+        express = state.mode == "autonomous" or preparation_of(state) == "express"
+        package_note = dmc.Alert(
+            ("Express finished this analysis and accepted the gates. That is not a signature. "
+             if express else
+             "This analysis finished without a sealed package. ")
+            + "An approver seals a package from here, once the design brief is answered.",
+            color="yellow", variant="light", icon=icon("tabler:signature"))
     return [
         dmc.Group([verdict_badge(res.verdict.value, "lg"),
                    dmc.Text(res.summary, size="sm")], gap="sm"),
+        package_note,
         kpis([(k.replace("_", " ").title(), fmt(v), None) for k, v in list(res.metrics.items())[:4]])
         if res.metrics else None,
         gate,
@@ -494,8 +537,129 @@ def _strip_frontmatter(text: str) -> str:
     return text
 
 
-def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: str) -> list:
-    """The full panel for a stage, including running/failed/pending placeholders."""
+def _change_badge(better: str | None) -> Any:
+    """How a number moved from A (or the previous run of a step) to B. Icon and word, never color
+    alone; no badge where no direction is claimed."""
+    if better == "b":
+        return dmc.Badge("Improved", color="green", variant="light", size="sm",
+                         leftSection=icon("tabler:trending-up", 12))
+    if better == "a":
+        return dmc.Badge("Worse", color="orange", variant="light", size="sm",
+                         leftSection=icon("tabler:trending-down", 12))
+    return None
+
+
+def _delta(v: Any) -> str:
+    return "—" if v is None else "0" if v == 0 else f"{v:+,.4f}".rstrip("0").rstrip(".")
+
+
+def _value(v: Any) -> Any:
+    if isinstance(v, list | tuple):
+        return ", ".join(str(x) for x in v) if v else "none"
+    if isinstance(v, dict):
+        return dmc.Code(json.dumps(v, default=str))
+    return fmt(v)
+
+
+def rerun_note(stage: str, state: RunState, changes: dict | None) -> Any:
+    """Why this stage ran again and what that changed, once it has. None on a first run."""
+    step = state.steps[stage]
+    if not step.rerun_reason or step.status in ("stale", "running", "pending") or step.runs < 2:
+        return None
+    head = dmc.Text(["Ran again because — ", dmc.Text(step.rerun_reason, span=True, fw=600)], size="sm")
+    if changes is None:
+        return dmc.Alert(head, color="gray", variant="light", icon=icon("tabler:history"))
+    if changes["unchanged"]:
+        body = dmc.Text("The re-run changed nothing here: same verdict, same metrics.", size="sm", c="dimmed")
+    else:
+        moved = [r for r in changes["metrics"] if r["delta"] != 0]
+        lines = []
+        if changes["champion"]:
+            lines.append(dmc.Text(["Champion: ", dmc.Code(str(changes["champion"]["a"])), " → ",
+                                   dmc.Code(str(changes["champion"]["b"]))], size="sm"))
+        if changes["verdict"]["a"] != changes["verdict"]["b"]:
+            lines.append(dmc.Group([dmc.Text("Verdict:", size="sm"), verdict_badge(changes["verdict"]["a"], "sm"),
+                                    dmc.Text("→", size="sm"), verdict_badge(changes["verdict"]["b"], "sm")], gap=6))
+        f = changes["findings"]
+        if f["new"] or f["gone"]:
+            lines.append(dmc.Text(f"Findings: {len(f['new'])} new, {len(f['gone'])} no longer raised.", size="sm"))
+        body = dmc.Stack([*lines, table(["Metric", "Before", "After", "Change", ""], [
+            [r["label"], _value(r["a"]), _value(r["b"]), _delta(r["delta"]), _change_badge(r["better"])]
+            for r in moved]) if moved else None], gap="xs")
+    return dmc.Alert(dmc.Stack([head, body], gap="xs"), color="gray", variant="light",
+                     icon=icon("tabler:history"), title="What the re-run changed")
+
+
+def compare_page(c: dict) -> list:
+    """Run B against run A: what was decided differently, and what it did to the results. A pure
+    function of ``service.compare``'s dictionary."""
+    def card(tag: str, r: dict) -> Any:
+        return dmc.Card([
+            dmc.Group([dmc.Badge(tag, variant="filled", color="dark", size="lg", radius="sm"),
+                       dmc.Text(r["project"], fw=650), run_badge(r["status"], "sm")], gap="xs"),
+            dcc.Link(dmc.Text(r["run_id"], size="xs", ff="monospace"), href=f"/run/{r['run_id']}"),
+            dmc.Text(["Champion ", dmc.Code(str(r["champion"] or "—"))], size="sm", mt="xs"),
+            dmc.Text(f"{r['mode']} · agents: {r['provider']}" + (f" · metric: {r['metric']}" if r["metric"] else ""),
+                     size="xs", c="dimmed", mt=4),
+        ], p="md")
+
+    a, b = c["a"], c["b"]
+    head = dmc.Group([
+        dmc.Stack([dmc.Title("Compare runs", order=2),
+                   dmc.Text("B relative to A. Every number is read from the two runs' recorded results; "
+                            "“improved” is only claimed where the metric has a direction.",
+                            size="sm", c="dimmed")], gap=2),
+        dcc.Link(dmc.Button("Swap A and B", variant="subtle", leftSection=icon("tabler:arrows-exchange")),
+                 href=f"/compare/{b['run_id']}/{a['run_id']}"),
+    ], justify="space-between", align="flex-start")
+
+    decided = [[d["label"], *[
+        "—" if x is None else dmc.Stack([dmc.Text(f"{x['action'].replace('_', ' ')} · {'you' if x['actor'] == 'human' else 'auto'}", size="sm"),
+                                         dmc.Text(x["reason"], size="xs", c="dimmed") if x["reason"] else None], gap=0)
+        for x in (d["a"], d["b"])]] for d in c["decisions"] if d["different"]]
+    decided += [[dmc.Stack([dmc.Text(o["what"], size="sm"), dmc.Text(o["note"], size="xs", c="dimmed") if o["note"] else None], gap=0),
+                 _value(o["a"]), _value(o["b"])] for o in c["overrides"]]
+    decided += [[dmc.Code(k["key"]), _value(k["a"]), _value(k["b"])] for k in c["config"]]
+
+    moved = [r for r in c["metrics"] if r["delta"] != 0]
+    same = len(c["metrics"]) - len(moved)
+    verdicts = [[v["label"], verdict_badge(v["a"], "sm") if v["a"] else "—", verdict_badge(v["b"], "sm") if v["b"] else "—"]
+                for v in c["verdicts"] if v["a"] != v["b"]]
+    f = c["findings"]
+
+    def finding_rows(rows: list[dict]) -> list:
+        return [[dmc.Badge(r["severity"].title(), variant="light", color="gray", size="sm"), LABELS[r["stage"]],
+                 dmc.Text(r["message"], size="sm")] for r in rows[:12]]
+
+    return [
+        head,
+        *[dmc.Alert(text, color="yellow", variant="light", icon=icon("tabler:alert-triangle")) for text in c["caveats"]],
+        dmc.SimpleGrid([card("A", a), card("B", b)], cols={"base": 1, "sm": 2}, spacing="md"),
+        section("Decided differently", table(["What", "A", "B"], decided) if decided
+                else empty("Nothing: the same decisions, overrides and configuration."),
+                description="Gate decisions, the overrides they produced, and the project configuration."),
+        section("What it did to the results",
+                table(["Stage", "Metric", "A", "B", "Change", ""], [
+                    [LABELS[r["stage"]], r["label"], _value(r["a"]), _value(r["b"]), _delta(r["delta"]),
+                     _change_badge(r["better"])] for r in moved]) if moved
+                else empty("No metric differs between the two runs."),
+                dmc.Text(f"{same} metric(s) are identical in both runs.", size="xs", c="dimmed", mt="xs") if same else None,
+                description="Only the metrics that differ. Change is B minus A."),
+        section("Verdicts", table(["Stage", "A", "B"], verdicts) if verdicts
+                else empty("Every stage reached the same verdict in both runs.")),
+        section("Findings", dmc.Stack([
+            dmc.Text(f"Only in B ({len(f['new'])})", size="sm", fw=600),
+            table(["Severity", "Stage", "Finding"], finding_rows(f["new"])) if f["new"] else empty("None."),
+            dmc.Text(f"Only in A ({len(f['gone'])})", size="sm", fw=600, mt="sm"),
+            table(["Severity", "Stage", "Finding"], finding_rows(f["gone"])) if f["gone"] else empty("None."),
+        ], gap=4), description="Matched by stage and finding id."),
+    ]
+
+
+def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: str,
+                changes: dict | None = None, seat: str = "developer") -> list:
+    """The full panel for a stage, including running/failed/pending placeholders. ``changes`` is
+    ``service.step_changes`` for this stage (what its last re-run changed), when there is one."""
     status = state.status_of(stage)
     head = dmc.Group([
         dmc.Stack([dmc.Title(LABELS[stage], order=3),
@@ -522,7 +686,12 @@ def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: st
         notice = dmc.Alert("Re-running with new inputs; the evidence below is from the previous run.",
                            color="blue", variant="light", icon=icon("tabler:loader-2"))
     elif status == "stale":
-        notice = dmc.Alert("An earlier input changed; this stage will re-run.", color="yellow",
-                           variant="light", icon=icon("tabler:refresh-alert"))
-    body = PANELS[stage](res, state, scheme)
+        why = state.steps[stage].rerun_reason
+        notice = dmc.Alert(["This stage will re-run because — ", dmc.Text(why, span=True, fw=600)] if why
+                           else "An earlier input changed; this stage will re-run.",
+                           title="Out of date: the evidence below predates that decision" if why else None,
+                           color="yellow", variant="light", icon=icon("tabler:refresh-alert"))
+    else:
+        notice = rerun_note(stage, state, changes)
+    body = PANELS[stage](res, state, scheme, seat)
     return [head, notice, *[b for b in body if b is not None]]

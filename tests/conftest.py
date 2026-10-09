@@ -88,6 +88,20 @@ def make_config(tmp_path):
     return _make
 
 
+def _fill_brief(cfg):
+    """Fill the four sponsor decisions a package cannot be sealed without."""
+    cfg.design.use_case = cfg.design.use_case or "origination underwriting"
+    cfg.design.horizon = cfg.design.horizon or "12-month"
+    cfg.design.default_definition = cfg.design.default_definition or "90+ DPD or nonaccrual"
+    cfg.design.segment = cfg.design.segment or "test book"
+    return cfg
+
+
+@pytest.fixture
+def apply_brief():
+    return _fill_brief
+
+
 @pytest.fixture
 def leak_config(tmp_path):
     """A regression dataset with a deliberately leaking feature (near-copy of the target).

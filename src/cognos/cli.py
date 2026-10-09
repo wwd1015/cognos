@@ -137,8 +137,12 @@ def _gate_prompt(run_id: str, gate: str, root) -> bool:
             return False
         action = "approve" if gate == "gate_signoff" else "accept"
         print(f"  (non-interactive stdin) -> {action}")
-        service.submit_gate(run_id, gate, action, reason="non-interactive stdin", root=root,
-                            background=False)
+        try:
+            service.submit_gate(run_id, gate, action, reason="non-interactive stdin", root=root,
+                                background=False)
+        except GateError as exc:
+            print(f"  refused: {exc}")
+            return False
         return True
     choice = input("  [a]ccept  [s]end back  [q]uit (leave waiting) > ").strip().lower()
     try:
@@ -262,6 +266,11 @@ def _cmd_status(args) -> int:
           f"status={st.status}  spend=${st.spend_usd:.2f}")
     if st.halted_reason:
         print(f"  halted: {st.halted_reason}")
+    from .engine.process import next_action
+    nxt = next_action(st)
+    print(f"  next: {nxt['text']}")
+    if st.package is not None:
+        print(f"  package v{st.package.version} {st.package.status} {st.package.digest[:12]}")
     for step in STEPS:
         s = st.steps[step]
         verdict = f" [{s.verdict}]" if s.verdict else ""
@@ -284,7 +293,7 @@ def _cmd_gate(args) -> int:
         payload["message"] = args.message
     try:
         service.submit_gate(args.run, args.gate, args.action, payload, args.reason or "",
-                            root=args.runs_dir, background=False)
+                            root=args.runs_dir, background=False, seat=args.seat)
     except (GateError, KeyError) as exc:
         print(f"refused: {exc}")
         return 1
@@ -380,6 +389,65 @@ def _cmd_ui(args) -> int:
     return 0
 
 
+def _cmd_compare(args) -> int:
+    from . import service
+    from .engine.graph import LABELS
+
+    try:
+        c = service.compare(args.run_a, args.run_b, args.runs_dir)
+    except FileNotFoundError as exc:
+        print(f"No run found: {exc.filename}")
+        return 1
+    a, b = c["a"], c["b"]
+
+    def num(v) -> str:
+        return "—" if v is None else f"{v:.4f}" if isinstance(v, float) else str(v)
+
+    print(f"A  {a['run_id']}  {a['project']}  {a['status']}  champion={a['champion']}")
+    print(f"B  {b['run_id']}  {b['project']}  {b['status']}  champion={b['champion']}")
+    for line in c["caveats"]:
+        print(f"  note: {line}")
+    changed = [r for r in c["metrics"] if r["delta"] != 0]
+    print(f"\nResults (B relative to A; {len(c['metrics']) - len(changed)} metric(s) unchanged)")
+    for r in changed:
+        delta = "" if r["delta"] is None else f"{r['delta']:+.4f}"
+        verdict = {"a": "A better", "b": "B better"}.get(r["better"], "")
+        print(f"  {LABELS[r['stage']]:<26} {r['label']:<34} {num(r['a']):>12} {num(r['b']):>12} {delta:>10}  {verdict}")
+    for v in c["verdicts"]:
+        if v["a"] != v["b"]:
+            print(f"  verdict {v['label']}: {v['a']} -> {v['b']}")
+    decided = [d for d in c["decisions"] if d["different"]]
+    if decided or c["overrides"] or c["config"]:
+        print("\nDecided differently")
+    for d in decided:
+        def say(x):
+            return "—" if x is None else f"{x['action']} ({x['actor']})" + (f": {x['reason']}" if x["reason"] else "")
+        print(f"  {d['label']}: A {say(d['a'])} | B {say(d['b'])}")
+    for o in c["overrides"]:
+        print(f"  {o['what']}: A {o['a']} | B {o['b']}")
+    for k in c["config"]:
+        print(f"  config {k['key']}: A {k['a']} | B {k['b']}")
+    f = c["findings"]
+    if f["new"] or f["gone"]:
+        print(f"\nFindings: {len(f['new'])} only in B, {len(f['gone'])} only in A")
+        for tag, rows in (("+", f["new"]), ("-", f["gone"])):
+            for r in rows[:10]:
+                print(f"  {tag} {r['severity']:<8} {LABELS[r['stage']]}: {r['message']}")
+    return 0
+
+
+def _cmd_export(args) -> int:
+    from . import service
+
+    try:
+        path = service.export_run(args.run, args.out, args.runs_dir, agent_io=args.with_agent_io)
+    except FileNotFoundError as exc:
+        print(str(exc))
+        return 1
+    print(f"Exported {path}  ({path.stat().st_size / 1024:.0f} KB; the data directory is never included)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cognos",
                                 description="COGNOS — agents recommend, you decide, the engine disposes.")
@@ -443,6 +511,9 @@ def build_parser() -> argparse.ArgumentParser:
     pg.add_argument("--target", default=None, help="send_back: explore | ideate | model")
     pg.add_argument("--message", default=None, help="send_back: what the agent should reconsider")
     pg.add_argument("--payload", default=None, help="JSON, e.g. '{\"champion\": \"c3\"}'")
+    pg.add_argument("--seat", default=None,
+                    choices=["developer", "reviewer", "approver"],
+                    help="who is acting; omit to act as the seat that owns the gate")
     runs(pg)
     pg.set_defaults(func=_cmd_gate)
 
@@ -467,6 +538,19 @@ def build_parser() -> argparse.ArgumentParser:
     prep.add_argument("--run", required=True)
     runs(prep)
     prep.set_defaults(func=_cmd_report)
+
+    pc = sub.add_parser("compare", help="what one run decided differently from another, and what it changed")
+    pc.add_argument("run_a")
+    pc.add_argument("run_b")
+    runs(pc)
+    pc.set_defaults(func=_cmd_compare)
+
+    pe = sub.add_parser("export", help="one zip of a run's documents, results, decisions and audit log")
+    pe.add_argument("run")
+    pe.add_argument("-o", "--out", default=None, help="a directory or a .zip path (default: <runs>/_exports/)")
+    pe.add_argument("--with-agent-io", action="store_true", help="include every agent prompt and raw output")
+    runs(pe)
+    pe.set_defaults(func=_cmd_export)
 
     pl = sub.add_parser("list-runs", help="list runs")
     runs(pl)

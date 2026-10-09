@@ -22,6 +22,7 @@ from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
 from .. import __version__, service
 from ..engine import GateError
 from ..engine.graph import GATE_OF_STAGE, GATES, LABELS, STAGE_OF_GATE, STAGES
+from ..engine.process import CORE_DESIGN, SEAT_LABEL, SEAT_OF_GATE, journal, next_action, seat_label
 from .components import (
     empty,
     fmt,
@@ -32,7 +33,7 @@ from .components import (
     table,
     verdict_badge,
 )
-from .panels import stage_panel
+from .panels import compare_page, stage_panel
 from .theme import MANTINE_THEME
 
 ASSETS = Path(__file__).with_name("assets")
@@ -109,9 +110,26 @@ def runs_page() -> Any:
                                 "and five review gates.", c="dimmed", size="sm")], gap=2),
             dmc.Button("New run", id="new-open", leftSection=icon("tabler:plus"), size="md"),
         ], justify="space-between", mb="lg"),
+        compare_picker(),
         dmc.Card(html.Div(id="runs-table", children=runs_table()), p=0),
         drawer,
     ], size="xl", py="md")
+
+
+def compare_picker() -> Any:
+    """Pick two runs to compare. A control of its own (not checkboxes in the table) because the
+    table re-renders as runs progress and would drop a half-made selection."""
+    runs = [r for r in service.list_runs() if not r["legacy"]]
+    if len(runs) < 2:
+        return None
+    data = [{"value": r["run_id"], "label": f"{r['run_id']} · {r['project']}" + (f" · {r['champion']}" if r["champion"] else "")}
+            for r in runs]
+    return dmc.Group([
+        dmc.MultiSelect(id="cmp-pick", data=data, maxValues=2, searchable=True, clearable=True,
+                        placeholder="Pick two runs to compare", leftSection=icon("tabler:git-compare"),
+                        flex=1, maw=720, comboboxProps={"withinPortal": True}),
+        dmc.Button("Compare", id="cmp-go", variant="light", disabled=True, n_clicks=0),
+    ], mb="md", align="flex-end")
 
 
 def runs_table() -> Any:
@@ -140,7 +158,16 @@ def workspace_page(run_id: str) -> Any:
     return html.Div([
         dcc.Store(id="ws-run", data=run_id),
         dcc.Store(id="ws-step", data=None),
+        dcc.Store(id="ws-seat", data="developer"),
         dcc.Store(id="ws-key", data=None),
+        dmc.Group([
+            dmc.Text("Acting as", size="sm", c="dimmed"),
+            dmc.SegmentedControl(
+                id="seat-switch", value="developer",
+                data=[{"value": k, "label": v.title()} for k, v in SEAT_LABEL.items()
+                      if k != "express"],
+            ),
+        ], gap="sm", mb="sm"),
         dmc.Grid([
             dmc.GridCol([html.Div(id="ws-head"), html.Div(id="ws-rail", className="cognos-rail")],
                         span={"base": 24, "md": 6}),
@@ -156,6 +183,7 @@ def workspace_page(run_id: str) -> Any:
             dmc.GridCol(html.Div(id="ws-activity"), span={"base": 24, "md": 5}),
         ], gutter="lg", columns=24),
         dmc.Modal(id="io-modal", size="80%", title="Agent call", children=html.Div(id="io-body")),
+        dcc.Download(id="export-download"),
     ])
 
 
@@ -174,9 +202,22 @@ def run_header(st) -> Any:
         dmc.Text(f"Champion {model.metrics.get('champion', '')} · CV "
                  f"{fmt(model.metrics.get('cv_mean'))}", size="sm", mt="xs")
         if model is not None else None,
+        dmc.Text(next_action(st)["text"], size="sm", mt="xs"),
         dmc.Alert(st.halted_reason, color="red", variant="light", mt="xs", p="xs")
         if st.halted_reason and st.status in ("blocked", "rejected", "failed") else None,
+        run_actions(st.run_id),
     ], mb="md", p="md")
+
+
+def run_actions(run_id: str) -> Any:
+    prev = service.previous_run(run_id)
+    return dmc.Group([
+        dmc.Button("Export", id="export-btn", variant="light", size="compact-sm", n_clicks=0,
+                   leftSection=icon("tabler:package-export", 14)),
+        dcc.Link(dmc.Button("Compare with previous run", variant="subtle", size="compact-sm",
+                            leftSection=icon("tabler:git-compare", 14)),
+                 href=f"/compare/{prev}/{run_id}") if prev else None,
+    ], gap="xs", mt="sm")
 
 
 def rail(st, selected: str) -> Any:
@@ -187,11 +228,15 @@ def rail(st, selected: str) -> Any:
         gstatus = st.status_of(gate) if gate else None
         right = None
         if gstatus == "awaiting":
-            right = dmc.Badge("Review", color="violet", size="sm", variant="filled")
+            who = seat_label(SEAT_OF_GATE.get(gate, ""))
+            right = dmc.Badge(who, color="violet", size="sm", variant="filled")
         elif st.steps[stage].verdict and status in ("done", "blocked"):
             right = verdict_badge(st.steps[stage].verdict, "xs")
         desc = LABELS[gate] + " — " + gstatus.replace("_", " ") if gstatus and gstatus not in (
             "pending", "skipped") else step_badge_text(status)
+        if status == "stale" and st.steps[stage].rerun_reason:  # say what made it out of date
+            why = st.steps[stage].rerun_reason
+            desc = "Out of date — " + (why if len(why) <= 70 else why[:69].rstrip() + "…")
         items.append(dmc.NavLink(
             id={"type": "rail", "step": stage},
             label=dmc.Text(f"{i}. {LABELS[stage]}", size="sm", fw=600 if stage == selected else 500),
@@ -223,7 +268,7 @@ def activity(run_id: str) -> Any:
                                     else empty("Nothing yet."), h=620, type="auto")], p="sm")
 
 
-def questions_tab(st) -> Any:
+def questions_tab(st, seat: str = "developer") -> Any:
     gaps = [g for g in st.gaps]
     q_rows = []
     for g in gaps:
@@ -232,10 +277,13 @@ def questions_tab(st) -> Any:
                 dmc.TextInput(id={"type": "gap-text", "gap": g.id}, placeholder="Your answer",
                               style={"flex": 1}),
                 dmc.Button("Answer", id={"type": "gap-act", "gap": g.id, "action": "answer"},
-                           size="xs"),
+                           size="xs", disabled=seat != "developer"),
                 dmc.Button("Accept as assumption", id={"type": "gap-act", "gap": g.id,
                                                        "action": "assume"},
-                           size="xs", variant="subtle"),
+                           size="xs", variant="subtle",
+                           disabled=seat != "developer" or g.design_field in CORE_DESIGN)
+                if g.design_field not in CORE_DESIGN else dmc.Text(
+                    "A sponsor decision — answer it. It cannot be assumed.", size="xs", c="dimmed"),
             ], gap="xs", wrap="nowrap")
         else:
             ctrl = dmc.Text([dmc.Badge(g.status, size="xs", variant="light"), " ", g.answer or ""],
@@ -248,9 +296,16 @@ def questions_tab(st) -> Any:
                dmc.Stack([dmc.Text(c.message, size="sm"),
                           dmc.Text(f"↳ {c.response}", size="xs", c="dimmed") if c.response else None],
                          gap=2)] for c in st.challenges]
-    d_rows = [[d.gate, d.action.replace("_", " "), d.actor, d.reason or "—",
+    d_rows = [[d.gate, d.action.replace("_", " "), d.seat or d.actor, d.reason or "—",
                (d.at or "")[:19].replace("T", " ")] for d in st.decisions]
+    record = journal(st, service.results(st.run_id))
+    r_rows = [[(row["at"] or "")[:19].replace("T", " "), row["who"], row["name"],
+               dmc.Text(row["what"], size="sm")] for row in record]
     return dmc.Stack([
+        section("The record", table(["When", "Who", "Name", "What"], r_rows)
+                if r_rows else empty("Nothing stamped yet."),
+                description="People, agents, and the engine, in order. Computed from the stamps "
+                            "already on the run."),
         section("Questions for the sponsor", table(["Id", "Kind", "Question"], q_rows)
                 if q_rows else empty("No open design or data questions."),
                 description="Answering a design question fills the design brief and re-runs the "
@@ -259,7 +314,7 @@ def questions_tab(st) -> Any:
                 if c_rows else empty("No challenges yet."),
                 description="Send-backs from you and findings routed back by the independent "
                             "validator; each agent must answer every challenge."),
-        section("Decision log", table(["Gate", "Action", "By", "Reason", "At"], d_rows)
+        section("Decision log", table(["Gate", "Action", "Seat", "Reason", "At"], d_rows)
                 if d_rows else empty("No decisions yet.")),
     ], gap="md")
 
@@ -328,7 +383,39 @@ def register_callbacks(app: Dash) -> None:
             except FileNotFoundError:
                 return dmc.Container(dmc.Alert(f"No run {run_id}.", color="red"), py="xl")
             return workspace_page(run_id)
+        if path.startswith("/compare/"):
+            parts = path.strip("/").split("/")
+            try:
+                return dmc.Container(dmc.Stack(compare_page(service.compare(parts[1], parts[2])), gap="md"),
+                                     size="xl", py="md")
+            except (IndexError, FileNotFoundError):
+                return dmc.Container(dmc.Alert("Pick two existing runs to compare (from the Runs page).",
+                                               color="red"), py="xl")
         return runs_page()
+
+    @app.callback(Output("cmp-go", "disabled"), Input("cmp-pick", "value"))
+    def can_compare(picked):
+        return len(picked or []) != 2
+
+    @app.callback(Output("url", "pathname", allow_duplicate=True), Input("cmp-go", "n_clicks"),
+                  State("cmp-pick", "value"), prevent_initial_call=True)
+    def go_compare(clicks, picked):
+        if not clicks or len(picked or []) != 2:
+            return no_update
+        a, b = sorted(picked)  # run ids start with their timestamp: the older run is A
+        return f"/compare/{a}/{b}"
+
+    @app.callback(Output("export-download", "data"), Output("notify", "sendNotifications", allow_duplicate=True),
+                  Input("export-btn", "n_clicks"), State("ws-run", "data"), prevent_initial_call=True)
+    def export(clicks, run_id):
+        if not clicks:  # the button was just rendered, not clicked
+            return no_update, no_update
+        try:
+            path = service.export_run(run_id)
+        except OSError as exc:
+            return no_update, [notice("Export failed", str(exc), "red")]
+        return dcc.send_file(str(path)), [notice(
+            "Exported", "Documents, results, decisions and the audit log. The data is never included.", "indigo")]
 
     @app.callback(Output("runs-table", "children"), Input("poll", "n_intervals"),
                   State("url", "pathname"), prevent_initial_call=True)
@@ -365,21 +452,24 @@ def register_callbacks(app: Dash) -> None:
         Output("ws-activity", "children"), Output("ws-content", "children"),
         Output("ws-key", "data"),
         Input("poll", "n_intervals"), Input("ws-step", "data"), Input("ws-tab", "value"),
-        Input("theme-store", "data"),
+        Input("theme-store", "data"), Input("ws-seat", "data"),
         State("ws-run", "data"), State("ws-key", "data"))
-    def refresh_workspace(_, step, tab, theme, run_id, key):
+    def refresh_workspace(_, step, tab, theme, seat, run_id, key):
         if not run_id:
             return (no_update,) * 5
         st = service.state(run_id)
         scheme = (theme or {}).get("scheme", "light")
+        seat = seat or "developer"
         sel = step or auto_step(st)
         gate = GATE_OF_STAGE.get(sel)
+        pkg = f"{st.package.version}:{st.package.status}" if st.package else ""
         if tab == "workflow":
             content_key = (f"wf|{sel}|{st.status_of(sel)}|{st.steps[sel].runs}|"
-                           f"{st.status_of(gate) if gate else ''}|{len(st.decisions)}|{scheme}")
+                           f"{st.status_of(gate) if gate else ''}|{len(st.decisions)}|"
+                           f"{scheme}|{seat}|{pkg}")
         elif tab == "questions":
             content_key = "q|" + "|".join(f"{g.id}:{g.status}" for g in st.gaps) + "|" + "|".join(
-                f"{c.id}:{c.status}" for c in st.challenges) + f"|{len(st.decisions)}|{scheme}"
+                f"{c.id}:{c.status}" for c in st.challenges) + f"|{len(st.decisions)}|{scheme}|{seat}|{pkg}"
         else:
             content_key = f"a|{len(service.audit(run_id))}|{scheme}"
         full_key = f"{st.version}|{content_key}"
@@ -389,9 +479,11 @@ def register_callbacks(app: Dash) -> None:
         if not key or key.split("|", 1)[1] != content_key:
             if tab == "workflow":
                 res = service.results(run_id).get(sel)
-                content = dmc.Stack(stage_panel(sel, res, st, scheme), gap="md")
+                content = dmc.Stack(stage_panel(sel, res, st, scheme,
+                                                service.step_changes(run_id, sel), seat),
+                                    gap="md")
             elif tab == "questions":
-                content = questions_tab(st)
+                content = questions_tab(st, seat)
             else:
                 content = audit_tab(run_id)
         return run_header(st), rail(st, sel), activity(run_id), content, full_key
@@ -403,14 +495,18 @@ def register_callbacks(app: Dash) -> None:
             return no_update, no_update
         return ctx.triggered_id["step"], "workflow"
 
+    @app.callback(Output("ws-seat", "data"), Input("seat-switch", "value"))
+    def choose_seat(value):
+        return value or "developer"
+
     @app.callback(
         Output("notify", "sendNotifications", allow_duplicate=True),
         Output("ws-key", "data", allow_duplicate=True),
         Input({"type": "gate-act", "gate": ALL, "action": ALL}, "n_clicks"),
         State({"type": "gate-field", "gate": ALL, "field": ALL}, "value"),
         State({"type": "gate-field", "gate": ALL, "field": ALL}, "id"),
-        State("ws-run", "data"), prevent_initial_call=True)
-    def gate_action(clicks, values, ids, run_id):
+        State("ws-run", "data"), State("ws-seat", "data"), prevent_initial_call=True)
+    def gate_action(clicks, values, ids, run_id, seat):
         trig = ctx.triggered_id
         if not trig or not any(c for c in (clicks or []) if c):
             return no_update, no_update
@@ -418,7 +514,7 @@ def register_callbacks(app: Dash) -> None:
         fields = {i["field"]: v for i, v in zip(ids, values, strict=False) if i["gate"] == gate}
         payload, reason = gate_payload(gate, action, fields, run_id)
         try:
-            service.submit_gate(run_id, gate, action, payload, reason)
+            service.submit_gate(run_id, gate, action, payload, reason, seat=seat)
         except GateError as exc:
             return [notice("Decision refused", str(exc), "red")], no_update
         return [notice("Decision recorded", f"{LABELS[gate]}: {action.replace('_', ' ')}", "indigo")], None
@@ -428,14 +524,14 @@ def register_callbacks(app: Dash) -> None:
         Output("ws-key", "data", allow_duplicate=True),
         Input({"type": "reopen", "gate": ALL}, "n_clicks"),
         Input({"type": "retry", "step": ALL}, "n_clicks"),
-        State("ws-run", "data"), prevent_initial_call=True)
-    def reopen_or_retry(reopen_clicks, retry_clicks, run_id):
+        State("ws-run", "data"), State("ws-seat", "data"), prevent_initial_call=True)
+    def reopen_or_retry(reopen_clicks, retry_clicks, run_id, seat):
         trig = ctx.triggered_id
         if not trig or not any(c for c in (reopen_clicks or []) + (retry_clicks or []) if c):
             return no_update, no_update
         try:
             if trig["type"] == "reopen":
-                service.reopen(run_id, trig["gate"])
+                service.reopen(run_id, trig["gate"], seat=seat)
                 return [notice("Gate re-opened", "Revise the decision below.", "violet")], None
             service.retry(run_id, trig["step"])
             return [notice("Retrying", LABELS[trig["step"]], "blue")], None
@@ -448,8 +544,8 @@ def register_callbacks(app: Dash) -> None:
         Input({"type": "gap-act", "gap": ALL, "action": ALL}, "n_clicks"),
         State({"type": "gap-text", "gap": ALL}, "value"),
         State({"type": "gap-text", "gap": ALL}, "id"),
-        State("ws-run", "data"), prevent_initial_call=True)
-    def answer(clicks, texts, ids, run_id):
+        State("ws-run", "data"), State("ws-seat", "data"), prevent_initial_call=True)
+    def answer(clicks, texts, ids, run_id, seat):
         trig = ctx.triggered_id
         if not trig or not any(c for c in (clicks or []) if c):
             return no_update, no_update
@@ -459,7 +555,7 @@ def register_callbacks(app: Dash) -> None:
             return [notice("Answer needed", "Type an answer, or accept it as an assumption.",
                            "yellow")], no_update
         try:
-            service.answer_gap(run_id, trig["gap"], text, assume=assume)
+            service.answer_gap(run_id, trig["gap"], text, assume=assume, seat=seat)
         except GateError as exc:
             return [notice("Not possible", str(exc), "red")], no_update
         return [notice("Recorded", "The stage that raised it will re-run." if not assume else

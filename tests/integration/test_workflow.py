@@ -35,7 +35,8 @@ def test_autonomous_run_completes_with_auto_decisions(make_config, runs_dir):
     assert state.status == "completed"
     assert all(state.status_of(s) == "done" for s in state.steps)
     assert {d.gate for d in state.decisions} == set(GATES)
-    assert all(d.actor == "auto" for d in state.decisions)
+    assert all(d.actor == "auto" and d.seat == "express" for d in state.decisions)
+    assert state.package is None  # express preparation is not a signature
     # every agent call is audited; the white paper carries a decision log
     audit = (eng.run_dir / "agents" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
     assert {json.loads(x)["agent"] for x in audit} >= {"data_analyst", "design_lead", "modeler",
@@ -46,8 +47,8 @@ def test_autonomous_run_completes_with_auto_decisions(make_config, runs_dir):
     assert "{{fact:" not in narrative  # every placeholder rendered by the engine
 
 
-def test_interactive_run_pauses_at_each_gate_and_signs_off(make_config, runs_dir):
-    eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
+def test_interactive_run_pauses_at_each_gate_and_signs_off(make_config, runs_dir, apply_brief):
+    eng = Engine(apply_brief(make_config("classification")), runs_root=runs_dir, mode="interactive")
     state = eng.run_until_idle()
     assert state.status == "awaiting" and state.status_of("gate_data") == "awaiting"
     assert state.status_of("ideate") == "pending"
@@ -139,8 +140,8 @@ def test_step_invalidated_while_running_stays_stale(make_config, runs_dir, monke
     assert eng.state.status_of("ideate") == "stale"
 
 
-def test_leakage_block_send_back_then_completes(leak_config, runs_dir):
-    eng = Engine(leak_config, runs_root=runs_dir, mode="interactive")
+def test_leakage_block_send_back_then_completes(leak_config, runs_dir, apply_brief):
+    eng = Engine(apply_brief(leak_config), runs_root=runs_dir, mode="interactive")
     state = _accept_all(eng, until="gate_validation")
     assert state.status_of("validate") == "blocked"
     assert eng.results()["validate"].verdict == Verdict.BLOCK

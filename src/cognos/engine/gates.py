@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .graph import SEND_BACK_TARGETS, STAGE_OF_GATE, descendants
+from .graph import LABELS, SEND_BACK_TARGETS, STAGE_OF_GATE, descendants
+from .process import CORE_DESIGN
 from .state import Challenge, RunState
 
 ACTIONS: dict[str, set[str]] = {
@@ -23,6 +24,37 @@ ACTIONS: dict[str, set[str]] = {
 
 class GateError(ValueError):
     """A decision the engine refuses (wrong state, invalid payload, BLOCK override)."""
+
+
+def _clip(text: str, n: int = 140) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= n else text[: n - 1].rstrip() + "…"
+
+
+def why(gate: str, action: str, payload: dict[str, Any] | None, reason: str = "") -> str:
+    """One line saying what a decision changed, recorded on every step it makes stale. Mechanical:
+    it restates the decision, it does not judge it."""
+    payload = payload or {}
+    label = LABELS[gate]
+    if action == "send_back":
+        target = payload.get("target") or ("model" if gate == "gate_validation" else STAGE_OF_GATE[gate])
+        message = payload.get("message") or reason
+        return f"{label}: sent back to “{LABELS.get(target, target)}”" + (f" — {_clip(message)}" if message else "")
+    if gate == "gate_data":
+        cols = payload.get("exclude_columns")
+        if action == "edit" and cols is not None:
+            return f"{label}: exclusions changed to {len(cols)} column(s)" + (f" ({_clip(', '.join(cols), 80)})" if cols else "")
+        return f"{label}: recommended exclusions accepted"
+    if gate == "gate_design":
+        parts = []
+        if payload.get("slate") is not None:
+            parts.append(f"slate edited to {len(payload['slate'])} hypothesis(es)")
+        if payload.get("answers"):
+            parts.append(f"{len(payload['answers'])} design question(s) answered")
+        return f"{label}: " + (" and ".join(parts) if parts else action.replace("_", " "))
+    if gate == "gate_champion" and action == "override":
+        return f"{label}: champion overridden to {payload.get('champion')}" + (f" — {_clip(reason)}" if reason else "")
+    return f"{label}: {action.replace('_', ' ')}"
 
 
 def _changed_downstream(gate: str) -> list[str]:
@@ -146,6 +178,10 @@ def apply_answers(state: RunState, answers: dict[str, str], *, assume: bool = Fa
         if gap is None:
             raise GateError(f"unknown question {gap_id!r}")
         text = str(text).strip()
+        if assume and gap.design_field in CORE_DESIGN:
+            raise GateError(
+                f"{gap.design_field.replace('_', ' ')} is a sponsor decision. "
+                "Answer it; it cannot be accepted as an assumption.")
         if not text and not assume:
             continue
         gap.status = "assumed" if assume else "answered"
