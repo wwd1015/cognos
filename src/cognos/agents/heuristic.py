@@ -208,15 +208,68 @@ def data_analyst(sl: dict[str, Any]) -> dict[str, Any]:
                + (f"Recommend excluding {', '.join(excluded)}. " if excluded else "")
                + (f"{len(kept)} leakage suspect(s) kept pending sponsor confirmation of the "
                   "information set." if kept else "No unresolved leakage suspects."))
+    # Features worth considering: the strongest clean relationships the engine measured, with the
+    # direction it saw. (An LLM analyst argues from the business intent; this one from the data.)
+    candidates = []
+    for c in sl.get("top_correlations", []):
+        col = c["feature"]
+        if col in excluded or col in suspects or col not in features or len(candidates) >= 8:
+            continue
+        prior = sign_prior(col)
+        seen = "+" if c["corr"] > 0 else "-"
+        candidates.append({
+            "column": col, "relationship": seen,
+            "rationale": (f"Moves with the target ({'rises' if seen == '+' else 'falls'} as it "
+                          "increases)" + (", as the economic prior expects." if prior == seen else
+                                          ", against the usual prior: check before relying on it."
+                                          if prior != "none" else ".")),
+            "evidence": _fact(sl, f"explore.corr.{col}")})
+    target = sl.get("target") or ""
     return {
         "summary": summary,
         "uncertainties": [f"Whether '{c}' is known at prediction time." for c in kept],
         "responses_to_challenges": _ack(sl, {named[c] for c in named}),
+        "target": target,
+        "target_rationale": (sl.get("target_basis") or "") if target else "",
+        "feature_candidates": candidates,
         "column_decisions": decisions,
         "data_quality": quality,
         "questions_for_sponsor": [f"Is '{c}' available at the time a prediction is made, or is it "
                                   "recorded after the outcome?" for c in kept],
     }
+
+
+def data_scout(sl: dict[str, Any]) -> dict[str, Any]:
+    """The standard look at a dataset, as tool calls. Round one settles the target when the
+    profile leaves it open (the engine's first candidate); the visuals follow once it is known.
+    The deterministic analyst never writes code."""
+    target = sl.get("target") or ""
+    out: dict[str, Any] = {"target_column": "", "target_rationale": "", "requests": [],
+                           "done": True, "notes": ""}
+    if not target:
+        best = (sl.get("target_candidates") or [{}])[0]
+        out.update(target_column=best.get("column", ""), done=False,
+                   target_rationale=best.get("why", ""),
+                   notes="Target taken from the engine's ranking of outcome-like columns.")
+        return out
+    if sl.get("analyses"):  # the standard set has run
+        return out
+    tools = {t["name"] for t in sl.get("tools", [])}
+    reqs = [("target_distribution", {}, "How is the dependent variable distributed, and how many "
+                                        "events are there?")]
+    if sl.get("columns_with_missing"):
+        reqs.append(("missingness", {}, "Which columns have gaps large enough to matter?"))
+    if sl.get("datetime_col"):
+        reqs.append(("time_trend", {}, "Is the target stable over time, and are the latest "
+                                       "periods thin?"))
+    for c in sl.get("top_correlations", [])[:3]:
+        reqs.append(("target_relationship", {"column": c["feature"]},
+                     f"How does the target move across {c['feature']}: direction, shape?"))
+    reqs.append(("correlation_matrix", {}, "Which candidate features duplicate each other?"))
+    out["requests"] = [{"purpose": why, "tool": name, "code": "",
+                        "params": [{"name": k, "value": v} for k, v in params.items()]}
+                       for name, params, why in reqs if name in tools][: sl.get("max_requests", 8)]
+    return out
 
 
 # --- ideate ------------------------------------------------------------------------------
@@ -393,6 +446,7 @@ def writer(sl: dict[str, Any]) -> dict[str, Any]:
 AGENTS = {
     "intake_analyst": intake_analyst,
     "data_analyst": data_analyst,
+    "data_scout": data_scout,
     "design_lead": design_lead,
     "modeler": modeler,
     "experiment": experiment,

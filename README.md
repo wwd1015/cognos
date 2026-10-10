@@ -17,6 +17,13 @@ It runs in two **development modes**:
   deployment code, validation and monitoring reports, or an earlier COGNOS run) and an **update
   request** written on the same template: `cognos intent-template --kind update`.
 
+The data can be an **uploaded file** or a **database** (Snowflake, SQLite, or a connector a
+plugin adds). You do not have to name the target: the **Data Analyst** reads the data against the
+confirmed intent, proposes the dependent variable and the features worth considering, and shows
+its work as charts. It can call analysis tools, including ones you add as **plugins**, or write
+Python on the fly; the engine runs that code restricted, and every script is kept, shown to you
+at the data gate, re-run by validation and printed in the white paper.
+
 In both, an **Intake Analyst** agent reads the documents, restates the goal, and **interviews**
 you wherever the intent is not clear, before any data is touched.
 
@@ -51,7 +58,7 @@ gates, a challenger loop, and an audit trail — on top of COGNOS's econometric 
 | Stage | The engine computes | The agent recommends | You decide at the gate |
 |---|---|---|---|
 | `intake` | reads the intent document and the prior model's artifacts, parses the template, inventories and hashes every document | **Intake Analyst** — the engagement brief (every "stated" position quoted from the documents), whether the goal is clear, interview questions; for an update, the change items and scope | answer the interview; confirm the intent |
-| `explore` | profile, missingness, leakage suspects | **Data Analyst** — keep/exclude each suspect, data-quality issues, sponsor questions | which columns are inputs |
+| `explore` | fetches the data and keeps a snapshot; profile, missingness, leakage suspects; runs every analysis the agent requests (tools, plugin tools, restricted Python) | **Data Analyst** — the dependent variable, the features to consider, analysis requests and code, keep/exclude each suspect, sponsor questions | the target; which columns are inputs; the analyst's code |
 | `ideate` | data structure, framework applicability, fittable families | **Design Lead** — framework roles, ranked slate, feature transforms (engine-validated), sponsor questions | the slate; answers to design questions |
 | `model` | budgeted leakage-safe search, the **admissible set** (one-SE rule), refit, inference, battery, sealed-holdout score | **Modeler** — the champion from the admissible set (blind to the holdout), economic sign checks; opt-in guided experiments | accept / override the champion |
 | `backtest` | IMPACT scoring, Gini/KS, calibration, PSI, portfolio sim, stress | **Outcomes Analyst** — reads discrimination, calibration, stability | — |
@@ -69,6 +76,25 @@ field that is not stated becomes a **blocking question**. You answer at the inte
 blocks. You may confirm the intent with questions still open, with a reason; they stay open, and
 nobody can sign a package until use, horizon, default definition and segment are answered. What
 the sponsor's document states becomes part of the effective config when you confirm it.
+
+### Data, the target, and analysis code
+
+```yaml
+data:
+  source: {kind: snowflake, table: RISK.LOANS.ORIGINATIONS}   # or kind: file / sqlite, or query:
+  target: ""        # open: the Data Analyst proposes it, you confirm it at the data gate
+plugins: [credit_tools]                                       # your own tools and connectors
+```
+
+Snowflake credentials come from `SNOWFLAKE_*` environment variables and are never stored. The
+engine fetches once and every stage reads that snapshot, whose source and hash are recorded.
+`cognos plugins` lists the analysis tools and data sources available. The analyst requests
+analyses in rounds; each result is a chart, a table and a few numbers it can cite. When no tool
+fits it writes Python, which runs in a restricted process (numerical libraries only; no files,
+network or OS). That code is a model-development artifact: saved with its hash under
+`stages/explore/analyses/`, shown at the data gate (the decision records which scripts you
+accepted), re-run by validation to confirm it reproduces, printed in the white paper and included
+in the export. `analysis.allow_code: false` turns code off; tools and plugins still work.
 
 ### A model update
 
@@ -112,6 +138,8 @@ cognos init -o cognos.yaml                   # profile template (data, agents, g
 cognos intent-template -o intent.md          # the business intent document: fill it in first
 cognos explain --config cognos.yaml
 cognos run --config cognos.yaml --intent intent.md --interactive      # a new model development
+cognos run --data loans.csv --intent intent.md --interactive           # no profile: just the data
+cognos plugins                               # analysis tools, data sources, loaded plugins
 
 cognos intent-template --kind update -o request.md                    # a model update
 cognos run --config cognos.yaml --kind update --intent request.md \
@@ -167,6 +195,8 @@ dark themes; all state is on disk, so a refresh or restart loses nothing.
   silent.
 - **No assumed intent.** The Intake Analyst may only call a sponsor position "stated" with a quote
   the engine finds in the documents; everything else is asked, and the answers are on the record.
+- **Agent-written code is on the record.** The analyst's scripts run restricted, are kept with
+  their hash, are read by a person at the data gate, and are re-run by validation.
 - **No LLM math.** Every recorded number comes from the engine; agents cite facts by id and the
   writer's prose is rendered from placeholders.
 - **Frozen substrate.** Metric definitions and the sealed holdout are not agent-editable; the
@@ -189,6 +219,9 @@ src/cognos/
   engine/        workflow graph, RunState, gates, events, the Engine (DAG + staleness + gates)
   agents/        contracts, prompts/, slices (independence), facts, checks, heuristic agents,
                  providers.yaml, runner (retry/audit/limits), backends/ (claude_cli, anthropic, openai)
+  datasources.py connectors (file, sqlite, snowflake) and snapshot provenance
+  plugins.py     the plugin registry: analysis tools and data sources
+  analysis/      built-in tools, chart specs, the restricted code runner, the executor
   engagement.py  development modes, the intent template, document reading, ingest into the run
   stages/        the 9 stages + stat_tests battery (engine work; judgment via ctx.recommend)
   modeling/      metrics, fitters (GLM links incl. probit/cloglog), ratchet search, hazard,
@@ -199,7 +232,7 @@ src/cognos/
   cli.py  config.py  context.py  artifacts.py  orchestrator.py (compat)  okf.py  synth.py
   integrations/  impact_adapter, autoforge_loop
   runtime/       deployment scorer (IMPACT derived-field entry point)
-projects/  examples/  evals/  tests/  docs/adr/ (0001–0011)  docs/templates/  CONTEXT.md (glossary)
+projects/  examples/  evals/  tests/  docs/adr/ (0001–0012)  docs/templates/  CONTEXT.md (glossary)
 ```
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`FEATURES.md`](FEATURES.md), [`CONTEXT.md`](CONTEXT.md),

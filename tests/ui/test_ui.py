@@ -205,3 +205,65 @@ def test_intake_panel_shows_the_update_request(root, tmp_path):
     assert "Model update" in panel and "Update request" in panel and "recalibration" in panel
     assert "The existing model" in panel and "logit" in panel and "whitepaper.md" in panel
     assert "update" in _serialize(ui.runs_table())
+
+
+def test_analysis_charts_draw_every_spec_kind_in_both_themes():
+    from cognos.ui import charts
+
+    x = ["a", "b", "c"]
+    specs = [
+        {"kind": "bar", "x": x, "series": [{"name": "rate", "y": [0.1, 0.2, 0.3]}], "y_format": "%"},
+        {"kind": "line", "x": [1, 2, 3], "series": [{"name": "m", "y": [1, 2, 3]},
+                                                    {"name": "n", "y": [3, 2, 1]}]},
+        {"kind": "scatter", "x": [1, 2, 3], "series": [{"name": "m", "y": [1, None, 3]}]},
+        {"kind": "histogram", "x": [0.5, 1.5, 2.5], "series": [{"name": "rows", "y": [5, 9, 2]}]},
+        {"kind": "heatmap", "x": x, "y": x, "z": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]},
+    ]
+    for scheme in ("light", "dark"):
+        for spec in specs:
+            fig = charts.from_spec(spec, scheme)
+            assert fig is not None and len(fig.data) >= 1, spec["kind"]
+    assert charts.from_spec(specs[1], "light").layout.showlegend is True  # two series: a legend
+    assert charts.from_spec(specs[0], "light").layout.yaxis.tickformat == ".0%"
+    assert charts.from_spec(None, "light") is None
+
+
+def test_own_data_form_builds_a_source_and_explore_shows_charts_and_code(root, tmp_path, monkeypatch):
+    from cognos import synth
+
+    page = _serialize(ui.runs_page())
+    assert "Upload a data file" in page and "Snowflake table or query" in page
+    assert "new-data" in page and "new-sf-table" in page
+    assert "Upload the data file" in ui.data_source_spec("file", [], None, None, None)
+    assert ui.data_source_spec("file", ["/x/loans.csv"], None, None, None) == {
+        "kind": "file", "path": "/x/loans.csv"}
+    assert "Name the Snowflake table" in ui.data_source_spec("snowflake", [], " ", None, None)
+    assert ui.data_source_spec("snowflake", [], "DB.S.T", "", 500) == {
+        "kind": "snowflake", "limit": 500, "table": "DB.S.T"}
+    assert ui.data_source_spec("snowflake", [], "", "SELECT 1", None)["query"] == "SELECT 1"
+
+    data = tmp_path / "loans.csv"
+    synth.GENERATORS["commercial"](n=500).to_csv(data, index=False)
+    cfg = service.config_from_data("My PD model", {"kind": "file", "path": str(data)})
+    assert cfg.name == "my_pd_model" and cfg.data.target == ""
+    assert "business intent document" in ui.engagement_problem("new", cfg, False, False)
+    scout = {"target_column": "default", "target_rationale": "the default flag", "done": True,
+             "notes": "", "requests": [{"purpose": "Sector mix", "tool": "", "params": [], "code": (
+                 "by = df.groupby('sector')[TARGET].mean()\n"
+                 "emit_chart('bar', by.index, {'rate': by.values}, title='Rate by sector')")}]}
+    recorded = tmp_path / "recorded"
+    recorded.mkdir()
+    (recorded / "data_scout.json").write_text(json.dumps(scout), encoding="utf-8")
+    monkeypatch.setenv("COGNOS_PROVIDER", "replay")
+    cfg = service.load_config({**cfg.model_dump(mode="json"),
+                               "agents": {"replay_dir": str(recorded)}})
+    run_id = service.create_run(cfg, mode="interactive")
+    service.run_until_idle(run_id)
+    service.submit_gate(run_id, "gate_intent", "accept", reason="as given", background=False)
+    st = service.run_until_idle(run_id)
+    panel = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light"))
+    assert "agent-written code" in panel and "Code to review" in panel and "groupby" in panel
+    assert "Rate by sector" in panel and '"type": "Graph"' in panel
+    assert "proposed by the Data Analyst" in panel and "loans.csv" in panel
+    assert "analysis script(s) written by the Data Analyst" in panel  # the gate says what is accepted
+    assert '"c": null' not in panel

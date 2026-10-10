@@ -331,16 +331,17 @@ class Engine:
                     self._save(state)
                     return
                 action = "accept"
+                stamped: dict[str, Any] = {}
                 try:
-                    invalidate, done = gates.handle(state, gate, action, {}, "autonomous mode",
-                                                    self.results())
+                    invalidate, done = gates.handle(state, gate, action, stamped,
+                                                    "autonomous mode", self.results())
                 except gates.GateError as exc:
                     state.set_step(gate, "failed", str(exc))
                     self._save(state)
                     return
                 state.decisions.append(GateDecision(
                     gate=gate, action=action, actor="auto", seat="express",
-                    reason="express preparation (not a signature)"))
+                    reason="express preparation (not a signature)", payload=stamped))
                 state.set_step(gate, "done", "accepted by express preparation")
                 state.invalidate([s for s in invalidate if s != gate],
                                  gates.why(gate, action, {}) + " (autonomous mode)")
@@ -358,6 +359,7 @@ class Engine:
         if gate not in GATES:
             raise gates.GateError(f"unknown gate {gate!r}")
         seat = process.resolve_seat(gate, seat)
+        payload = dict(payload or {})  # a handler may stamp what the decision covered
         with self.lock:
             state = self.state
             if state.status_of(gate) != "awaiting":
@@ -369,11 +371,11 @@ class Engine:
                     raise gates.GateError(
                         "The design brief is still open (" + ", ".join(missing) + "). "
                         "Answer use, horizon, default definition and segment before anyone can sign.")
-            invalidate, done = gates.handle(state, gate, action, payload or {}, reason,
+            invalidate, done = gates.handle(state, gate, action, payload, reason,
                                             self.results())
             state.decisions.append(GateDecision(
                 gate=gate, action=action, actor="human", seat=seat,
-                reason=reason, payload=payload or {}))
+                reason=reason, payload=payload))
             if action == "approve" and done:
                 process.seal_package(state, self.config, self.results(), self.run_dir)
             if done:
@@ -494,7 +496,8 @@ class Engine:
                 worst = v
         if "model" in results:
             summ.champion_metric = results["model"].metrics.get("cv_mean")
-            summ.champion_metric_name = self.config.metric.name
+            summ.champion_metric_name = ((results["model"].payload or {}).get("metric")
+                                         or self.config.metric.name)
         summ.final_verdict = worst
         summ.n_findings = sum(len(results[s].findings) for s in ran)
         summ.ended_at = state.updated_at

@@ -25,6 +25,7 @@ UPSTREAM = ("intake.", "prior.", "explore.", "ideate.", "model.", "backtest.", "
 FACT_SCOPE: dict[str, tuple[str, ...]] = {
     "intake_analyst": ("intake.",),
     "data_analyst": ("intake.", "explore."),
+    "data_scout": ("intake.", "explore."),
     "design_lead": ("intake.", "explore.", "ideate."),
     "modeler": ("intake.", "explore.", "ideate."),
     "experiment": ("intake.", "explore.", "ideate."),
@@ -57,7 +58,7 @@ def project_brief(ctx) -> dict[str, Any]:
     return {
         "name": cfg.name,
         "description": cfg.description,
-        "task": cfg.task.value,
+        "task": cfg.task.value if cfg.task else None,
         "target": cfg.data.target,
         "metric": cfg.metric.name,
         "metric_direction": cfg.metric.direction.value if cfg.metric.direction else None,
@@ -70,7 +71,7 @@ def project_brief(ctx) -> dict[str, Any]:
 
 def build(ctx, agent: str, data: dict[str, Any], fresh: dict | None = None) -> dict[str, Any]:
     stage = AGENT_STAGE[agent]
-    challenges = [] if agent == "experiment" else [
+    challenges = [] if agent in ("experiment", "data_scout") else [
         {"id": c.id, "source": c.source, "severity": c.severity, "message": c.message,
          "evidence": c.evidence, "remedy": c.remedy}
         for c in ctx.challenges_for(stage)

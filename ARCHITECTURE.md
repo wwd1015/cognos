@@ -155,6 +155,30 @@ are `prior.*` facts, scoped to the agents that read results (outcomes analyst, v
 model-risk analyst, writer): the design lead and the modeler learn the existing model's family and
 inputs, not how it scored.
 
+## Data, plugins and analysis ([ADR-0012](docs/adr/0012-data-sources-plugins-and-agent-written-analysis.md))
+
+```
+data.source ─▶ datasources.load ─▶ data/dataset.parquet + data/source.json (provenance, hash)
+                                          │
+explore:  data_scout (agent) ──requests──▶ analysis.run.execute ──▶ stages/explore/analyses/
+            ▲   tool name + params  ─▶ plugins.registry().tools[name].fn(df, …)     <id>.json
+            │   or Python           ─▶ sandbox.validate ─▶ subprocess (restricted)   <id>.py
+            └────── summaries ◀───────────────────────────────┘        (≤ analysis.rounds)
+          data_analyst (agent): target, feature candidates, keep/exclude  ─▶ gate_data
+validate: analysis.run.reproduce(script) ─▶ finding if it does not reproduce; code ─▶ validator
+document: docs/analysis.md (source, target, analyses, every script in full)
+```
+
+- `datasources.py`: one read-only statement per database source; secrets from the environment
+  only; the snapshot is what every stage reads.
+- `plugins.py`: `register(registry)` modules found by entry point (`cognos.plugins`), the
+  profile's `plugins:` list, or `COGNOS_PLUGINS`; a failing plugin is reported and skipped.
+- `analysis/`: `tools.py` (built-ins), `charts.py` (the JSON chart spec the UI draws),
+  `sandbox.py` (AST check + isolated subprocess), `run.py` (executor, artifacts, reproduce).
+- The target may be open in the profile: explore ranks candidates, the analyst chooses, the
+  engine infers the task, and `gate_data` writes `overrides.target` / `overrides.task`.
+  `RunContext.config` resolves the metric once the task is known.
+
 ## The stage contract
 
 Every agent is a `Stage` with one method, `run(ctx) -> StageResult`. It reads inputs from prior

@@ -80,6 +80,26 @@ measures.
 - `gate_intent` accept writes the document's stated design / intended-use fields to
   `overrides.design` / `overrides.compliance`; an existing answer wins.
 
+## Data, plugins and analysis (ADR-0012)
+- **Sources** (`datasources.py`): a connector returns a DataFrame for a `SourceConfig`; database
+  sources run one read-only statement (`statement()`). Secrets come from the environment only and
+  must never reach a profile, `config.yaml`, provenance or a log. Every stage reads the snapshot
+  (`ctx.load_dataset()`), never the source.
+- **Open target**: `data.target` / `task` may be empty. Read them from `ctx.config` (resolved from
+  `overrides.target`), never from `ctx.base_config`, outside explore. Explore decides from
+  `base_config` + overrides so a re-run does not treat its own earlier proposal as fixed.
+- **Agents still have no tools.** The Data Analyst *requests* analyses (`data_scout` contract);
+  the engine runs them (`analysis/run.py`). Do not give an agent a way to execute anything itself.
+- **A tool** (`plugins.AnalysisTool`) is reviewed code and a pure function of the data: its
+  numbers are engine numbers. **A script** is agent-written: it must pass `sandbox.validate`,
+  runs only through `sandbox.run`, and is always saved before it runs. Never execute agent code
+  in the engine's process. Loosening `ALLOWED_IMPORTS` / `FORBIDDEN_*` needs a reason in ADR-0012.
+- **Code is an artifact**: keep the chain intact — saved with hash → shown at `gate_data`
+  (`reviewed_analyses` on the decision) → `analysis.reproduce` at validate → `docs/analysis.md` →
+  export. A new place that produces agent-written code must join the same chain.
+- **Charts are specs** (`analysis/charts.py`), drawn by `ui/charts.py::from_spec`. Core code must
+  not import a plotting library.
+
 ## Stage contract
 A stage is a `Stage` subclass with `name`, `requires`, `is_gate`, and `run(ctx) -> StageResult`. It
 reads prior outputs via `ctx.require(<stage>).payload` (explore's via `ctx.profile()`), writes
@@ -117,6 +137,10 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   literals in `agents/contracts.py`, a question in `engagement.QUESTIONS` if required, then
   regenerate `docs/templates/` (`render_template`).
 - **New document format** → a reader in `engagement.read_text` that returns `(None, why)` on failure.
+- **New analysis tool** → `analysis/tools.py::register` (built in) or a plugin; return summary
+  numbers, a table and a chart spec.
+- **New data source** → a `DataSource` in `datasources.BUILTIN` or a plugin; `available()` must
+  explain what is missing instead of raising at import.
 - **New compliance regime** → extend `stages/comply.py`; emit evidence `document`/`review` can trace.
 - **New stage** → single-responsibility; wire `requires`, a graph node, and (optionally) an agent.
 - **New stage metric** → if it has a good direction, add it to `compare._HIGHER` / `_LOWER` and give it a

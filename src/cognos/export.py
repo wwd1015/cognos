@@ -24,7 +24,8 @@ from . import __version__
 _FILES = ("state.json", "config.yaml", "summary.json", "summary.txt", "manifest.json", "events.jsonl")
 _DIRS = ("docs", "stages", "packages")
 # Readable evidence only: data, models and caches are referenced by the results, not shipped.
-_TEXT = {".json", ".md", ".tsv", ".csv", ".txt", ".yaml", ".yml", ".jsonl"}
+# (.py: the analysis scripts the Data Analyst wrote are part of the record a validator reviews)
+_TEXT = {".json", ".md", ".tsv", ".csv", ".txt", ".yaml", ".yml", ".jsonl", ".py"}
 NOT_INCLUDED = ("data/ (training data and the sealed holdout)", "models/ (fitted scorers)",
                 "binary caches under stages/ (.parquet, .joblib, .npz)")
 

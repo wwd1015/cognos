@@ -40,7 +40,9 @@ STAGE_BLURB = {
     "intake": "The engine reads the business intent and, for an update, the existing model's "
               "artifacts; the Intake Analyst fills the brief and interviews the sponsor where the "
               "goal is not clear.",
-    "explore": "The engine profiles the data; the Data Analyst decides which columns may be inputs.",
+    "explore": "The engine fetches and profiles the data and runs the analyses the Data Analyst "
+               "asks for; the analyst names the dependent variable, the features worth "
+               "considering and the columns that may not be inputs.",
     "ideate": "The engine assesses structure and frameworks; the Design Lead ranks the slate and "
               "raises what only the sponsor can decide.",
     "model": "The engine searches under a frozen metric; the Modeler picks the champion from the "
@@ -255,6 +257,60 @@ def intake_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
 
 
 # --- explore ------------------------------------------------------------------------------
+def analysis_card(run_id: str, a: dict, scheme: str) -> Any:
+    """One analysis: the question, what it found, its chart and table and, for a script, the
+    code exactly as the analyst wrote it."""
+    try:
+        result = json.loads(service.read_artifact(run_id, a["artifact"]) or "{}")
+    except ValueError:
+        result = {}
+    is_code = a["kind"] == "code"
+    by = (dmc.Badge("agent-written code", color="grape", variant="light", size="sm",
+                    leftSection=icon("tabler:code", 12)) if is_code else
+          dmc.Badge(a.get("tool") or "tool", color="indigo", variant="light", size="sm",
+                    leftSection=icon("tabler:tool", 12)))
+    plugin = (dmc.Badge(f"plugin: {a['origin']}", color="teal", variant="outline", size="sm")
+              if not is_code and a.get("origin") not in (None, "cognos") else None)
+    parts: list[Any] = [
+        dmc.Group([dmc.Group([dmc.Code(a["id"]), by, plugin], gap=6),
+                   None if a["status"] == "ok" else
+                   dmc.Badge("did not run", color="red", variant="light", size="sm",
+                             leftSection=icon("tabler:alert-triangle", 12))],
+                  justify="space-between"),
+        dmc.Text(a.get("title") or a["purpose"], fw=600, size="sm", mt=6),
+        dmc.Text(a["purpose"], size="xs", c="dimmed"),
+    ]
+    if a["status"] != "ok":
+        parts.append(dmc.Alert(a.get("error") or "No result.", color="red", variant="light",
+                               mt="xs", p="xs"))
+    for spec in result.get("charts", []):
+        parts.append(graph(charts.from_spec(spec, scheme)))
+    if a.get("summary"):
+        parts.append(dmc.Group([dmc.Badge(f"{k}: {fmt(v, 3) if not isinstance(v, str) else v}",
+                                          variant="default", size="sm", tt="none")
+                                for k, v in list(a["summary"].items())[:8]], gap=4, mt=4))
+    folds = []
+    for t in result.get("tables", [])[:3]:
+        folds.append(dmc.AccordionItem([
+            dmc.AccordionControl(f"Table: {t.get('name', 'result')} ({t.get('n_rows', len(t['rows']))} rows)"),
+            dmc.AccordionPanel(table(t["columns"], [[fmt(v, 4) if isinstance(v, float) else
+                                                     ("" if v is None else str(v)) for v in row]
+                                                    for row in t["rows"][:25]], max_height=260)),
+        ], value=f"t-{t.get('name', '')}"))
+    if is_code:
+        code = service.read_artifact(run_id, a["code_path"]) or ""
+        folds.append(dmc.AccordionItem([
+            dmc.AccordionControl(f"Code to review — {a['code_path'].rsplit('/', 1)[-1]} · "
+                                 f"sha256 {a['code_sha256'][:12]}", icon=icon("tabler:code")),
+            dmc.AccordionPanel(dmc.Code(code, block=True)),
+        ], value="code"))
+    if folds:
+        parts.append(dmc.Accordion(folds, variant="separated", mt="xs",
+                                   value="code" if is_code else None))
+    # (a card keeps its own height: a tall neighbour in the grid must not stretch its chart)
+    return dmc.Card([p for p in parts if p is not None], p="md", style={"alignSelf": "start"})
+
+
 def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
     ts = p.get("target_summary") or {}
@@ -285,7 +341,33 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
         dmc.List([dmc.ListItem(c["statement"]) for c in out.get("data_quality", [])], size="sm")
         if out.get("data_quality") else None,
     ], gap="xs")
+    analyses = p.get("analyses") or []
+    scripts = [a for a in analyses if a["kind"] == "code"]
+    src = p.get("source") or {}
+    fixed = p.get("target_source") == "profile"
+    how = {"profile": "fixed in the project profile", "decision": "set at the data gate",
+           "agent": "proposed by the Data Analyst"}.get(p.get("target_source", ""), "")
+    target_options = ([{"value": c["column"], "label": f"{c['column']} — {c['why']}"}
+                       for c in p.get("target_candidates", [])]
+                      or [{"value": p.get("target", ""), "label": p.get("target", "")}])
+    if p.get("target") and p["target"] not in [o["value"] for o in target_options]:
+        target_options.insert(0, {"value": p["target"], "label": p["target"]})
+    cand_rows = [[dmc.Text(c["column"], ff="monospace", size="sm"),
+                  dmc.Badge({"+": "rises", "-": "falls", "nonlinear": "non-linear",
+                             "unknown": "unknown"}[c["relationship"]], variant="light", size="sm",
+                            color="gray"),
+                  fmt(corr.get(c["column"]), 3), dmc.Text(c["rationale"], size="xs")]
+                 for c in p.get("feature_candidates", [])]
     gate = gate_block("gate_data", state, res, seat=seat, body=[
+        dmc.Select(id=_field("gate_data", "target"), label="Dependent variable",
+                   data=target_options, value=p.get("target"), allowDeselect=False,
+                   disabled=fixed, searchable=True,
+                   description="Fixed in the project profile." if fixed else
+                   "Changing it re-runs the exploration against the new target."),
+        dmc.Alert(f"{len(scripts)} analysis script(s) written by the Data Analyst are part of "
+                  "what you are accepting. Read the code under “Analyses” below: it goes to "
+                  "validation and into the white paper as it stands.", color="grape",
+                  variant="light", icon=icon("tabler:code"), mt="xs") if scripts else None,
         dmc.MultiSelect(id=_field("gate_data", "exclude"), label="Columns to exclude from modeling",
                         data=[{"value": c, "label": c} for c in p.get("features", [])],
                         value=list(state.overrides.exclude_columns
@@ -296,7 +378,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
     ], primary=[
         dmc.Button("Accept recommendation", id=_act("gate_data", "accept"),
                    leftSection=icon("tabler:check")),
-        dmc.Button("Apply my exclusions", id=_act("gate_data", "edit"), variant="light",
+        dmc.Button("Apply my changes", id=_act("gate_data", "edit"), variant="light",
                    leftSection=icon("tabler:edit")),
     ])
     return [
@@ -307,6 +389,32 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
               ("Leakage suspects", fmt(len(suspects)), "|corr| ≥ 0.98 with the target")]),
         recommendation_card(rec, extra=rec_extra),
         gate,
+        section("Dependent variable",
+                dmc.Group([dmc.Text(p.get("target", "—"), ff="monospace", fw=650, size="lg"),
+                           dmc.Badge(p.get("task", ""), variant="light", size="sm"),
+                           dmc.Badge(how, variant="outline", size="sm", color="gray", tt="none")],
+                          gap="xs"),
+                dmc.Text(p.get("target_rationale") or "", size="sm", mt=4)
+                if p.get("target_rationale") else None,
+                description="The outcome the business intent describes.") if p.get("target") else None,
+        section("Features to consider", table(["Feature", "Expected", "Corr.", "Why"], cand_rows),
+                description="The Data Analyst's candidates for the design stage: hypotheses, "
+                            "not a selection.") if cand_rows else None,
+        section(f"Analyses ({len(analyses)})",
+                dmc.SimpleGrid([analysis_card(state.run_id, a, scheme) for a in analyses],
+                               cols={"base": 1, "lg": 2}, spacing="md"),
+                description="Requested by the Data Analyst, run by the engine. Tools are "
+                            "reviewed code; a script is code the agent wrote for this run.")
+        if analyses else None,
+        section("Data source",
+                table(["Connector", "Location", "Rows × columns", "Fetched", "Snapshot SHA-256"],
+                      [[src.get("connector", "—"),
+                        dmc.Text(src.get("query") or src.get("location") or "—", size="xs",
+                                 ff="monospace"),
+                        f"{fmt(src.get('n_rows'))} × {fmt(src.get('n_cols'))}",
+                        str(src.get("fetched_at", ""))[:19].replace("T", " "),
+                        dmc.Code(str(src.get("snapshot_sha256", ""))[:12])]]),
+                description="Fetched once; every stage reads this snapshot.") if src else None,
         section("Feature profile", table(["Feature", "Type", "Missing", "Corr. with target",
                                           "Agent"], rows, max_height=380)),
         section("Engine findings", findings_table(_findings(res))),

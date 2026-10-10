@@ -150,3 +150,47 @@ def term_structure(ts: dict | None, scheme: str) -> go.Figure | None:
                                     yaxis={"title": {"text": "mean cumulative PD"},
                                            "tickformat": ".1%"}), height=260)
     return fig
+
+
+def from_spec(spec: dict | None, scheme: str) -> go.Figure | None:
+    """Draw an analysis chart spec (``analysis/charts.py``) in the workbench's theme: a tool's
+    chart and an agent-written script's chart look the same."""
+    if not spec:
+        return None
+    s, c = SERIES[scheme], CHROME[scheme]
+    kind = spec.get("kind")
+    pct = spec.get("y_format") == "%"
+    fig = go.Figure()
+    if kind == "heatmap":
+        fig.add_trace(go.Heatmap(
+            x=spec["x"], y=spec["y"], z=spec["z"], zmin=-1, zmax=1, zmid=0,
+            colorscale=[[0, s[1 % len(s)]], [0.5, c["surface"]], [1, s[0]]],
+            colorbar={"thickness": 10, "len": 0.8, "tickfont": {"color": c["muted"]}},
+            hovertemplate="%{y} / %{x}<br>%{z:.2f}<extra></extra>"))
+        n = len(spec["y"])
+        fig.update_layout(**plot_layout(scheme, margin={"l": 120, "b": 90}),
+                          height=max(280, 26 * n + 130))
+        fig.update_yaxes(autorange="reversed")
+        return fig
+    fmt_ = ".1%" if pct else ".4g"
+    for i, series in enumerate(spec.get("series", [])):
+        color = s[i % len(s)]
+        hover = f"%{{x}}<br>{series['name']} %{{y:{fmt_}}}<extra></extra>"
+        if kind in ("bar", "histogram"):
+            fig.add_trace(go.Bar(x=spec["x"], y=series["y"], name=series["name"],
+                                 marker={"color": color, "cornerradius": 3},
+                                 hovertemplate=hover))
+        else:
+            fig.add_trace(go.Scatter(
+                x=spec["x"], y=series["y"], name=series["name"],
+                mode="markers" if kind == "scatter" else "lines+markers",
+                line={"color": color, "width": 2}, marker={"color": color, "size": 7},
+                hovertemplate=hover))
+    categorical = any(isinstance(v, str) for v in spec.get("x", []))
+    fig.update_layout(**plot_layout(
+        scheme, xaxis={"title": {"text": spec.get("x_title", "")},
+                       **({"type": "category"} if categorical else {})},
+        yaxis={"title": {"text": spec.get("y_title", "")}, **({"tickformat": ".0%"} if pct else {})},
+        **({"bargap": 0.04} if kind == "histogram" else {})),
+        height=280, showlegend=len(spec.get("series", [])) > 1)
+    return fig

@@ -102,11 +102,48 @@ class ColumnDecision(Contract):
     evidence: list[str] = Field(default_factory=list)
 
 
+class FeatureCandidate(Contract):
+    column: str = Field(description="A column in context.features")
+    relationship: Literal["+", "-", "nonlinear", "unknown"] = Field(
+        description="How the target is expected to move as this feature rises")
+    rationale: str = Field(description="Why the business intent makes this a driver worth testing")
+    evidence: list[str] = Field(default_factory=list)
+
+
 class DataAnalystOutput(AgentOutput):
+    target: str = Field(default="", description="The dependent variable: context.target when it "
+                                                "is fixed, else the column you recommend")
+    target_rationale: str = Field(default="", description="Why this column is the outcome the "
+                                                          "business intent describes")
+    feature_candidates: list[FeatureCandidate] = Field(
+        default_factory=list, description="The features worth considering, strongest first")
     column_decisions: list[ColumnDecision] = Field(
         description="One decision per leakage suspect and per column you recommend excluding")
     data_quality: list[Claim] = Field(default_factory=list)
     questions_for_sponsor: list[str] = Field(default_factory=list)
+
+
+class ToolParam(Contract):
+    name: str
+    value: str
+
+
+class AnalysisRequest(Contract):
+    purpose: str = Field(description="The question this analysis answers, in one sentence")
+    tool: str = Field(default="", description="A tool name from context.tools; empty when you "
+                                              "write code instead")
+    params: list[ToolParam] = Field(default_factory=list)
+    code: str = Field(default="", description="Python, only when no tool fits (see the prompt "
+                                              "for what a script may use)")
+
+
+class DataScoutOutput(Contract):
+    target_column: str = Field(default="", description="Only when context.target is empty: the "
+                                                       "column you take as the dependent variable")
+    target_rationale: str = ""
+    requests: list[AnalysisRequest] = Field(default_factory=list)
+    done: bool = Field(description="true when you need no further analysis round")
+    notes: str = ""
 
 
 # --- ideate: design lead --------------------------------------------------------------------
@@ -227,6 +264,7 @@ class WriterOutput(AgentOutput):
 CONTRACTS: dict[str, type[Contract]] = {
     "intake_analyst": IntakeAnalystOutput,
     "data_analyst": DataAnalystOutput,
+    "data_scout": DataScoutOutput,
     "design_lead": DesignLeadOutput,
     "modeler": ModelerOutput,
     "experiment": ExperimentProposal,
@@ -237,13 +275,14 @@ CONTRACTS: dict[str, type[Contract]] = {
 }
 
 # Which stage each agent serves (the experiment proposer is the modeler's guided-search role).
-AGENT_STAGE = {"intake_analyst": "intake", "data_analyst": "explore", "design_lead": "ideate", "modeler": "model",
+AGENT_STAGE = {"intake_analyst": "intake", "data_analyst": "explore", "data_scout": "explore", "design_lead": "ideate", "modeler": "model",
                "experiment": "model", "outcomes_analyst": "backtest", "validator": "validate",
                "risk_analyst": "comply", "writer": "document"}
 STAGE_AGENT = {"intake": "intake_analyst", "explore": "data_analyst", "ideate": "design_lead", "model": "modeler",
                "backtest": "outcomes_analyst", "validate": "validator", "comply": "risk_analyst",
                "document": "writer"}
-FRIENDLY = {"intake_analyst": "Intake Analyst", "data_analyst": "Data Analyst", "design_lead": "Design Lead", "modeler": "Modeler",
+FRIENDLY = {"intake_analyst": "Intake Analyst", "data_analyst": "Data Analyst",
+            "data_scout": "Data Analyst (analysis requests)", "design_lead": "Design Lead", "modeler": "Modeler",
             "experiment": "Modeler (guided search)", "outcomes_analyst": "Outcomes Analyst",
             "validator": "Independent Validator", "risk_analyst": "Model-Risk Analyst",
             "writer": "Technical Writer"}

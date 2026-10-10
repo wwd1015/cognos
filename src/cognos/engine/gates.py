@@ -47,6 +47,8 @@ def why(gate: str, action: str, payload: dict[str, Any] | None, reason: str = ""
         return f"{label}: the brief was accepted"
     if gate == "gate_data":
         cols = payload.get("exclude_columns")
+        if payload.get("target"):
+            return f"{label}: dependent variable set to {payload['target']}"
         if action == "edit" and cols is not None:
             return f"{label}: exclusions changed to {len(cols)} column(s)" + (f" ({_clip(', '.join(cols), 80)})" if cols else "")
         return f"{label}: recommended exclusions accepted"
@@ -90,7 +92,7 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
     stage = STAGE_OF_GATE[gate]
     res = results.get(stage)
     verdict = res.verdict.value if res is not None else None
-    payload = payload or {}
+    payload = payload if payload is not None else {}
 
     if action == "send_back":
         return send_back(state, gate, payload, reason), False
@@ -123,10 +125,29 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
 
     if gate == "gate_data":
         profile = res.payload if res is not None else {}
+        # What the developer had in front of them: every script the analyst wrote, by hash.
+        payload["reviewed_analyses"] = [
+            {"id": a["id"], "sha256": a["code_sha256"]}
+            for a in profile.get("analyses") or [] if a.get("kind") == "code"]
+        pick = payload.get("target") if action == "edit" else None
+        analysed = profile.get("target")
+        if pick and pick != analysed:
+            if profile.get("target_source") == "profile":
+                raise GateError("the profile fixes the dependent variable; change data.target "
+                                "there and start a new run")
+            if pick not in (profile.get("dtypes") or {}):
+                raise GateError(f"unknown column {pick!r}")
+            state.overrides.target, state.overrides.task = pick, None
+            return ["explore"], False  # explore re-reads the data against the new target
+        if profile.get("target_source") != "profile" and analysed:
+            state.overrides.target, state.overrides.task = analysed, profile.get("task")
         if action == "accept":
             new = list(profile.get("recommended_exclusions", []))
         else:
-            new = list(payload.get("exclude_columns") or [])
+            new = list(payload.get("exclude_columns")
+                       if payload.get("exclude_columns") is not None
+                       else state.overrides.exclude_columns or
+                       profile.get("recommended_exclusions", []))
             known = set(profile.get("dtypes", {}))
             unknown = [c for c in new if c not in known]
             if unknown:

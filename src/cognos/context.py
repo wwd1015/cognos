@@ -53,7 +53,8 @@ class RunContext:
         self.run_dir = root / self.run_id
         self._runner = runner
         self.overrides = self._load_overrides()
-        self.config = self._effective_config(config, self.overrides)
+        self.config = self._effective_config(config, self.overrides).with_target(
+            *self._decided_target(config))
         self._results: dict[str, StageResult] = {}
         self.logger = logging.getLogger(f"cognos.run.{self.run_id}")
 
@@ -187,14 +188,28 @@ class RunContext:
         if cached.exists():
             return pd.read_parquet(cached)
         dc = self.config.data
-        if not dc.path:
+        if not dc.path and dc.source is None:
             raise RuntimeError(
                 "No dataset on disk and config.data.path is unset. Pass a DataFrame via "
                 "RunContext.attach_dataset() before running stages."
             )
-        df = pd.read_parquet(dc.path) if dc.format == "parquet" else pd.read_csv(dc.path)
+        from . import datasources
+
+        df, provenance = datasources.load(self.config)
         df.to_parquet(cached, index=False)
+        # Where the snapshot came from, and its hash: every later stage reads this copy.
+        import hashlib
+
+        provenance["snapshot_sha256"] = hashlib.sha256(cached.read_bytes()).hexdigest()
+        atomic_write(self.data_dir / "source.json", json.dumps(provenance, indent=1, default=str))
         return df
+
+    def data_source(self) -> dict[str, Any]:
+        """Provenance of the dataset snapshot (empty when a DataFrame was attached in code)."""
+        try:
+            return json.loads((self.data_dir / "source.json").read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):
+            return {}
 
     # --- v1: overrides, effective config, agent seam ------------------------------
     def _load_overrides(self) -> Overrides:
@@ -206,6 +221,20 @@ class RunContext:
             except Exception:  # a corrupt/partial state file must not break a stage
                 pass
         return Overrides()
+
+    def _decided_target(self, config: CognosConfig) -> tuple[str | None, str | None]:
+        """The target and task in force when the profile leaves them open: the data-gate
+        decision, else what explore analysed (a run whose data gate is switched off)."""
+        if config.data.target and config.task is not None:
+            return None, None
+        if self.overrides.target:
+            return self.overrides.target, self.overrides.task
+        try:
+            payload = json.loads((self.run_dir / "stages" / "explore" / "result.json").read_text(
+                encoding="utf-8")).get("payload") or {}
+        except (FileNotFoundError, ValueError):
+            return None, None
+        return payload.get("target"), payload.get("task")
 
     @staticmethod
     def _effective_config(config: CognosConfig, overrides: Overrides) -> CognosConfig:
@@ -276,7 +305,7 @@ class RunContext:
             "run_id": self.run_id,
             "project": self.config.name,
             "mode": self.config.mode.value,
-            "task": self.config.task.value,
+            "task": self.config.task.value if self.config.task else None,
             "created_at": datetime.now(UTC).isoformat(),
             "stages": {
                 s: (self._results[s].verdict.value if s in self._results else None)

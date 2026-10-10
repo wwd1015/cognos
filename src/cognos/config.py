@@ -40,10 +40,30 @@ class Mode(str, Enum):
     INTERACTIVE = "interactive"  # human-in-the-loop; pause at configured gates
 
 
+class SourceConfig(BaseModel):
+    """Where the dataset comes from (datasources.py). ``file`` reads a local or uploaded file;
+    ``sqlite`` and ``snowflake`` read a table or a read-only query; a plugin may add more kinds.
+
+    ``options`` are the connector's settings (account, warehouse, database, schema, role, …).
+    Never a secret: a value written ``env:NAME`` is read from the environment when the data is
+    fetched, and passwords are only ever taken from the environment.
+    """
+
+    kind: str = "file"
+    path: str | None = None  # file: the data file; sqlite: the database file
+    table: str | None = None
+    query: str | None = None  # a single read-only SELECT (instead of table)
+    limit: int | None = None  # row cap applied by the engine
+    options: dict[str, str] = Field(default_factory=dict)
+
+
 class DataConfig(BaseModel):
     path: str | None = None  # CSV/Parquet path; may be None when a DataFrame is passed in code
     format: str = "csv"  # csv | parquet
-    target: str  # target column name
+    source: SourceConfig | None = None  # a connector instead of path (file | sqlite | snowflake)
+    # The dependent variable. Leave it empty and the Data Analyst proposes it from the business
+    # intent; the model developer confirms it at the data gate.
+    target: str = ""
     features: list[str] = Field(default_factory=list)  # empty => use all non-target columns
     datetime_col: str | None = None  # for time-series / walk-forward ordering
     drop_columns: list[str] = Field(default_factory=list)
@@ -145,6 +165,16 @@ class SearchConfig(BaseModel):
     complexity_penalty: float = 0.0  # parsimony / simplicity bias (>=0)
     guided: bool = False  # opt-in agent-guided search (ADR-0001 stage B): the modeler proposes experiments
     guided_rounds: int = 6  # number of LLM-proposed experiments after the deterministic ratchet
+
+
+class AnalysisConfig(BaseModel):
+    """Exploratory analysis the Data Analyst may request (analysis/). Each round the agent asks
+    for tool runs (built in or from a plugin) or writes Python; the engine executes them."""
+
+    rounds: int = 2  # scouting rounds before the analyst's recommendation
+    max_requests: int = 8  # analyses per round
+    allow_code: bool = True  # let the agent write Python (run restricted, kept as an artifact)
+    code_timeout_s: float = 30.0  # wall-clock limit per script
 
 
 class StructuralConfig(BaseModel):
@@ -291,10 +321,12 @@ class CognosConfig(BaseModel):
     name: str
     description: str = ""
     version: str = "0.1.0"
-    task: TaskType
+    task: TaskType | None = None  # None => inferred from the confirmed target column
     mode: Mode = Mode.AUTONOMOUS
     data: DataConfig
     engagement: EngagementConfig = Field(default_factory=EngagementConfig)
+    analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
+    plugins: list[str] = Field(default_factory=list)  # modules exposing register(registry)
     design: DesignConfig = Field(default_factory=DesignConfig)
     metric: MetricConfig = Field(default_factory=MetricConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
@@ -327,7 +359,9 @@ class CognosConfig(BaseModel):
 
     @model_validator(mode="after")
     def _fill_defaults(self) -> CognosConfig:
-        # Resolve auto metric + direction from the task type.
+        # Resolve auto metric + direction from the task type (once the task is known).
+        if self.task is None:
+            return self
         if self.metric.name == "auto":
             self.metric.name = "roc_auc" if self.task.is_classification else "rmse"
         if self.metric.direction is None:
@@ -336,6 +370,18 @@ class CognosConfig(BaseModel):
                 Direction.MAXIMIZE if self.metric.name in maximize else Direction.MINIMIZE
             )
         return self
+
+    def with_target(self, target: str | None, task: str | None) -> CognosConfig:
+        """The config once the dependent variable is decided: target and task filled where the
+        profile left them open, and the metric resolved from the task."""
+        if (not target or self.data.target) and (not task or self.task is not None):
+            return self
+        raw = self.model_dump(mode="json")
+        if target and not self.data.target:
+            raw["data"]["target"] = target
+        if task and self.task is None:
+            raw["task"] = task
+        return CognosConfig.model_validate(raw)
 
     # --- IO ----------------------------------------------------------------------
     @classmethod

@@ -138,6 +138,39 @@ def load_config(source: CognosConfig | str | Path | dict) -> CognosConfig:
     return CognosConfig.from_yaml(source)
 
 
+# --- data sources and plugins --------------------------------------------------------------------
+def plugin_list(modules: list[str] | tuple[str, ...] = ()) -> dict[str, Any]:
+    """Installed analysis tools, data sources (with availability) and plugin load problems."""
+    from . import plugins
+
+    return plugins.public_list(modules)
+
+
+def config_from_data(name: str, source: dict[str, Any], *, description: str = "",
+                     root: str | Path | None = None, **extra: Any) -> CognosConfig:
+    """A profile for "here is my data": no target, no task. The Data Analyst proposes the
+    dependent variable from the business intent and the model developer confirms it at the data
+    gate. ``source`` is a ``data.source`` mapping (``{"kind": "file", "path": ...}``,
+    ``{"kind": "snowflake", "table": ...}``)."""
+    import re
+
+    slug = re.sub(r"[^A-Za-z0-9_]+", "_", name or "model").strip("_").lower() or "model"
+    return CognosConfig.from_dict({"name": slug, "description": description,
+                                   "data": {"source": source}, "runs_dir": str(runs_root(root)),
+                                   **extra})
+
+
+def preview_source(source: dict[str, Any], rows: int = 5) -> dict[str, Any]:
+    """Columns and the first rows of a source, to check a connection before starting a run."""
+    from . import datasources
+
+    cfg = config_from_data("preview", {**source, "limit": rows})
+    df, provenance = datasources.load(cfg)
+    return {"columns": [{"name": c, "dtype": str(df[c].dtype)} for c in df.columns],
+            "rows": json.loads(df.head(rows).to_json(orient="records", date_format="iso")),
+            "source": provenance}
+
+
 # --- engagements: the development mode and its documents ---------------------------------------
 def intent_template(kind: str = "new", name: str = "") -> str:
     """The business intent document (or model update request) to fill in before a run."""
@@ -414,7 +447,7 @@ def list_profiles(directory: str | Path = "projects") -> list[dict[str, str]]:
         try:
             cfg = CognosConfig.from_yaml(p)
             out.append({"path": str(p), "name": cfg.name, "description": cfg.description,
-                        "task": cfg.task.value})
+                        "task": cfg.task.value if cfg.task else "from the data"})
         except Exception:
             continue
     return out

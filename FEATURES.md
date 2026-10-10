@@ -31,6 +31,36 @@
   analyst and writer; the design lead and the modeler see the incumbent's family, not its scores.
 - **Every agent sees the confirmed brief** (`project.engagement`).
 
+## Data sources, plugins and exploratory analysis (v1.2)
+- **Connectors** (`data.source`, ADR-0012): uploaded or local files (CSV, Parquet, Excel, JSON
+  lines), SQLite, Snowflake (optional driver; credentials from `SNOWFLAKE_*` environment
+  variables, never stored), and any a plugin registers. One read-only statement per database
+  source; an optional row limit.
+- **Snapshot and provenance**: fetched once into the run; `data/source.json` records connector,
+  table or query, rows, time and the snapshot's SHA-256.
+- **Open target**: leave `data.target` (and `task`) empty; the engine ranks outcome-like columns,
+  the Data Analyst chooses against the business intent, the task is inferred, and the developer
+  confirms or changes it at the data gate (changing it re-runs explore).
+- **Feature candidates**: the features worth considering, each with expected direction, business
+  rationale and cited evidence.
+- **Analysis requests in rounds**: the analyst asks for tools or writes Python; the engine runs
+  them and returns summaries (`analysis.rounds`, `analysis.max_requests`).
+- **Built-in tools**: distribution, target distribution, target relationship (banded event rate),
+  correlation matrix, missingness, time trend. Each returns numbers, a table and a chart.
+- **Plugins**: `register(registry)` modules adding tools and data sources, by entry point,
+  profile list or `COGNOS_PLUGINS`; `cognos plugins` lists them and any load problems. Example in
+  `examples/plugins/`.
+- **Agent-written Python**: syntax-tree check (numerical imports only; no files, network, OS,
+  private attributes or string evaluation), then an isolated subprocess with restricted builtins
+  and a time limit. A rejected script is returned to the agent with the reason.
+- **Code as an artifact**: saved with a provenance header and hash; shown in full at the data
+  gate, whose decision records the scripts accepted; re-run at validation (a script that does not
+  reproduce, or was altered, is a finding) and handed to the Independent Validator; printed in
+  the white paper; included in the export. `analysis.allow_code: false` disables it.
+- **Visual workbench**: an analysis gallery (chart, key numbers, table, code) per request, the
+  dependent-variable card, feature candidates, and data-source provenance; start a run from an
+  uploaded data file or a Snowflake table with no profile.
+
 ## Workflow engine (v1.0)
 - Nine-stage lifecycle `intake → explore → ideate → model → backtest → validate → comply →
   document → review` interleaved with **six human review gates**: `gate_intent`, `gate_data`,

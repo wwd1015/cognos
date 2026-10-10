@@ -149,6 +149,19 @@ class DocumentStage(Stage):
             ),
         ))
 
+        # --- 2b. exploratory analysis: what was run, and every script the analyst wrote --------
+        analyses = ep.get("analyses") or []
+        if analyses or ep.get("source"):
+            emit(OKFConcept(
+                name="analysis", type="analysis",
+                title="Data Source & Exploratory Analysis",
+                description="Where the data came from, the dependent variable, the analyses "
+                            "run, and the code of every agent-written script.",
+                resource=ctx.rel(ctx.resolve("stages/explore/analyses")),
+                tags=["data", "analysis", "code"],
+                body=self._analysis_body(ctx, ep, vp),
+            ))
+
         # --- 3. methodology (carries the core code anchors) ----------------------
         challenger = mp.get("challenger_benchmark") or {}
         diagnostics = mp.get("diagnostics", {}) or {}
@@ -368,6 +381,8 @@ class DocumentStage(Stage):
             concept_names.insert(10 if vp else 9, "compliance")
         if tp:
             concept_names.insert(1, "engagement")
+        if analyses or ep.get("source"):
+            concept_names.insert(concept_names.index("dataset") + 1, "analysis")
 
         # --- 12. EU AI Act Annex IV (only for EU deployments) --------------------
         if "EU" in cfg.compliance.jurisdictions:
@@ -516,6 +531,60 @@ class DocumentStage(Stage):
             f"{diagnostics.get('n_passed', 0)}/{diagnostics.get('n_run', 0)} statistical tests "
             "passed; see [diagnostics](./diagnostics.md) and [backtest](./backtest.md)."
         )
+
+    @staticmethod
+    def _analysis_body(ctx: RunContext, ep: dict, vp: dict) -> str:
+        """Provenance, the target decision and the analysis log, then each script in full. The
+        code is printed as recorded: it is a development artifact a validator has to read."""
+        from ..analysis import run as analysis
+
+        src = ep.get("source") or {}
+        how = {"profile": "fixed in the project profile", "decision": "set at the data gate",
+               "agent": "proposed by the Data Analyst, confirmed at the data gate"}
+        parts = [
+            "# Data Source & Exploratory Analysis\n",
+            "## Data source\n",
+            f"- **Connector:** {src.get('connector', 'n/a')} (`{src.get('kind', 'n/a')}`)",
+            f"- **Location:** {src.get('location') or 'n/a'}"
+            + (f" — query: `{' '.join(str(src['query']).split())[:300]}`" if src.get("query") else ""),
+            f"- **Snapshot:** {src.get('n_rows', 'n/a')} rows × {src.get('n_cols', 'n/a')} columns, "
+            f"fetched {src.get('fetched_at', 'n/a')}, SHA-256 `{str(src.get('snapshot_sha256', ''))[:16]}`\n",
+            "## Dependent variable\n",
+            f"- **Target:** `{ep.get('target', 'n/a')}` ({ep.get('task', 'n/a')}), "
+            f"{how.get(ep.get('target_source', ''), 'n/a')}",
+            f"- **Basis:** {ep.get('target_rationale') or 'n/a'}\n",
+            "## Features considered\n",
+            _table(["Feature", "Expected", "Why"],
+                   [[c["column"], c["relationship"], c["rationale"].replace("|", "/")]
+                    for c in ep.get("feature_candidates", [])]), "",
+            "## Analyses run\n",
+            _table(["Id", "By", "What", "Question", "Status"],
+                   [[a["id"], "agent-written code" if a["kind"] == "code" else
+                     ("tool" if a.get("origin") == "cognos" else f"plugin tool ({a.get('origin')})"),
+                     a.get("tool") or "script", a["purpose"].replace("|", "/"),
+                     a["status"] + (f": {a['error'][:80]}" if a.get("error") else "")]
+                    for a in ep.get("analyses", [])]),
+        ]
+        scripts = [a for a in ep.get("analyses", []) if a["kind"] == "code"]
+        if scripts:
+            checked = {c["id"]: c for c in vp.get("analysis_code", [])}
+            parts += ["", "## Analysis code\n",
+                      "Written by the Data Analyst agent and executed by the engine in a "
+                      "restricted process. Each script was shown to the model developer at the "
+                      "data gate and re-run by validation.\n"]
+            for a in scripts:
+                c = checked.get(a["id"])
+                status = ("not re-run" if c is None else "reproduced at validation" if c["reproduced"]
+                          else f"NOT reproduced at validation ({c['note']})")
+                try:
+                    code = analysis.code_of(ctx.resolve(a["code_path"]).read_text(encoding="utf-8"))
+                except FileNotFoundError:
+                    code = "# (script file missing)"
+                parts += [f"### {a['id']} — {a['purpose']}\n",
+                          f"- **File:** `{a['code_path']}`  **SHA-256:** `{a['code_sha256'][:16]}`",
+                          f"- **Result:** {a['status']}; {status}\n",
+                          "```python", code.strip(), "```", ""]
+        return "\n".join(parts)
 
     @staticmethod
     def _engagement_body(cfg, tp: dict, mp: dict, metric_name: str) -> str:

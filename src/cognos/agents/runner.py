@@ -30,9 +30,15 @@ TASKS = {
                       "model's artifacts and the update request). Fill the engagement brief, judge "
                       "whether the goal is clear enough to start, and write the interview "
                       "questions the sponsor must answer where it is not.",
-    "data_analyst": "Review the data profile. Decide keep or exclude for every leakage suspect and any "
-                    "other column that should not be a model input, note data-quality issues, and list "
+    "data_analyst": "Review the data profile and the analyses you requested, against the business "
+                    "intent. Confirm the dependent variable, name the features worth considering "
+                    "and why, decide keep or exclude for every leakage suspect and any other "
+                    "column that should not be a model input, note data-quality issues, and list "
                     "questions the model sponsor must answer.",
+    "data_scout": "Before you recommend anything, ask for the analyses you need. If no target is "
+                  "fixed, name the dependent variable the business intent describes. Request up "
+                  "to context.max_requests analyses: a tool from context.tools, or Python when "
+                  "no tool fits. Set done=true when you need no further round.",
     "design_lead": "Design the model: decide the role of every econometric framework, rank a slate of "
                    "engine-fittable specifications, optionally propose feature transforms, and list "
                    "design questions the sponsor must answer.",
@@ -62,7 +68,8 @@ class BudgetExceeded(AgentRunError):
 
 
 def system_prompt(agent: str) -> str:
-    name = "modeler" if agent == "experiment" else agent  # guided search is the modeler's role
+    # guided search is the modeler's role; requesting analyses is the data analyst's
+    name = {"experiment": "modeler", "data_scout": "data_analyst"}.get(agent, agent)
     body = (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
     common = (PROMPTS_DIR / "_common.md").read_text(encoding="utf-8")
     return f"{body}\n\n{common}"

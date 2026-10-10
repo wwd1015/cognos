@@ -14,6 +14,18 @@ def _write_csv(tmp_path, df, name) -> str:
     return str(path)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _offline_session():
+    """Pin the deterministic agents for the whole session. Module- and session-scoped fixtures
+    run before any function-scoped one: without this, a machine with the ``claude`` CLI would
+    run their agents live (slow, billed, and not reproducible)."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("COGNOS_PROVIDER", "heuristic")
+    patch.delenv("COGNOS_PLUGINS", raising=False)
+    yield
+    patch.undo()
+
+
 @pytest.fixture(autouse=True)
 def _offline_agents(monkeypatch):
     """Tests never need a key or network: pin the deterministic (heuristic) agents."""

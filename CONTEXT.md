@@ -70,6 +70,28 @@ it is an earlier COGNOS run, are `prior.*` facts for the agents that read result
 The Intake Analyst's classification of an update request: `recalibrate`, `re_estimate` or
 `redevelop`. It steers the design and the validator. The engine re-estimates in every case.
 
+**Data source** (connector):
+Where a run's dataset comes from: a file, SQLite, Snowflake, or a plugin's connector. Fetched
+once; the **snapshot** in the run is what every stage reads, with its provenance and hash.
+
+**Plugin**:
+A module with `register(registry)` that adds **analysis tools** and data sources without editing
+COGNOS. A tool is reviewed code; its numbers are the engine's.
+
+**Analysis request**:
+What the Data Analyst asks the engine to run during explore: a tool by name, or a script. The
+agent never touches the data itself.
+
+**Analysis script** (agent-written code):
+Python the Data Analyst wrote when no tool fit. Run restricted by the engine, kept as a
+model-development artifact with its hash, read at the data gate, re-run at validation, printed in
+the white paper. _Avoid_: treating its output as trusted because it ran; it is trusted because it
+is on the record and reproduced.
+
+**Open target**:
+A profile that leaves the dependent variable to be proposed by the Data Analyst from the business
+intent and confirmed by the model developer at the data gate.
+
 **Challenge**:
 Pushback routed to a stage's agent — a human send-back or a high-severity validator finding. The
 agent must answer every open challenge (`responses_to_challenges`); validator challenges loop back

@@ -106,6 +106,8 @@ class Overrides(BaseModel):
     """Human decisions that shape the effective config (the profile YAML is never edited)."""
 
     exclude_columns: list[str] = Field(default_factory=list)
+    target: str | None = None  # the dependent variable, when the profile leaves it open
+    task: str | None = None  # ... and the task it implies
     design: dict[str, str] = Field(default_factory=dict)
     compliance: dict[str, str] = Field(default_factory=dict)  # intended / out-of-scope use
     slate: list[dict[str, Any]] | None = None

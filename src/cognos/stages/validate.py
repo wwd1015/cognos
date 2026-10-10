@@ -226,11 +226,38 @@ class ValidateStage(Stage):
             if verdict == Verdict.PASS:
                 verdict = Verdict.WARN
 
+        # --- agent-written analysis code: re-run every script and compare what it finds -------
+        from ..analysis import run as analysis
+
+        explore = ctx.get("explore")
+        scripts = [a for a in ((explore.payload or {}).get("analyses") if explore else None) or []
+                   if a.get("kind") == "code"]
+        code_review = []
+        for a in scripts:
+            ran = a.get("status") == "ok"
+            ok, why = analysis.reproduce(ctx, a) if ran else (False, a.get("error", ""))
+            try:
+                code = analysis.code_of(ctx.resolve(a["code_path"]).read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                code = ""
+            code_review.append({"id": a["id"], "purpose": a["purpose"], "sha256": a["code_sha256"],
+                                "ran": ran, "reproduced": ok, "note": why, "code": code[:4000]})
+            if ran and not ok:
+                res.add_finding(Finding(
+                    id=f"analysis-not-reproduced-{a['id']}", severity=Severity.MEDIUM,
+                    category="analysis-code", location=a["code_path"],
+                    message=f"Analysis script {a['id']} ({a['purpose'][:80]}) did not reproduce: "
+                            f"{why}.",
+                    suggestion="Evidence that rests on this script cannot be relied on until it "
+                               "reproduces; re-run explore."))
+
         # --- the Independent Validator's challenge (never sees the modeler's rationale) ---
         ideate = ctx.get("ideate")
         ip = ideate.payload if ideate is not None else {}
         res.verdict = verdict
-        res.payload = {"rubric": rubric, "overall_score": overall_score, "decision": verdict.value}
+        res.payload = {"rubric": rubric, "overall_score": overall_score, "decision": verdict.value,
+                       "analysis_code": [{k: c[k] for k in ("id", "sha256", "ran", "reproduced",
+                                                            "note")} for c in code_review]}
         diagnostics = model.get("diagnostics") or {}
         out = ctx.recommend("validator", {
             "engine_verdict": verdict.value,
@@ -249,6 +276,7 @@ class ValidateStage(Stage):
             "challenger_benchmark": model.get("challenger_benchmark"),
             "failed_diagnostics": diagnostics.get("failed_tests", []),
             "holdout_evaluations": n_eval,
+            "analysis_code": code_review,
         }, fresh={"validate": res})
         sev = {"low": Severity.LOW, "medium": Severity.MEDIUM, "high": Severity.HIGH}
         routed = []
@@ -278,6 +306,8 @@ class ValidateStage(Stage):
             "n_findings": len(res.findings),
         }
         payload["routed_findings"] = routed
+        payload["analysis_code"] = [{k: c[k] for k in ("id", "sha256", "ran", "reproduced", "note")}
+                                    for c in code_review]
         payload["validator"] = {"assessment": out.assessment, "recommendation": out.recommendation,
                                 "conditions": out.conditions}
         attach_recommendation(payload, ctx, "validator", out)

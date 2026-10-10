@@ -86,6 +86,17 @@ def collect(ctx, *, fresh: dict | None = None,
         for col, frac in (p.get("missing") or {}).items():
             if frac and frac >= 0.05:
                 _put(f, f"explore.missing.{col}", frac)
+        _put(f, "explore.target", p.get("target"))
+        _put(f, "explore.task", p.get("task"))
+        analyses = [a for a in p.get("analyses", []) if a.get("status") == "ok"]
+        if p.get("analyses") is not None:
+            _put(f, "explore.n_analyses", len(analyses))
+            _put(f, "explore.n_code_analyses", sum(1 for a in analyses if a["kind"] == "code"))
+        # What each analysis found. A tool's numbers are the engine's; a script's are the
+        # engine's execution of code the analyst wrote, kept and re-run at validation.
+        for a in analyses[:16]:
+            for key, value in list((a.get("summary") or {}).items())[:8]:
+                _put(f, f"explore.analysis.{a['id']}.{key}", value)
     ide = get("ideate")
     if ide is not None and ide.payload:
         ds = ide.payload.get("data_structure") or {}

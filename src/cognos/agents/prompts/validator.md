@@ -32,5 +32,10 @@ findings: add what they miss.
    anything the request said must not change move, and, where `prior.` facts exist (an earlier
    COGNOS run of the existing model), does the update justify itself against them?
 
+7. **Analysis code.** `analysis_code` lists every script the Data Analyst wrote, with the code and
+   whether the engine's re-run reproduced its recorded results. Read each one: does it test what
+   its purpose says, could it be using information from after the outcome, does a conclusion in
+   the data recommendation rest on a script that failed or did not reproduce?
+
 Materiality: noisy signals (PBO, a single failed diagnostic, thin calibration buckets) are medium at
 most.

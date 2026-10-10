@@ -2,6 +2,8 @@
 
   cognos ui         [--port 8050]                              # the Dash workbench
   cognos run        --config cognos.yaml [--interactive] [--provider P]
+  cognos run        --data loans.csv --intent intent.md      # no profile: the Data Analyst
+                                                              #   proposes the target
                     [--intent intent.md] [--support FILE ...]            # new model development
                     [--kind update --prior FILE ... | --prior-run ID]    # model update
   cognos intent-template [--kind new|update] [-o intent.md]   # the document a run starts from
@@ -11,6 +13,7 @@
   cognos answer     --run <run_id> --gap <id> --text "..."   # answer a sponsor question
   cognos retry      <step> --run <run_id>
   cognos run-stage  <stage> --config ... --run <run_id>       # one stage, individually invocable
+  cognos plugins                                              # analysis tools + data sources
   cognos providers | agents | init | explain | report | list-runs
 """
 
@@ -27,12 +30,20 @@ CONFIG_TEMPLATE = """\
 name: my_model
 description: "Describe the modeling problem."
 task: regression          # regression | classification | ml_regression | ml_classification | timeseries
+                          #   (omit it to infer the task from the confirmed target)
 mode: interactive         # interactive (pause at the review gates) | autonomous (agents' calls stand)
 
 data:
-  path: data.csv
+  path: data.csv          # a file; or use source: for a database (cognos plugins lists connectors)
   format: csv
-  target: target
+  # source:               # instead of path
+  #   kind: snowflake     # file | sqlite | snowflake | a plugin's connector
+  #   table: RISK.LOANS.ORIGINATIONS      # or query: "SELECT ... FROM ..."  (one read-only SELECT)
+  #   limit: null
+  #   options: {warehouse: ANALYTICS_WH, role: env:MY_ROLE}   # never a secret: account, user and
+  #                       #   the password / key come from SNOWFLAKE_* environment variables
+  target: target          # leave empty ("") and the Data Analyst proposes the dependent
+                          #   variable from the business intent; you confirm it at the data gate
   features: []            # empty = all non-target/non-protected columns
   datetime_col: null      # set for timeseries / walk-forward
   protected_attributes: []  # excluded from features; used for fair-lending checks
@@ -46,6 +57,13 @@ engagement:               # the development mode and the documents the run start
   supporting: []          # background material the Intake Analyst may read
   prior_artifacts: []     # update: the existing model's white paper, code, validation reports
   prior_run: null         # update: an earlier COGNOS run of that model (id or directory)
+
+analysis:                 # exploratory analysis the Data Analyst may request at explore
+  rounds: 2               # request rounds before its recommendation
+  max_requests: 8         # analyses per round (registered tools, or Python it writes)
+  allow_code: true        # agent-written Python: run restricted, kept as an artifact, shown at
+                          #   the data gate, printed in the white paper, re-run at validation
+plugins: []               # modules exposing register(registry): more tools and data sources
 
 design:                   # the sponsor's (MD's) design brief — unanswered fields become
   use_case: ""            #   open questions at the design gate, never silent assumptions
@@ -258,6 +276,24 @@ def _cmd_intent_template(args) -> int:
     return 0
 
 
+def _cmd_plugins(args) -> int:
+    from . import service
+
+    info = service.plugin_list(_load_config(args.config).plugins if args.config else ())
+    print("Analysis tools (the Data Analyst may request these):")
+    for t in info["tools"]:
+        params = f"({', '.join(t['params'])})" if t["params"] else "()"
+        print(f"  {t['name']}{params}  [{t['origin']}]\n      {t['description']}")
+    print("Data sources (data.source.kind):")
+    for s in info["sources"]:
+        print(f"  {s['kind']:<10} {s['label']}  [{s['origin']}]"
+              + ("" if s["available"] else f"\n      unavailable: {s['note']}"))
+    print(f"Plugins loaded: {', '.join(info['plugins']) or 'none'}")
+    for p in info["problems"]:
+        print(f"  ! {p['plugin']}: {p['error']}")
+    return 0
+
+
 def _cmd_explain(args) -> int:
     from .agents import providers
 
@@ -267,8 +303,13 @@ def _cmd_explain(args) -> int:
     print(f"  development mode: {eng.kind}  intent document: {eng.intent or 'none'}"
           + (f"  prior model: {len(eng.prior_artifacts)} artifact(s)"
              + (f" + run {eng.prior_run}" if eng.prior_run else "") if eng.kind == "update" else ""))
-    print(f"  task={cfg.task.value}  mode={cfg.mode.value}  metric={cfg.metric.name} ({cfg.metric.direction.value})")
-    print(f"  target={cfg.data.target}  holdout={cfg.search.holdout_fraction}  budget={cfg.search.max_candidates} candidates")
+    if cfg.task is None or not cfg.data.target:
+        print(f"  target={cfg.data.target or 'proposed by the Data Analyst, confirmed at the data gate'}"
+              f"  task={cfg.task.value if cfg.task else 'inferred from the target'}  mode={cfg.mode.value}")
+    else:
+        print(f"  task={cfg.task.value}  mode={cfg.mode.value}  metric={cfg.metric.name} "
+              f"({cfg.metric.direction.value})")
+    print(f"  target={cfg.data.target or '(open)'}  holdout={cfg.search.holdout_fraction}  budget={cfg.search.max_candidates} candidates")
     print(f"  stages: {' -> '.join(cfg.stages.enabled)}")
     print(f"  human review gates: {', '.join(cfg.workflow.gates) or 'none'}")
     print(f"  verdict gates (may BLOCK): {', '.join(cfg.stages.gates)}")
@@ -286,7 +327,17 @@ def _cmd_run(args) -> int:
     from . import service
 
     try:
-        cfg = service.with_engagement(_load_config(args.config), _engagement_args(args))
+        if not args.config and not args.data:
+            print("refused: give --config, or --data to start from a data file alone")
+            return 1
+        base = (_load_config(args.config) if args.config else
+                service.config_from_data(Path(args.data).stem, {"kind": "file", "path": args.data},
+                                         root=args.runs_dir))
+        if args.config and args.data:
+            base = service.load_config({**base.model_dump(mode="json"), "data": {
+                **base.data.model_dump(mode="json"), "path": None,
+                "source": {"kind": "file", "path": args.data}}})
+        cfg = service.with_engagement(base, _engagement_args(args))
     except ValueError as exc:
         print(f"refused: {exc}")
         return 1
@@ -300,7 +351,7 @@ def _cmd_run(args) -> int:
         try:
             eng = Engine(cfg, run_id=run_id, runs_root=service.runs_root(args.runs_dir),
                          provider=args.provider, mode=mode)
-        except FileNotFoundError as exc:  # a document the engagement names is missing
+        except (FileNotFoundError, ValueError) as exc:  # a document the engagement names is missing
             print(f"refused: {exc}")
             return 1
         run_id = eng.run_id
@@ -548,7 +599,10 @@ def build_parser() -> argparse.ArgumentParser:
     pe.set_defaults(func=_cmd_explain)
 
     pr = sub.add_parser("run", help="run the workflow (resumes when --run-id exists)")
-    pr.add_argument("--config", required=True)
+    pr.add_argument("--config", default=None)
+    pr.add_argument("--data", default=None,
+                    help="a data file (.csv, .parquet, .xlsx); without --config the Data Analyst "
+                         "proposes the target")
     pr.add_argument("--interactive", action="store_true", help="review each gate in the terminal")
     pr.add_argument("--provider", default=None, help="agent backend (see `cognos providers`)")
     pr.add_argument("--run-id", default=None)
@@ -624,6 +678,10 @@ def build_parser() -> argparse.ArgumentParser:
     prt.add_argument("--run", required=True)
     runs(prt)
     prt.set_defaults(func=_cmd_retry)
+
+    pp = sub.add_parser("plugins", help="list analysis tools, data sources and loaded plugins")
+    pp.add_argument("--config", default=None, help="also load the profile's plugins: list")
+    pp.set_defaults(func=_cmd_plugins)
 
     pv = sub.add_parser("providers", help="list agent backends and availability")
     pv.set_defaults(func=_cmd_providers)

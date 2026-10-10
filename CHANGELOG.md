@@ -6,6 +6,25 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- **Data sources** ([ADR-0012](docs/adr/0012-data-sources-plugins-and-agent-written-analysis.md)).
+  `data.source` reads an uploaded or local file (CSV, Parquet, Excel, JSON lines), SQLite, or
+  Snowflake (`pip install 'cognos[snowflake]'`; credentials from `SNOWFLAKE_*` environment
+  variables, never stored). The run keeps a snapshot with its provenance and hash.
+- **The Data Analyst proposes the dependent variable.** `data.target` and `task` may be left
+  empty; the analyst chooses the target against the business intent and lists the features worth
+  considering; the developer confirms or changes the target at the data gate.
+- **Plugins.** `register(registry)` modules add analysis tools and data sources (entry-point
+  group `cognos.plugins`, the profile's `plugins:` list, `COGNOS_PLUGINS`). `cognos plugins`
+  lists what is installed. Example: `examples/plugins/credit_tools.py`.
+- **Analysis on request.** During explore the analyst requests tools (six built in) or writes
+  Python; the engine runs them in rounds and keeps each result with its chart.
+- **Agent-written code as a reviewed artifact.** Scripts run in a restricted subprocess, are
+  saved with a provenance header and hash, shown at the data gate (the decision records them),
+  re-run at validation, given to the Independent Validator, printed in the white paper and
+  exported.
+- **Visuals.** An analysis gallery, the dependent-variable card, feature candidates and
+  data-source provenance in the explore panel; data upload and Snowflake inputs in the new-run
+  drawer; `cognos run --data FILE` starts from a data file alone.
 - **Development modes** ([ADR-0011](docs/adr/0011-development-modes-and-intake.md)). A run is a
   **new model development** or a **model update** (`engagement.kind`; `cognos run --kind`, the
   switch at the top of the workbench's new-run drawer). A new development starts from the sponsor's

@@ -18,8 +18,10 @@ from .contracts import (
     ColumnDecision,
     Contract,
     DataAnalystOutput,
+    DataScoutOutput,
     DesignLeadOutput,
     ExperimentProposal,
+    FeatureCandidate,
     IntakeAnalystOutput,
     ModelerOutput,
     ValidatorOutput,
@@ -33,7 +35,7 @@ def _cited(out: Contract) -> list[str]:
     ids: list[str] = []
 
     def walk(o: Any) -> None:
-        if isinstance(o, Claim | AgentFinding | ColumnDecision):
+        if isinstance(o, Claim | AgentFinding | ColumnDecision | FeatureCandidate):
             ids.extend(o.evidence)
         if isinstance(o, Contract):
             for name in type(o).model_fields:
@@ -156,7 +158,67 @@ def data_analyst(out: DataAnalystOutput, sl: dict[str, Any]) -> list[str]:
         errs.append("excluding every feature leaves nothing to model")
     if len(decided) != len(set(decided)):
         errs.append("each column may appear in column_decisions only once")
+    fixed = sl.get("target")
+    if fixed and out.target and out.target != fixed:
+        errs.append(f"the target is {fixed!r}; to argue for another column, raise it in "
+                    "uncertainties or questions_for_sponsor")
+    named = [c.column for c in out.feature_candidates]
+    for c in named:
+        if c not in features:
+            errs.append(f"feature_candidates names {c!r}, which is not a candidate feature")
+        elif c in excluded:
+            errs.append(f"{c!r} is both a feature candidate and excluded; choose one")
+    if len(named) != len(set(named)):
+        errs.append("each column may appear in feature_candidates only once")
     return errs
+
+
+def data_scout(out: DataScoutOutput, sl: dict[str, Any]) -> list[str]:
+    """Analysis requests the engine can run: a known tool with known parameters and columns, or
+    a script that passes the restricted-code check."""
+    from ..analysis import sandbox
+
+    errs: list[str] = []
+    columns = set(sl.get("columns", []))
+    if not sl.get("target"):
+        candidates = {c["column"] for c in sl.get("target_candidates", [])}
+        if not out.target_column:
+            errs.append("no target is fixed: name the dependent variable in target_column")
+        elif out.target_column not in candidates:
+            errs.append(f"target_column {out.target_column!r} cannot be the dependent variable "
+                        f"here; choose from {sorted(candidates)}")
+    elif out.target_column and out.target_column != sl["target"]:
+        errs.append(f"the target is already {sl['target']!r}; leave target_column empty")
+    tools = {t["name"]: t for t in sl.get("tools", [])}
+    limit = sl.get("max_requests", 8)
+    if len(out.requests) > limit:
+        errs.append(f"at most {limit} analyses per round; you asked for {len(out.requests)}")
+    target_known = bool(sl.get("target") or out.target_column)
+    for i, r in enumerate(out.requests, 1):
+        where = f"request {i}"
+        if bool(r.tool) == bool(r.code.strip()):
+            errs.append(f"{where}: give a tool or code, not both and not neither")
+            continue
+        if not r.purpose.strip():
+            errs.append(f"{where}: say what question it answers in purpose")
+        if r.code.strip():
+            if not sl.get("allow_code"):
+                errs.append(f"{where}: writing code is switched off for this run; use a tool")
+            else:
+                errs += [f"{where}: {e}" for e in sandbox.validate(r.code)]
+            continue
+        tool = tools.get(r.tool)
+        if tool is None:
+            errs.append(f"{where}: unknown tool {r.tool!r}; choose from {sorted(tools)}")
+            continue
+        if tool.get("needs_target") and not target_known:
+            errs.append(f"{where}: {r.tool} needs the target")
+        for p in r.params:
+            if p.name not in tool.get("params", {}):
+                errs.append(f"{where}: {r.tool} has no parameter {p.name!r}")
+            elif p.name == "column" and p.value not in columns:
+                errs.append(f"{where}: unknown column {p.value!r}")
+    return errs[:12]
 
 
 def design_lead(out: DesignLeadOutput, sl: dict[str, Any]) -> list[str]:
@@ -247,6 +309,7 @@ def writer(out: WriterOutput, sl: dict[str, Any]) -> list[str]:
 CHECKS: dict[str, Check] = {
     "intake_analyst": intake_analyst,
     "data_analyst": data_analyst,
+    "data_scout": data_scout,
     "design_lead": design_lead,
     "modeler": modeler,
     "experiment": experiment,

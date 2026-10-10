@@ -83,7 +83,13 @@ def runs_page() -> Any:
                   "disabled": not p["available"]} for p in providers if p["id"] != "replay"]
     default_prov = next((p["id"] for p in providers if p["available"] and p["id"] == "claude_cli"),
                         "heuristic")
-    source_data = ([{"group": "Synthetic demos", "items": [
+    sources = {s["kind"]: s for s in service.plugin_list()["sources"]}
+    snow = sources.get("snowflake", {})
+    own = [{"value": "data:file", "label": "Upload a data file (.csv, .parquet, .xlsx)"},
+           {"value": "data:snowflake", "label": "Snowflake table or query"
+            + ("" if snow.get("available") else " — not configured")}]
+    source_data = ([{"group": "Your data — the Data Analyst proposes the target", "items": own}]
+                   + [{"group": "Synthetic demos", "items": [
         {"value": f"demo:{k}", "label": v} for k, v in service.DEMO_LABELS.items()]}]
         + ([{"group": "Project profiles", "items": [
             {"value": f"profile:{p['path']}", "label": f"{p['name']} ({p['path']})"}
@@ -97,6 +103,23 @@ def runs_page() -> Any:
             {"value": "update", "label": "Model update"}]),
         dmc.Select(id="new-source", label="Data & design", data=source_data, value="demo:commercial",
                    allowDeselect=False, searchable=True),
+        html.Div(dmc.Stack([
+            dmc.TextInput(id="new-name", label="Model name", placeholder="e.g. commercial_pd"),
+            html.Div(dmc.Stack([
+                dmc.Text("Data file", size="sm", fw=500),
+                upload_box("new-data", "Drop the dataset, or click to choose", multiple=False),
+            ], gap=4), id="new-data-file"),
+            html.Div(dmc.Stack([
+                dmc.TextInput(id="new-sf-table", label="Table",
+                              placeholder="DATABASE.SCHEMA.TABLE"),
+                dmc.Textarea(id="new-sf-query", label="Or a read-only query", autosize=True,
+                             minRows=2, placeholder="SELECT ... FROM ... WHERE ..."),
+                dmc.NumberInput(id="new-sf-limit", label="Row limit (optional)", min=1),
+                dmc.Text(snow.get("note") or "Connects with the SNOWFLAKE_ACCOUNT / SNOWFLAKE_USER "
+                         "and password or key in this server's environment. Nothing secret is "
+                         "stored in the run.", size="xs", c="dimmed"),
+            ], gap=4), id="new-data-sf", style={"display": "none"}),
+        ], gap="xs"), id="new-data-wrap", style={"display": "none"}),
         dmc.Stack([
             dmc.Group([
                 dmc.Text("Business intent document", size="sm", fw=500, id="new-intent-label"),
@@ -507,7 +530,15 @@ def register_callbacks(app: Dash) -> None:
         return {"content": service.intent_template(kind or "new"), "filename": name,
                 "type": "text/markdown"}
 
-    for _box in ("new-intent", "new-support", "new-prior"):
+    @app.callback(Output("new-data-wrap", "style"), Output("new-data-file", "style"),
+                  Output("new-data-sf", "style"), Input("new-source", "value"))
+    def show_data(source):
+        show, hide = {"display": "block"}, {"display": "none"}
+        own = str(source or "").startswith("data:")
+        return (show if own else hide, show if source == "data:file" else hide,
+                show if source == "data:snowflake" else hide)
+
+    for _box in ("new-intent", "new-support", "new-prior", "new-data"):
         app.callback(Output(f"{_box}-names", "children"), Input(_box, "filename"))(upload_names)
 
     @app.callback(Output("url", "pathname"), Output("new-feedback", "children"),
@@ -517,13 +548,24 @@ def register_callbacks(app: Dash) -> None:
                   State("new-intent", "contents"), State("new-intent", "filename"),
                   State("new-support", "contents"), State("new-support", "filename"),
                   State("new-prior", "contents"), State("new-prior", "filename"),
-                  State("new-prior-run", "value"), prevent_initial_call=True)
+                  State("new-prior-run", "value"), State("new-name", "value"),
+                  State("new-data", "contents"), State("new-data", "filename"),
+                  State("new-sf-table", "value"), State("new-sf-query", "value"),
+                  State("new-sf-limit", "value"), prevent_initial_call=True)
     def create(clicks, source, mode, provider, kind, intent, intent_name, support,
-               support_names, prior, prior_names, prior_run):
+               support_names, prior, prior_names, prior_run, name=None, data=None,
+               data_name=None, sf_table=None, sf_query=None, sf_limit=None):
         if not clicks:  # the button was just rendered, not clicked
             return no_update, no_update
         try:
-            if source.startswith("demo:"):
+            if source.startswith("data:"):
+                spec = data_source_spec(source[5:], saved_uploads(data, data_name), sf_table,
+                                        sf_query, sf_limit)
+                if isinstance(spec, str):
+                    return no_update, dmc.Alert(spec, color="yellow", variant="light")
+                cfg = service.config_from_data(
+                    name or (data_name or sf_table or "model").rsplit(".", 1)[0], spec)
+            elif source.startswith("demo:"):
                 cfg = service.demo_config(source[5:])
             else:
                 cfg = service.load_config(source[8:])
@@ -688,6 +730,21 @@ def notice(title: str, message: str, color: str) -> dict:
             "id": f"n{time.time_ns()}"}
 
 
+def data_source_spec(kind: str, uploaded: list[str], table: str | None, query: str | None,
+                     limit: Any) -> dict | str:
+    """The ``data.source`` the form describes, or (a string) why it is not complete yet."""
+    if kind == "file":
+        if not uploaded:
+            return "Upload the data file to model (.csv, .parquet or .xlsx)."
+        return {"kind": "file", "path": uploaded[0]}
+    table, query = (table or "").strip(), (query or "").strip()
+    if not table and not query:
+        return "Name the Snowflake table, or give a read-only query."
+    spec: dict = {"kind": kind, "limit": int(limit) if limit else None}
+    spec.update({"query": query} if query else {"table": table})
+    return spec
+
+
 def engagement_problem(kind: str | None, cfg, has_intent: bool, has_prior: bool) -> str | None:
     """Why a run cannot start yet, in the words of the form. A development starts from the
     sponsor's intent; an update also from the model it changes."""
@@ -717,6 +774,8 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
         return payload, reason or payload["message"]
     if gate == "gate_data" and action == "edit":
         payload["exclude_columns"] = list(fields.get("exclude") or [])
+        if fields.get("target"):
+            payload["target"] = fields["target"]
     if gate in ("gate_intent", "gate_design"):
         answers = {k.split("::", 1)[1]: v for k, v in fields.items()
                    if k.startswith("answer::") and v and str(v).strip()}
