@@ -63,6 +63,24 @@ def test_interactive_gate_forms_round_trip(root):
     cfg = service.demo_config("commercial", root, n=600, search_budget=6)
     run_id = service.create_run(cfg, mode="interactive", provider="heuristic")
     st = service.run_until_idle(run_id)
+
+    # the intent gate: the interview is a form, an answer becomes a gap answer
+    assert ui.auto_step(st) == "intake"
+    panel = _serialize(stage_panel("intake", service.results(run_id)["intake"], st, "light"))
+    assert "Confirm the intent" in panel and "Submit answers" in panel and "blocking" in panel
+    assert "answer::design-horizon" in panel and "Engagement brief" in panel
+    payload, _ = ui.gate_payload("gate_intent", "edit", {"answer::design-horizon": "12-month",
+                                                         "answer::design-segment": " "}, run_id)
+    assert payload == {"answers": {"design-horizon": "12-month"}}
+    service.submit_gate(run_id, "gate_intent", "edit", payload, background=False)
+    st = service.run_until_idle(run_id)
+    panel = _serialize(stage_panel("intake", service.results(run_id)["intake"], st, "light"))
+    assert "answer::design-horizon" not in panel and '"answered"' in panel
+    assert '"c": null' not in panel  # an explicit None style prop breaks the page in the browser
+    service.submit_gate(run_id, "gate_intent", "accept", reason="the rest is with the sponsor",
+                        background=False)
+    st = service.run_until_idle(run_id)
+
     assert ui.auto_step(st) == "explore"
     panel = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light"))
     assert '"gate-act"' in panel and "Accept recommendation" in panel
@@ -109,6 +127,8 @@ def test_compare_page_and_rerun_note_render(root):
     service.run_until_idle(first)
     second = service.create_run(cfg, mode="interactive", provider="heuristic")
     service.run_until_idle(second)
+    service.submit_gate(second, "gate_intent", "accept", reason="as written", background=False)
+    service.run_until_idle(second)
     prof = service.results(second)["explore"].payload
     drop = [c for c in prof["features"] if c not in prof.get("recommended_exclusions", [])][0]
     service.submit_gate(second, "gate_data", "edit", {"exclude_columns": [drop]}, "what if", background=False)
@@ -144,3 +164,44 @@ def test_compare_page_and_rerun_note_render(root):
     panel = _serialize(stage_panel("model", service.results(second)["model"], st, "dark", changes))
     assert "What the re-run changed" in panel and "Ran again because" in panel
     assert rerun_note("explore", st, None) is None  # explore ran once
+
+
+def test_new_run_form_asks_for_what_the_development_mode_needs(root):
+    page = _serialize(ui.runs_page())
+    assert "New model development" in page and "Model update" in page
+    assert "new-intent" in page and "new-prior" in page and "Download the template" in page
+
+    demo = service.demo_config("commercial", root, n=200, search_budget=4)
+    bare = demo.model_copy(update={"engagement": demo.engagement.model_copy(update={"intent": None})})
+    assert ui.engagement_problem("new", demo, False, False) is None  # a demo brings its own intent
+    assert "business intent document" in ui.engagement_problem("new", bare, False, False)
+    assert ui.engagement_problem("new", bare, True, False) is None
+    assert "update request" in ui.engagement_problem("update", demo, False, True)
+    assert "existing model" in ui.engagement_problem("update", demo, True, False)
+    assert ui.engagement_problem("update", demo, True, True) is None
+
+    data_url = "data:text/plain;base64,aGVsbG8="
+    assert [open(p, encoding="utf-8").read() for p in ui.saved_uploads(data_url, "a.txt")] == ["hello"]
+    assert len(ui.saved_uploads([data_url, data_url], ["a.txt", "b.txt"])) == 2
+    assert ui.saved_uploads(None, None) == [] and ui.upload_names(None) is None
+    assert "a.txt" in _serialize(ui.upload_names(["a.txt", "b.md"]))
+
+
+def test_intake_panel_shows_the_update_request(root, tmp_path):
+    from cognos import engagement as eg
+
+    cfg = service.demo_config("commercial", root, n=600, search_budget=6)
+    request = tmp_path / "request.md"
+    request.write_text(eg.render_template("update", {
+        "objective": "Keep the PD model accurate.", "prior_model": "PD v1",
+        "update_reason": "Calibration drift.",
+        "requested_changes": "- Recalibrate to the long-run default rate"}), encoding="utf-8")
+    paper = tmp_path / "whitepaper.md"
+    paper.write_text("PD v1 is a logistic regression scorecard.", encoding="utf-8")
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic", engagement={
+        "kind": "update", "intent": str(request), "prior_artifacts": [str(paper)]})
+    st = service.run_until_idle(run_id)
+    panel = _serialize(stage_panel("intake", service.results(run_id)["intake"], st, "light"))
+    assert "Model update" in panel and "Update request" in panel and "recalibration" in panel
+    assert "The existing model" in panel and "logit" in panel and "whitepaper.md" in panel
+    assert "update" in _serialize(ui.runs_table())

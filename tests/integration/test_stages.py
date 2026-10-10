@@ -28,7 +28,7 @@ def reg_run(tmp_path_factory):
 
 def test_all_stages_ran(reg_run):
     ctx, summary = reg_run
-    assert summary.stages_run == ["explore", "ideate", "model", "backtest", "validate",
+    assert summary.stages_run == ["intake", "explore", "ideate", "model", "backtest", "validate",
                                   "comply", "document", "review"]
     assert summary.final_verdict.value != "ERROR"
 

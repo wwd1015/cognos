@@ -108,6 +108,20 @@ class DocumentStage(Stage):
             ),
         ))
 
+        # --- 1b. engagement: the business intent and, for an update, the change record ----
+        intake = ctx.get("intake")
+        tp = (intake.payload if intake is not None else None) or {}
+        if tp:
+            emit(OKFConcept(
+                name="engagement", type="engagement",
+                title="Business Intent" + (" & Model Change Record" if tp.get("update") else ""),
+                description="What the sponsor asked for, what stayed open, and what an update "
+                            "changed.",
+                resource=ctx.rel(ctx.resolve("stages/intake/brief.json")),
+                tags=["intent", "governance"],
+                body=self._engagement_body(cfg, tp, mp, metric_name),
+            ))
+
         # --- 2. dataset ----------------------------------------------------------
         leakage = ep.get("leakage_suspects", []) or []
         feats = ep.get("features", []) or champion.get("features", [])
@@ -352,6 +366,8 @@ class DocumentStage(Stage):
             concept_names.insert(9, "validation")
         if cp:
             concept_names.insert(10 if vp else 9, "compliance")
+        if tp:
+            concept_names.insert(1, "engagement")
 
         # --- 12. EU AI Act Annex IV (only for EU deployments) --------------------
         if "EU" in cfg.compliance.jurisdictions:
@@ -501,6 +517,72 @@ class DocumentStage(Stage):
             "passed; see [diagnostics](./diagnostics.md) and [backtest](./backtest.md)."
         )
 
+    @staticmethod
+    def _engagement_body(cfg, tp: dict, mp: dict, metric_name: str) -> str:
+        """The intake brief as recorded, with design fields read from the effective config (an
+        answer given after intake wins). Numbers are the engine's, from this run and, for an
+        update of an earlier COGNOS run, from that run's record."""
+        basis = {"stated": "intent document", "answered": "sponsor answer",
+                 "profile": "project profile", "inferred": "inferred, unconfirmed",
+                 "missing": "open"}
+        rows = []
+        for b in tp.get("brief", []):
+            value, src = b.get("value") or "", basis.get(b.get("basis", ""), "")
+            live = str(getattr(cfg.design, b["field"], "") or "") if b["field"] in (
+                "use_case", "horizon", "default_definition", "segment") else ""
+            if live and live != value:
+                value, src = live, "sponsor answer"
+            if not value and not b.get("required"):
+                value, src = "not stated", ""
+            rows.append([b["label"], value.replace("|", "/") or "_open_", src])
+        parts = [
+            "# Business Intent\n",
+            f"- **Development mode:** {tp.get('kind_label', tp.get('kind', 'n/a'))}",
+            f"- **Objective:** {tp.get('objective') or 'n/a'}",
+            f"- **Intent at intake:** {str(tp.get('clarity', 'n/a')).replace('_', ' ')}\n",
+            _table(["Field", "Sponsor position", "Source"], rows), "",
+            "## Open at intake\n",
+            "\n".join(f"- {q['question']}" for q in tp.get("questions", [])) or "Nothing.", "",
+            "## Documents received\n",
+            _table(["Document", "Role", "SHA-256"],
+                   [[d["name"], d["role"], (d.get("sha256") or "")[:16] or "unreadable"]
+                    for d in tp.get("documents", [])]),
+        ]
+        up = tp.get("update")
+        if up:
+            parts += [
+                "", "## Model change record\n",
+                f"- **Scope:** {str(up.get('scope')).replace('_', ' ')} — {up.get('rationale', '')}",
+                f"- **Existing model family:** {up.get('incumbent_family') or 'not identified'}\n",
+                _table(["Requested change", "Type", "Enters at"],
+                       [[c["change"].replace("|", "/"), c["type"].replace("_", " "), c["affects"]]
+                        for c in up.get("change_items", [])]),
+            ]
+            prior = (tp.get("prior") or {}).get("run")
+            if prior:
+                champion = mp.get("champion", {}) or {}
+                same = prior.get("metric") == metric_name
+                parts += [
+                    "", "## Existing model against this update\n",
+                    f"The existing model is COGNOS run `{prior.get('run_id')}`. Both columns are "
+                    "what each run recorded; the two runs keep separate sealed holdouts, so the "
+                    "holdout figures are not measured on the same sample.\n",
+                    _table(["", "Existing model", "This update"], [
+                        ["Champion family", str(prior.get("champion_family") or "n/a"),
+                         str(champion.get("family", "n/a"))],
+                        ["Features", str(len(prior.get("features") or [])),
+                         str(len(champion.get("features", []) or []))],
+                        ["Metric", str(prior.get("metric") or "n/a"), metric_name],
+                        [f"CV {metric_name}" if same else "CV metric",
+                         _fmt(prior.get("cv_mean")), _fmt(mp.get("cv_mean"))],
+                        [f"Holdout {metric_name}" if same else "Holdout metric",
+                         _fmt(prior.get("holdout_metric")), _fmt(mp.get("holdout_metric"))],
+                        ["Validation verdict", str(prior.get("validation_verdict") or "n/a"),
+                         "see the validation section"],
+                    ]),
+                ]
+        return "\n".join(parts)
+
     def _narrative(self, ctx: RunContext, cfg, ip: dict, emit) -> dict:
         """Ask the Technical Writer for the narrative; render placeholders; emit the decision log."""
         from ..agents import facts as facts_mod
@@ -542,7 +624,7 @@ class DocumentStage(Stage):
 
         # Decision log: who recommended what, who decided.
         recs = []
-        for stage in ("explore", "ideate", "model", "backtest", "validate", "comply"):
+        for stage in ("intake", "explore", "ideate", "model", "backtest", "validate", "comply"):
             r = ctx.get(stage)
             rec = (r.payload.get("recommendation") if r is not None else None) or {}
             if rec:

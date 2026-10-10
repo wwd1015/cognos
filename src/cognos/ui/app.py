@@ -1,7 +1,8 @@
 """The COGNOS workbench — a Dash + Mantine app for model developers.
 
 Two pages: **Runs** (every run, and a drawer to start a new one from a project profile or a
-synthetic demo) and the **run workspace** (stage rail, the selected stage's evidence beside its
+synthetic demo, as a new model development or a model update, with the business intent document
+and the existing model's artifacts uploaded there) and the **run workspace** (stage rail, the selected stage's evidence beside its
 agent's recommendation, the human gate, live activity, questions & challenges, and the agent audit).
 
 The engine runs in background threads (``cognos.service``); the browser polls run state once a
@@ -87,10 +88,40 @@ def runs_page() -> Any:
         + ([{"group": "Project profiles", "items": [
             {"value": f"profile:{p['path']}", "label": f"{p['name']} ({p['path']})"}
             for p in profiles]}] if profiles else []))
+    prior_runs = [{"value": r["run_id"], "label": f"{r['project']} · {r['run_id']}"}
+                  for r in service.list_runs() if not r["legacy"] and r["champion"]]
     drawer = dmc.Drawer(id="new-drawer", title=dmc.Text("Start a run", fw=650), position="right",
-                        size="md", padding="lg", children=dmc.Stack([
+                        size="lg", padding="lg", children=dmc.Stack([
+        dmc.SegmentedControl(id="new-kind", value="new", fullWidth=True, data=[
+            {"value": "new", "label": "New model development"},
+            {"value": "update", "label": "Model update"}]),
         dmc.Select(id="new-source", label="Data & design", data=source_data, value="demo:commercial",
                    allowDeselect=False, searchable=True),
+        dmc.Stack([
+            dmc.Group([
+                dmc.Text("Business intent document", size="sm", fw=500, id="new-intent-label"),
+                dmc.Button("Download the template", id="new-template", variant="subtle",
+                           size="compact-xs", leftSection=icon("tabler:download", 14), n_clicks=0),
+            ], justify="space-between"),
+            upload_box("new-intent", "Drop the filled-in template, or click to choose "
+                                     "(.md, .txt, .docx)", multiple=False),
+            dmc.Text("What the model is for, in the sponsor's words. The Intake Analyst reads it "
+                     "and asks about anything left unclear. A synthetic demo brings its own.",
+                     size="xs", c="dimmed", id="new-intent-help"),
+        ], gap=4),
+        dmc.Stack([
+            dmc.Text("Background documents (optional)", size="sm", fw=500),
+            upload_box("new-support", "Policies, data dictionaries, earlier analyses",
+                       multiple=True),
+        ], gap=4),
+        html.Div(dmc.Stack([
+            dmc.Text("The existing model", size="sm", fw=500),
+            upload_box("new-prior", "White paper, development and deployment code, validation "
+                                    "and monitoring reports", multiple=True),
+            dmc.Select(id="new-prior-run", label="Or an earlier COGNOS run of it",
+                       data=prior_runs, clearable=True, searchable=True,
+                       placeholder="none"),
+        ], gap=4), id="new-prior-wrap", style={"display": "none"}),
         dmc.SegmentedControl(id="new-mode", value="interactive", fullWidth=True, data=[
             {"value": "interactive", "label": "Interactive — I review each gate"},
             {"value": "autonomous", "label": "Autonomous — prototype"}]),
@@ -106,14 +137,44 @@ def runs_page() -> Any:
     return dmc.Container([
         dmc.Group([
             dmc.Stack([dmc.Title("Model development runs", order=2),
-                       dmc.Text("Each run takes a dataset and a design brief through eight stages "
-                                "and five review gates.", c="dimmed", size="sm")], gap=2),
+                       dmc.Text("A run starts from the sponsor's business intent (a new model, or "
+                                "an update of an existing one) and takes it through nine stages "
+                                "and six review gates.", c="dimmed", size="sm")], gap=2),
             dmc.Button("New run", id="new-open", leftSection=icon("tabler:plus"), size="md"),
         ], justify="space-between", mb="lg"),
         compare_picker(),
         dmc.Card(html.Div(id="runs-table", children=runs_table()), p=0),
         drawer,
+        dcc.Download(id="template-download"),
     ], size="xl", py="md")
+
+
+def upload_box(id_: str, hint: str, *, multiple: bool) -> Any:
+    """A document drop zone and, under it, the names of what was chosen."""
+    return html.Div([
+        dcc.Upload(id=id_, multiple=multiple, className="cognos-upload",
+                   children=dmc.Group([icon("tabler:upload", 16), dmc.Text(hint, size="xs")],
+                                      gap="xs", justify="center")),
+        html.Div(id=f"{id_}-names"),
+    ])
+
+
+def upload_names(names: Any) -> Any:
+    names = [names] if isinstance(names, str) else list(names or [])
+    if not names:
+        return None
+    return dmc.Group([dmc.Badge(n, variant="light", color="indigo", size="sm", tt="none",
+                                leftSection=icon("tabler:file-text", 12)) for n in names],
+                     gap=4, mt=4)
+
+
+def saved_uploads(contents: Any, names: Any) -> list[str]:
+    """Save what an Upload holds and return the paths (one or many files)."""
+    if not contents:
+        return []
+    if isinstance(contents, str):
+        contents, names = [contents], [names]
+    return [service.save_upload(n, c) for c, n in zip(contents, names or [], strict=False)]
 
 
 def compare_picker() -> Any:
@@ -145,7 +206,8 @@ def runs_table() -> Any:
         body.append([
             link, dmc.Text(r["project"], fw=500, size="sm"), run_badge(r["status"], "sm"),
             dmc.Text(LABELS.get(r["waiting_on"], "") if r["waiting_on"] else "", size="sm"),
-            dmc.Text(r["mode"], size="sm"), dmc.Code(r["provider"]),
+            dmc.Text(r["mode"] + (" · update" if r.get("kind") == "update" else ""), size="sm"),
+            dmc.Code(r["provider"]),
             dmc.Text(r["champion"] or "", size="sm", ff="monospace"),
             dmc.Text(f"${r['spend_usd']:.2f}" if r["spend_usd"] else "—", size="sm"),
             dmc.Text((r["updated_at"] or "")[:19].replace("T", " "), size="xs", c="dimmed"),
@@ -429,11 +491,35 @@ def register_callbacks(app: Dash) -> None:
     def open_drawer(clicks):
         return bool(clicks) or no_update
 
+    @app.callback(Output("new-prior-wrap", "style"), Output("new-intent-label", "children"),
+                  Input("new-kind", "value"))
+    def show_kind(kind):
+        update = kind == "update"
+        return ({"display": "block" if update else "none"},
+                "Model update request" if update else "Business intent document")
+
+    @app.callback(Output("template-download", "data"), Input("new-template", "n_clicks"),
+                  State("new-kind", "value"), prevent_initial_call=True)
+    def download_template(clicks, kind):
+        if not clicks:
+            return no_update
+        name = "model_update_request.md" if kind == "update" else "business_intent.md"
+        return {"content": service.intent_template(kind or "new"), "filename": name,
+                "type": "text/markdown"}
+
+    for _box in ("new-intent", "new-support", "new-prior"):
+        app.callback(Output(f"{_box}-names", "children"), Input(_box, "filename"))(upload_names)
+
     @app.callback(Output("url", "pathname"), Output("new-feedback", "children"),
                   Input("new-create", "n_clicks"),
                   State("new-source", "value"), State("new-mode", "value"),
-                  State("new-provider", "value"), prevent_initial_call=True)
-    def create(clicks, source, mode, provider):
+                  State("new-provider", "value"), State("new-kind", "value"),
+                  State("new-intent", "contents"), State("new-intent", "filename"),
+                  State("new-support", "contents"), State("new-support", "filename"),
+                  State("new-prior", "contents"), State("new-prior", "filename"),
+                  State("new-prior-run", "value"), prevent_initial_call=True)
+    def create(clicks, source, mode, provider, kind, intent, intent_name, support,
+               support_names, prior, prior_names, prior_run):
         if not clicks:  # the button was just rendered, not clicked
             return no_update, no_update
         try:
@@ -441,7 +527,18 @@ def register_callbacks(app: Dash) -> None:
                 cfg = service.demo_config(source[5:])
             else:
                 cfg = service.load_config(source[8:])
-            run_id = service.create_run(cfg, mode=mode, provider=provider)
+            problem = engagement_problem(kind, cfg, bool(intent), bool(prior or prior_run))
+            if problem:
+                return no_update, dmc.Alert(problem, color="yellow", variant="light")
+            update = kind == "update"
+            engagement = {
+                "kind": kind or "new",
+                "intent": next(iter(saved_uploads(intent, intent_name)), None),
+                "supporting": saved_uploads(support, support_names),
+                "prior_artifacts": saved_uploads(prior, prior_names) if update else [],
+                "prior_run": prior_run if update else None,
+            }
+            run_id = service.create_run(cfg, mode=mode, provider=provider, engagement=engagement)
             service.start(run_id)
         except Exception as exc:  # show, don't crash the page
             return no_update, dmc.Alert(str(exc), color="red", variant="light")
@@ -591,6 +688,24 @@ def notice(title: str, message: str, color: str) -> dict:
             "id": f"n{time.time_ns()}"}
 
 
+def engagement_problem(kind: str | None, cfg, has_intent: bool, has_prior: bool) -> str | None:
+    """Why a run cannot start yet, in the words of the form. A development starts from the
+    sponsor's intent; an update also from the model it changes."""
+    eng = cfg.engagement
+    if kind == "update":
+        if not (has_intent or (eng.kind == "update" and eng.intent)):
+            return ("A model update starts from the update request. Download the template, "
+                    "fill it in, and upload it.")
+        if not (has_prior or eng.prior_artifacts or eng.prior_run):
+            return ("A model update needs the existing model: upload its white paper, code or "
+                    "reports, or pick an earlier COGNOS run of it.")
+        return None
+    if not (has_intent or eng.intent):
+        return ("A new model development starts from the business intent document. Download "
+                "the template, fill it in, and upload it.")
+    return None
+
+
 def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dict, str]:
     """Translate form fields into the engine's gate payload."""
     reason = (fields.get("reason") or "").strip()
@@ -602,13 +717,14 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
         return payload, reason or payload["message"]
     if gate == "gate_data" and action == "edit":
         payload["exclude_columns"] = list(fields.get("exclude") or [])
-    if gate == "gate_design":
+    if gate in ("gate_intent", "gate_design"):
         answers = {k.split("::", 1)[1]: v for k, v in fields.items()
                    if k.startswith("answer::") and v and str(v).strip()}
         st = service.state(run_id)
         answers = {k: v for k, v in answers.items() if (g := st.gap(k)) and g.status == "open"}
         if answers:
             payload["answers"] = answers
+    if gate == "gate_design":
         keep = fields.get("keep")
         hyps = (service.results(run_id).get("ideate").payload or {}).get("hypotheses", [])
         if action == "edit" and keep is not None and set(keep) != {h["id"] for h in hyps}:

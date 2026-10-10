@@ -103,6 +103,19 @@ def apply_brief():
 
 
 @pytest.fixture
+def confirm_intent():
+    """Take an interactive run past its first gate: run to the intent gate and confirm the brief.
+    A reason is given because a bare test profile leaves the sponsor's questions open."""
+
+    def _confirm(eng, reason: str = "the brief stands as written"):
+        eng.run_until_idle()
+        eng.submit_gate("gate_intent", "accept", reason=reason)
+        return eng.run_until_idle()
+
+    return _confirm
+
+
+@pytest.fixture
 def leak_config(tmp_path):
     """A regression dataset with a deliberately leaking feature (near-copy of the target).
 

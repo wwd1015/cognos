@@ -82,6 +82,32 @@ def _engine_families(cfg: CognosConfig) -> list[str]:
             "random_forest", "gradient_boosting"]
 
 
+def _incumbent(ctx: RunContext, cfg: CognosConfig, profile: dict) -> dict | None:
+    """Model update: what the run knows about the existing model's specification. The family comes
+    from the confirmed intake brief; the features are the dataset columns the prior artifacts name
+    (or the champion's features, when the prior model is an earlier COGNOS run). No scores."""
+    intake = ctx.get("intake")
+    p = (intake.payload if intake is not None else None) or {}
+    update = p.get("update")
+    if not update:
+        return None
+    from .. import engagement as eg
+
+    prior_run = (p.get("prior") or {}).get("run") or {}
+    features = list(profile.get("features", []))
+    try:
+        corpus = ctx.load_json("stages/intake/corpus.json").get("documents", [])
+    except (FileNotFoundError, ValueError):
+        corpus = []
+    texts = [d.get("text") or "" for d in corpus if d.get("role") not in ("intent", "supporting")]
+    named = ([f for f in features if f in set(prior_run.get("features") or [])]
+             or eg.columns_mentioned(features, texts))
+    family = update.get("incumbent_family")
+    return {"family": family, "fittable": bool(family) and family in _engine_families(cfg),
+            "features_in_data": named, "scope": update.get("scope"),
+            "change_items": update.get("change_items", [])}
+
+
 def _match_hints(columns: list[str], hints: tuple[str, ...]) -> list[str]:
     """Columns whose underscore-separated tokens (or token runs) equal a hint."""
     out = []
@@ -348,6 +374,12 @@ class IdeateStage(Stage):
         # defensible families first; the search honors this ordering when the budget binds.
         if cfg.design.interpretability in ("required", "preferred"):
             families.sort(key=lambda f: _INTERPRETABILITY.get(f, 0.5), reverse=True)
+        # Model update: the existing specification is the benchmark the update has to beat, so
+        # its family is always searched (an explicit search.model_families list is respected).
+        incumbent = _incumbent(ctx, cfg, profile)
+        if (incumbent and incumbent["fittable"] and not cfg.search.model_families
+                and incumbent["family"] not in families):
+            families.insert(0, incumbent["family"])
 
         # Leakage suspects never seed the parsimonious feature strategy.
         leaks = set(structure["leakage_suspects"])
@@ -357,6 +389,8 @@ class IdeateStage(Stage):
         epv = structure.get("events_per_variable")
         epv_low = epv is not None and epv < _EPV_FLOOR
         default_slate = self._default_slate(families, top_feats, cfg, structure, epv_low)
+        if incumbent and incumbent["fittable"]:
+            default_slate = self._incumbent_first(default_slate, incumbent)
 
         # --- the Design Lead's recommendation (engine-checked) ---------------------
         res = StageResult(stage=self.name, verdict=Verdict.PASS)
@@ -384,6 +418,7 @@ class IdeateStage(Stage):
             "safe_np_funcs": sorted(SAFE_NP_FUNCS),
             "search_budget": cfg.search.max_candidates,
             "interpretability": cfg.design.interpretability,
+            **({"incumbent": incumbent} if incumbent else {}),
         }, fresh={"ideate": res}, check=check_transforms)
 
         # --- engine disposes: the slate (a human edit at gate_design wins) --------------
@@ -422,6 +457,10 @@ class IdeateStage(Stage):
         )
         if epv_low:
             notes += (f" Low event support (EPV≈{epv}) — parsimonious feature sets up-weighted.")
+        if incumbent:
+            notes += (f" Model update ({str(incumbent['scope']).replace('_', ' ')}): existing "
+                      f"family {incumbent['family'] or 'not identified'}; "
+                      f"{len(incumbent['features_in_data'])} of its inputs found in this data.")
         notes += f" Design Lead: {out.summary}"
 
         payload = {
@@ -440,6 +479,8 @@ class IdeateStage(Stage):
             "proposed_transforms": proposed_transforms,  # agent-authored, engine-validated
             "notes": notes,
         }
+        if incumbent:
+            payload["incumbent"] = incumbent
         attach_recommendation(payload, ctx, "design_lead", out)
         res.add_artifact(ctx.save_json("stages/ideate/hypotheses.json", payload))
         brief = self._design_brief_md(cfg, structure, frameworks, questions, hypotheses, notes,
@@ -502,6 +543,22 @@ class IdeateStage(Stage):
                     "rationale": self._rationale(family, strategy, top_feats, cfg, structure),
                 })
         return sorted(slate, key=lambda h: h["priority"], reverse=True)
+
+    @staticmethod
+    def _incumbent_first(slate: list[dict], incumbent: dict) -> list[dict]:
+        """Model update: rank the existing model's family first and say why. A recalibration or
+        re-estimation stays close to it; a redevelopment keeps it as the benchmark to beat."""
+        close = incumbent.get("scope") in ("recalibrate", "re_estimate")
+        note = ("Existing model's family: the update request keeps this specification."
+                if close else "Existing model's family: the benchmark a redevelopment must beat.")
+        out = []
+        for item in slate:
+            if item["family"] == incumbent["family"]:
+                item = {**item, "priority": 1.0 if item["feature_strategy"] == "all" else 0.99,
+                        "rationale": f"{note} {item['rationale']}"}
+            out.append(item)
+        return sorted(out, key=lambda h: (h["priority"], h["family"] == incumbent["family"]),
+                      reverse=True)
 
     @staticmethod
     def _family_framework(family: str, cfg: CognosConfig, structure: dict) -> str:

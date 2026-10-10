@@ -26,6 +26,10 @@ PROMPTS_DIR = Path(__file__).with_name("prompts")
 MIN_ATTEMPT_S = 20.0  # don't start a retry with less time than this left
 
 TASKS = {
+    "intake_analyst": "Read the business intent document (and, for a model update, the existing "
+                      "model's artifacts and the update request). Fill the engagement brief, judge "
+                      "whether the goal is clear enough to start, and write the interview "
+                      "questions the sponsor must answer where it is not.",
     "data_analyst": "Review the data profile. Decide keep or exclude for every leakage suspect and any "
                     "other column that should not be a model input, note data-quality issues, and list "
                     "questions the model sponsor must answer.",

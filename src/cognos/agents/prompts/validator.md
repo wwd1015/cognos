@@ -27,5 +27,10 @@ findings: add what they miss.
    complexity; a challenger far above the champion means the interpretability price must be stated.
 5. **Stability.** Performance should hold across periods, not just in aggregate.
 
+6. **Fit to the intent.** `project.engagement` is what the sponsor asked for. Does the model answer
+   that goal, segment and horizon? For a model update: is every requested change delivered, did
+   anything the request said must not change move, and, where `prior.` facts exist (an earlier
+   COGNOS run of the existing model), does the update justify itself against them?
+
 Materiality: noisy signals (PBO, a single failed diagnostic, thin calibration buckets) are medium at
 most.

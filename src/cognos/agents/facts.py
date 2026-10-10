@@ -52,6 +52,27 @@ def collect(ctx, *, fresh: dict | None = None,
         return fresh[stage] if stage in fresh else ctx.get(stage)
 
     f: dict[str, Any] = {}
+    it = get("intake")
+    if it is not None and it.payload:
+        p = it.payload
+        _put(f, "intake.development_mode", p.get("kind"))
+        _put(f, "intake.clarity", p.get("clarity"))
+        _put(f, "intake.n_documents", len(p.get("documents", [])))
+        brief = p.get("brief", [])
+        _put(f, "intake.n_fields_decided", sum(1 for e in brief if e.get("value")))
+        _put(f, "intake.n_fields_missing", sum(1 for e in brief if not e.get("value")))
+        _put(f, "intake.n_open_questions", len(p.get("questions", [])))
+        _put(f, "intake.n_blocking_questions", p.get("n_blocking"))
+        up = p.get("update") or {}
+        _put(f, "intake.update_scope", up.get("scope"))
+        if up:
+            _put(f, "intake.n_change_items", len(up.get("change_items", [])))
+        prior = (p.get("prior") or {}).get("run") or {}
+        for k in ("champion_family", "metric", "cv_mean", "cv_std", "holdout_metric", "n_train",
+                  "validation_verdict"):
+            _put(f, f"prior.{k}", prior.get(k))
+        if prior:
+            _put(f, "prior.n_features", len(prior.get("features", [])))
     ex = get("explore")
     if ex is not None and ex.payload:
         p = ex.payload

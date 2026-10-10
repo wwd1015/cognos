@@ -40,6 +40,60 @@ class AgentOutput(Contract):
         default_factory=list, description="Exactly one entry per item in context.challenges")
 
 
+# --- intake: intake analyst ----------------------------------------------------------------
+BriefFieldId = Literal[
+    "objective", "use_case", "segment", "default_definition", "horizon", "intended_use",
+    "out_of_scope_use", "interpretability", "success_criteria", "constraints", "data_sources",
+    "stakeholders", "prior_model", "update_reason", "requested_changes", "must_not_change",
+    "known_issues"]
+
+
+class BriefEntry(Contract):
+    field: BriefFieldId = Field(description="A field id from context.fields")
+    value: str = Field(description="The sponsor's position in one to three sentences, in their "
+                                   "own words where possible; empty when basis is 'missing'")
+    basis: Literal["stated", "inferred", "missing"] = Field(
+        description="stated: the documents say it; inferred: you read it between the lines; "
+                    "missing: the documents do not address it")
+    quote: str = Field(default="", description="For 'stated': a short passage copied verbatim "
+                                               "from the documents that says it")
+
+
+class InterviewQuestion(Contract):
+    question: str = Field(description="One question the sponsor can answer in a sentence or two")
+    field: Literal[
+        "objective", "use_case", "segment", "default_definition", "horizon", "intended_use",
+        "out_of_scope_use", "interpretability", "success_criteria", "constraints", "data_sources",
+        "stakeholders", "prior_model", "update_reason", "requested_changes", "must_not_change",
+        "known_issues", "none"] = Field(
+        default="none", description="The brief field the answer fills, or 'none'")
+    why_it_matters: str
+    blocking: bool = Field(description="true when development should not start without the answer")
+
+
+class ChangeItem(Contract):
+    change: str = Field(description="One requested change, restated plainly")
+    type: Literal["data_refresh", "recalibration", "re_estimation", "redevelopment",
+                  "scope_change", "remediation", "documentation"]
+    affects: Literal["explore", "ideate", "model", "none"] = Field(
+        description="The earliest stage whose work this change alters")
+
+
+class IntakeAnalystOutput(AgentOutput):
+    restated_objective: str = Field(description="The business goal in your own words, in one or "
+                                                "two sentences the sponsor would agree with")
+    clarity: Literal["clear", "needs_clarification", "unclear"]
+    brief: list[BriefEntry] = Field(description="One entry per field in context.fields")
+    interview: list[InterviewQuestion] = Field(default_factory=list)
+    update_scope: Literal["not_applicable", "recalibrate", "re_estimate", "redevelop"] = Field(
+        default="not_applicable", description="Model update only: how deep the change goes")
+    scope_rationale: str = ""
+    change_items: list[ChangeItem] = Field(default_factory=list)
+    incumbent_family: str = Field(
+        default="", description="Model update only: the family in context.engine_families the "
+                                "existing model uses, or empty when the artifacts do not say")
+
+
 # --- explore: data analyst ---------------------------------------------------------------
 class ColumnDecision(Contract):
     column: str
@@ -171,6 +225,7 @@ class WriterOutput(AgentOutput):
 
 
 CONTRACTS: dict[str, type[Contract]] = {
+    "intake_analyst": IntakeAnalystOutput,
     "data_analyst": DataAnalystOutput,
     "design_lead": DesignLeadOutput,
     "modeler": ModelerOutput,
@@ -182,13 +237,13 @@ CONTRACTS: dict[str, type[Contract]] = {
 }
 
 # Which stage each agent serves (the experiment proposer is the modeler's guided-search role).
-AGENT_STAGE = {"data_analyst": "explore", "design_lead": "ideate", "modeler": "model",
+AGENT_STAGE = {"intake_analyst": "intake", "data_analyst": "explore", "design_lead": "ideate", "modeler": "model",
                "experiment": "model", "outcomes_analyst": "backtest", "validator": "validate",
                "risk_analyst": "comply", "writer": "document"}
-STAGE_AGENT = {"explore": "data_analyst", "ideate": "design_lead", "model": "modeler",
+STAGE_AGENT = {"intake": "intake_analyst", "explore": "data_analyst", "ideate": "design_lead", "model": "modeler",
                "backtest": "outcomes_analyst", "validate": "validator", "comply": "risk_analyst",
                "document": "writer"}
-FRIENDLY = {"data_analyst": "Data Analyst", "design_lead": "Design Lead", "modeler": "Modeler",
+FRIENDLY = {"intake_analyst": "Intake Analyst", "data_analyst": "Data Analyst", "design_lead": "Design Lead", "modeler": "Modeler",
             "experiment": "Modeler (guided search)", "outcomes_analyst": "Outcomes Analyst",
             "validator": "Independent Validator", "risk_analyst": "Model-Risk Analyst",
             "writer": "Technical Writer"}

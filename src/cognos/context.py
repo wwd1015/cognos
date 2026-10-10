@@ -210,12 +210,14 @@ class RunContext:
     @staticmethod
     def _effective_config(config: CognosConfig, overrides: Overrides) -> CognosConfig:
         """The profile plus human design answers (the YAML itself is never edited)."""
-        if not overrides.design:
+        if not overrides.design and not overrides.compliance:
             return config
         cfg = config.model_copy(deep=True)
-        for field_name, value in overrides.design.items():
-            if hasattr(cfg.design, field_name):
-                setattr(cfg.design, field_name, value)
+        for section, values in ((cfg.design, overrides.design),
+                                (cfg.compliance, overrides.compliance)):
+            for field_name, value in values.items():
+                if hasattr(section, field_name):
+                    setattr(section, field_name, value)
         return cfg
 
     def profile(self) -> dict[str, Any]:
@@ -244,7 +246,7 @@ class RunContext:
 
         if not RunState.exists(self.run_dir):
             return []
-        return [{"question": g.question, "answer": g.answer or "", "status": g.status}
+        return [{"id": g.id, "question": g.question, "answer": g.answer or "", "status": g.status}
                 for g in RunState.load(self.run_dir).gaps if g.status != "open"]
 
     @property

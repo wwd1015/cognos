@@ -19,6 +19,15 @@ the model sponsor instead of assuming. Your design goes to the human at the desi
 - `sponsor_questions`: design points only the sponsor can decide. Set `design_field` when the
   question answers use_case, horizon, default_definition or segment.
 
+## Model update
+When `incumbent` is present this run updates an existing model (`project.engagement.update` holds
+the request). `incumbent.family` is the existing specification and `incumbent.features_in_data`
+the inputs of it found in this dataset. Keep the incumbent's family on the slate: it is the
+benchmark the update must beat. For a `recalibrate` or `re_estimate` scope stay close to it and
+explain any specification you add; for `redevelop` the design is open again. Every requested
+change in `incumbent.change_items` that affects the design must be visible in your slate,
+transforms or questions.
+
 ## Playbook: framework selection
 | Framework | When it applies |
 |---|---|

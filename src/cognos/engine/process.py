@@ -6,7 +6,7 @@ stays mechanical. A seat is a permission, not a judgment. A package is a hash of
 recorded facts, written once.
 
 Finishing a run is not a signature. Autonomous mode is express preparation: it may
-accept every gate so the eight stages can run, and it records those decisions as
+accept every gate so the stages can run, and it records those decisions as
 ``express``. Only an approver's ``approve``, with the design brief answered, seals
 a package.
 """
@@ -27,6 +27,7 @@ from .state import PackageSeal, RunState, utcnow
 CORE_DESIGN = ("use_case", "horizon", "default_definition", "segment")
 
 SEAT_OF_GATE = {
+    "gate_intent": "developer",
     "gate_data": "developer",
     "gate_design": "developer",
     "gate_champion": "developer",
@@ -44,6 +45,7 @@ SEAT_LABEL = {
 # One map, in order. The graph in graph.py is still what runs. This is only how
 # the workbench says who a page belongs to.
 MAP = (
+    ("Intent", ("intake", "gate_intent"), "developer"),
     ("Data & design", ("explore", "gate_data", "ideate", "gate_design"), "developer"),
     ("Model", ("model", "gate_champion", "backtest"), "developer"),
     ("Challenge", ("validate", "gate_validation"), "reviewer"),

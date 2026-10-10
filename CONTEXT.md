@@ -42,14 +42,42 @@ A number (or short value) the engine computed, exposed to agents under a stable 
 (`model.cv_mean`). Agents cite facts by id; the writer's prose uses `{{fact:<id>}}` placeholders.
 "No LLM math" means every recorded number is a fact.
 
+**Development mode** (`engagement.kind`):
+What a run starts from. `new`: a complete new model development, from the sponsor's business
+intent document. `update`: a change to an existing model, from that model's artifacts and an
+update request. It changes the inputs and what the agents are told, never how the engine measures.
+_Avoid_: "mode" on its own, which means autonomous / interactive.
+
+**Business intent document** (and **update request**):
+The sponsor's statement of what the model is for, written on the COGNOS template before the run.
+An update request is the same template plus the change-request sections.
+
+**Engagement brief**:
+Intake's record of the sponsor's position, field by field, each with its basis: *stated* (quoted
+from the documents), *answered* (in the interview), *profile*, *inferred* (unconfirmed, never
+applied) or *missing*. Later agents receive it as `project.engagement`.
+
+**Interview**:
+The Intake Analyst's questions to the sponsor and their answers. Each question is a gap; each
+answer re-runs intake. A *blocking* question is one development should not start without.
+_Avoid_: thinking of it as a chat. It is recorded stage runs.
+
+**Incumbent** (existing model, prior model):
+The model an update changes. Its family and inputs are read from its artifacts; its scores, when
+it is an earlier COGNOS run, are `prior.*` facts for the agents that read results only.
+
+**Update scope**:
+The Intake Analyst's classification of an update request: `recalibrate`, `re_estimate` or
+`redevelop`. It steers the design and the validator. The engine re-estimates in every case.
+
 **Challenge**:
 Pushback routed to a stage's agent — a human send-back or a high-severity validator finding. The
 agent must answer every open challenge (`responses_to_challenges`); validator challenges loop back
 automatically a bounded number of times.
 
 **Gap** (open question):
-A design or data point only the sponsor can decide (use case, horizon, default definition,
-segment, an unconfirmed leakage suspect…). Answered — filling the design brief and re-running the
+An intent, design or data point only the sponsor can decide (the objective, use case, horizon,
+default definition, segment, an unconfirmed leakage suspect…). Answered — filling the design brief and re-running the
 stage that raised it — or accepted as an assumption; never silently assumed.
 
 **Override**:
@@ -84,8 +112,8 @@ accepted.
 _Avoid_: calling `comply` a gate; it is a non-gating report.
 
 **Review gate**:
-A human decision point after a stage: `gate_data`, `gate_design`, `gate_champion` (the model
-developer), `gate_validation` (the independent reviewer), `gate_signoff` (the approver).
+A human decision point after a stage: `gate_intent`, `gate_data`, `gate_design`, `gate_champion`
+(the model developer), `gate_validation` (the independent reviewer), `gate_signoff` (the approver).
 Interactive runs pause there. Autonomous runs accept them as **express preparation** and record
 that; express is not a signature. Review gates decide; they never BLOCK.
 
@@ -147,8 +175,9 @@ result. See [ADR-0003](docs/adr/0003-two-tier-reproducibility.md).
 
 **Design brief (MD triangulation)**:
 The sponsor's answers to the design questions that precede any algorithm — use case, horizon,
-default definition, segment, interpretability (`design:` config block). Every *unanswered* point
-becomes an explicit **open question** in ideate's `design_brief.md`, never a silent assumption.
+default definition, segment, interpretability (`design:` config block, or the intent document
+once it is confirmed at `gate_intent`). Every *unanswered* point becomes an explicit **open
+question**, raised by intake and listed in ideate's `design_brief.md`, never a silent assumption.
 _Avoid_: answering a sponsor question on the sponsor's behalf.
 
 **Framework assessment (alternatives considered)**:

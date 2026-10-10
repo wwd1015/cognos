@@ -1,4 +1,4 @@
-"""Stage package. Importing it registers all eight stage agents in the registry.
+"""Stage package. Importing it registers all nine stage agents in the registry.
 
 Each stage module calls ``@register_stage`` at import time; ``load_all`` imports every module so the
 orchestrator/CLI can resolve any stage by name.
@@ -9,6 +9,7 @@ from __future__ import annotations
 from .base import STAGE_REGISTRY, Stage, all_stage_names, make_stage, register_stage
 
 _STAGE_MODULES = (
+    "intake",
     "explore",
     "ideate",
     "model",

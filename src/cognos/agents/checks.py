@@ -20,6 +20,7 @@ from .contracts import (
     DataAnalystOutput,
     DesignLeadOutput,
     ExperimentProposal,
+    IntakeAnalystOutput,
     ModelerOutput,
     ValidatorOutput,
     WriterOutput,
@@ -62,6 +63,77 @@ def default(out: Contract, sl: dict[str, Any]) -> list[str]:
                         "answer every challenge")
         if extra:
             errs.append(f"responses_to_challenges names unknown challenge id(s) {sorted(extra)}")
+    return errs
+
+
+def intake_analyst(out: IntakeAnalystOutput, sl: dict[str, Any]) -> list[str]:
+    """The brief is grounded and complete: a 'stated' position quotes the documents the agent was
+    shown, every undecided required field is asked about, and nothing decided is asked again."""
+    from ..engagement import squash
+
+    errs: list[str] = []
+    fields = {f["field"]: f for f in sl.get("fields", [])}
+    got = [e.field for e in out.brief]
+    for name in fields:
+        if got.count(name) != 1:
+            errs.append(f"brief must contain field {name!r} exactly once")
+    for name in set(got) - set(fields):
+        errs.append(f"brief names {name!r}, which is not a field of this engagement")
+    docs = [sl.get("intent_document") or {}, *sl.get("supporting_documents", []),
+            *(sl.get("prior_model") or {}).get("documents", [])]
+    corpus = squash("\n".join(str(d.get("text") or "") for d in docs))
+    asked = {q.field for q in out.interview if q.field != "none"}
+    blocking = {q.field for q in out.interview if q.blocking}
+    for e in out.brief:
+        if e.basis == "missing":
+            if e.value.strip():
+                errs.append(f"brief field {e.field!r} is 'missing' but carries a value; leave it "
+                            "empty or mark it inferred")
+            continue
+        if not e.value.strip():
+            errs.append(f"brief field {e.field!r} is {e.basis!r} but has no value")
+        if e.basis == "stated":
+            quote = squash(e.quote)
+            if len(quote) < 3 or quote not in corpus:
+                errs.append(f"brief field {e.field!r} is 'stated' but its quote is not in the "
+                            "documents; copy a passage verbatim, or mark it inferred or missing")
+    stated = {e.field for e in out.brief if e.basis == "stated"}
+    for name, f in fields.items():
+        if f.get("decided"):
+            if name in asked:
+                errs.append(f"field {name!r} is already decided; do not ask about it again")
+        elif f.get("required") and name not in stated and name not in blocking:
+            errs.append(f"required field {name!r} is not stated in the documents; add a blocking "
+                        "interview question for it")
+    for name in asked - set(fields):
+        errs.append(f"interview question targets {name!r}, which is not a field of this engagement")
+    targeted = [q.field for q in out.interview if q.field != "none"]
+    for name in {n for n in targeted if targeted.count(n) > 1}:
+        errs.append(f"ask one question per field; {name!r} has several")
+    texts = [" ".join(q.question.lower().split()) for q in out.interview]
+    if len(texts) != len(set(texts)):
+        errs.append("interview questions must be distinct")
+    answered = {" ".join(a["question"].lower().split()) for a in sl.get("sponsor_answers", [])}
+    for t in texts:
+        if t in answered:
+            errs.append("an interview question repeats one the sponsor already answered")
+    if out.clarity == "clear" and any(q.blocking for q in out.interview):
+        errs.append("clarity cannot be 'clear' while a blocking interview question is open")
+    if sl.get("kind") == "update":
+        if out.update_scope == "not_applicable":
+            errs.append("a model update needs update_scope: recalibrate, re_estimate or redevelop")
+        if not out.scope_rationale.strip():
+            errs.append("a model update needs scope_rationale")
+        if "requested_changes" in stated and not out.change_items:
+            errs.append("the update request lists changes; restate each one in change_items")
+        families = set(sl.get("engine_families", []))
+        if out.incumbent_family and out.incumbent_family not in families:
+            errs.append(f"incumbent_family {out.incumbent_family!r} is not an engine family; "
+                        f"choose from {sorted(families)} or leave it empty")
+    else:
+        if out.update_scope != "not_applicable" or out.change_items or out.incumbent_family:
+            errs.append("this is a new model development: update_scope must be not_applicable, "
+                        "with no change_items and no incumbent_family")
     return errs
 
 
@@ -173,6 +245,7 @@ def writer(out: WriterOutput, sl: dict[str, Any]) -> list[str]:
 
 
 CHECKS: dict[str, Check] = {
+    "intake_analyst": intake_analyst,
     "data_analyst": data_analyst,
     "design_lead": design_lead,
     "modeler": modeler,

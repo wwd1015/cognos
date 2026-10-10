@@ -14,6 +14,7 @@ from .process import CORE_DESIGN
 from .state import Challenge, RunState
 
 ACTIONS: dict[str, set[str]] = {
+    "gate_intent": {"accept", "edit", "send_back"},
     "gate_data": {"accept", "edit", "send_back"},
     "gate_design": {"accept", "edit", "send_back"},
     "gate_champion": {"accept", "override", "send_back"},
@@ -40,6 +41,10 @@ def why(gate: str, action: str, payload: dict[str, Any] | None, reason: str = ""
         target = payload.get("target") or ("model" if gate == "gate_validation" else STAGE_OF_GATE[gate])
         message = payload.get("message") or reason
         return f"{label}: sent back to “{LABELS.get(target, target)}”" + (f" — {_clip(message)}" if message else "")
+    if gate == "gate_intent":
+        if payload.get("answers"):
+            return f"{label}: {len(payload['answers'])} interview question(s) answered"
+        return f"{label}: the brief was accepted"
     if gate == "gate_data":
         cols = payload.get("exclude_columns")
         if action == "edit" and cols is not None:
@@ -89,6 +94,32 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
 
     if action == "send_back":
         return send_back(state, gate, payload, reason), False
+
+    if gate == "gate_intent":
+        brief = (res.payload if res is not None else None) or {}
+        rerun = apply_answers(state, payload.get("answers") or {})
+        if rerun:  # the interview continues: intake re-reads the brief with the answers
+            return sorted(set(rerun)), False
+        if action == "edit":
+            raise GateError("nothing to apply: answer at least one interview question, or accept "
+                            "the brief")
+        blocking = [q for q in brief.get("questions") or []
+                    if q.get("blocking") and (g := state.gap(q["id"])) and g.status == "open"]
+        if blocking and not reason.strip():
+            raise GateError(
+                f"{len(blocking)} blocking interview question(s) are still open. Answer them, or "
+                "give a reason for starting without them (they stay open; nobody can sign until "
+                "use, horizon, default definition and segment are answered).")
+        # What the sponsor's document states becomes part of the effective config. An answer
+        # already recorded on the run wins over the document.
+        changed = False
+        for target, stated in ((state.overrides.design, brief.get("design_from_intent")),
+                               (state.overrides.compliance, brief.get("compliance_from_intent"))):
+            for field, value in (stated or {}).items():
+                if value and field not in target:
+                    target[field] = value
+                    changed = True
+        return (_changed_downstream(gate) if changed else []), True
 
     if gate == "gate_data":
         profile = res.payload if res is not None else {}
@@ -190,5 +221,11 @@ def apply_answers(state: RunState, answers: dict[str, str], *, assume: bool = Fa
         if gap.design_field and not assume:
             state.overrides.design[gap.design_field] = text
         if not assume:
-            rerun.append(gap.reentry)
+            reentry = gap.reentry
+            if (reentry == "intake" and gap.design_field
+                    and state.status_of("gate_intent") == "done"):
+                # The intent is confirmed: a design answer given later is a design decision and
+                # re-enters at the design stage, not at the interview.
+                reentry = "ideate"
+            rerun.append(reentry)
     return rerun

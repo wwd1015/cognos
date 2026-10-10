@@ -6,6 +6,36 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- **Development modes** ([ADR-0011](docs/adr/0011-development-modes-and-intake.md)). A run is a
+  **new model development** or a **model update** (`engagement.kind`; `cognos run --kind`, the
+  switch at the top of the workbench's new-run drawer). A new development starts from the sponsor's
+  business intent document and background material. An update starts from the existing model's
+  artifacts (white paper, code, validation and monitoring reports, or an earlier COGNOS run via
+  `--prior-run`) and an update request.
+- **The intent template.** `cognos intent-template [--kind update] [-o FILE]`, the "Download the
+  template" button, and `docs/templates/`. One document for both modes; the update request adds
+  the change-request sections. Fill it in before the run.
+- **Intake stage, Intake Analyst, `gate_intent`.** A new first stage reads the documents (`.md`,
+  `.txt`, `.docx`, code, notebooks, `.pdf` with `pypdf`), fills an engagement brief and interviews
+  the sponsor where the intent is unclear: a question is a gap, an answer re-runs intake, and the
+  gate re-opens until nothing blocks. A "stated" position must quote the documents or the engine
+  rejects it. Confirming the brief writes what the document states into the effective config.
+- **Model update support downstream.** Typed change items and an update scope; the existing
+  model's family read from its artifacts and kept first on the slate; `prior.*` facts from an
+  earlier COGNOS run, scoped away from the design lead and the modeler; a validator check that the
+  request was delivered; a model change record in the white paper.
+- **Uploads.** The new-run drawer takes the intent document, background documents and the
+  existing model's artifacts; `service.save_upload` and `service.create_run(engagement=...)` do the
+  same from code. Documents are copied into `runs/<id>/inputs/`.
+- Every agent's context carries the confirmed brief (`project.engagement`).
+
+### Changed
+- Nine stages and six review gates. An interactive run pauses first at `gate_intent`; scripts that
+  expected `gate_data` first need to decide it (`accept` with a reason while questions are open).
+- The four core design questions are raised by intake (same ids, `design-<field>`); after the
+  intent is confirmed their answers re-enter at `ideate` as before.
+- Synthetic demos ship an intent document generated from the preset's design brief.
+- Runs recorded before this change load with `intake` and `gate_intent` skipped.
 - **Why a step is out of date.** Every invalidation names its cause (the gate decision, answered
   question or validator loop) in `StepState.rerun_reason`; the reason stays on the step through
   the re-run. The rail and the stage panel show it.

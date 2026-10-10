@@ -54,7 +54,12 @@ class Engine:
                     state.provider = self._resolve_provider(provider)
                     state.save(self.run_dir)
             else:
+                from ..engagement import ingest
+
                 state = self._new_state(provider, mode)
+                # The run keeps its own copy of the intent and prior-model documents; a missing
+                # one refuses the run here, before anything is recorded.
+                self.config = config = ingest(config, self.run_dir, self.runs_root)
                 self.run_dir.mkdir(parents=True, exist_ok=True)
                 config.to_yaml(self.run_dir / "config.yaml")
                 state.save(self.run_dir)

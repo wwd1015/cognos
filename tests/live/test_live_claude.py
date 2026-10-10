@@ -5,8 +5,9 @@ Skipped unless ``COGNOS_LIVE=1`` and the ``claude`` CLI is on PATH — the defau
 
     COGNOS_LIVE=1 pytest tests/live -q        # ~5-7 min, about $1-2 with the default model (opus)
 
-It exercises what the heuristic agents cannot: real recommendations passing the engine checks, a
-human send-back answered by a live agent, and a completed, signed-off run.
+It exercises what the heuristic agents cannot: real recommendations passing the engine checks
+(the Intake Analyst's quotes found in the intent document among them), a human send-back answered
+by a live agent, and a completed, signed-off run.
 """
 
 from __future__ import annotations
@@ -40,6 +41,14 @@ def test_interactive_run_with_live_claude_agents(tmp_path, monkeypatch):
     run_id = service.create_run(cfg, mode="interactive", provider="claude_cli", root=root)
 
     state = service.run_until_idle(run_id, root)
+    assert _waiting(state) == "gate_intent", state.steps["intake"].message
+    brief = service.results(run_id, root)["intake"].payload
+    assert brief["recommendation"]["provider"] == "claude_cli"
+    assert next(b for b in brief["brief"] if b["field"] == "objective")["basis"] == "stated"
+    service.submit_gate(run_id, "gate_intent", "accept", reason="live test", root=root,
+                        background=False)
+
+    state = service.run_until_idle(run_id, root)
     assert _waiting(state) == "gate_data", state.steps["explore"].message
     service.submit_gate(run_id, "gate_data", "accept", reason="live test", root=root, background=False)
 
@@ -67,7 +76,7 @@ def test_interactive_run_with_live_claude_agents(tmp_path, monkeypatch):
     assert state.status == "approved", (state.status, state.halted_reason)
     audit = service.audit(run_id, root)
     assert {a["agent"] for a in audit if a["status"] == "ok"} >= {
-        "data_analyst", "design_lead", "modeler", "outcomes_analyst", "validator", "risk_analyst",
+        "intake_analyst", "data_analyst", "design_lead", "modeler", "outcomes_analyst", "validator", "risk_analyst",
         "writer"}
     narrative = (root / run_id / "docs" / "narrative.md").read_text(encoding="utf-8")
     assert "{{fact:" not in narrative

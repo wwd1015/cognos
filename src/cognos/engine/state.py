@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ..fsutil import atomic_write
 from .graph import DEPS, INVALIDATABLE, SATISFIED, STEPS, descendants
@@ -92,7 +92,7 @@ class Gap(BaseModel):
 
     id: str
     question: str
-    category: Literal["design", "data"] = "design"
+    category: Literal["design", "data", "intent"] = "design"
     source: str = "engine"  # engine | agent
     stage: str = "ideate"  # the stage that raised it
     design_field: str | None = None  # DesignConfig field an answer fills, if any
@@ -107,6 +107,7 @@ class Overrides(BaseModel):
 
     exclude_columns: list[str] = Field(default_factory=list)
     design: dict[str, str] = Field(default_factory=dict)
+    compliance: dict[str, str] = Field(default_factory=dict)  # intended / out-of-scope use
     slate: list[dict[str, Any]] | None = None
     champion: str | None = None  # candidate label chosen at gate_champion
 
@@ -129,6 +130,15 @@ class RunState(BaseModel):
     package: PackageSeal | None = None  # set only by an approver's approve
     loops: dict[str, int] = Field(default_factory=dict)
     spend_usd: float = 0.0
+
+    @model_validator(mode="after")
+    def _steps_added_later(self) -> RunState:
+        """A run recorded before a step existed never ran it: it reads as skipped, not pending."""
+        for step in STEPS:
+            if step not in self.steps:
+                self.steps[step] = StepState(status="skipped",
+                                             message="not part of this run when it was created")
+        return self
 
     # --- persistence -----------------------------------------------------------------
     @staticmethod

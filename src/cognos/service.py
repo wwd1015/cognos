@@ -1,6 +1,7 @@
 """The service layer — the single API boundary the CLI and the UI use.
 
-Everything a front end needs: create a run (from a profile or a synthetic demo preset), advance it
+Everything a front end needs: create a run (from a profile or a synthetic demo preset, as a new
+model development or a model update with its intent and prior-model documents), advance it
 (synchronously or in the background), submit gate decisions, answer questions, retry, and read
 state, results, events and the agent audit. One :class:`~cognos.engine.Engine` per run is cached
 in-process so a background run and the UI callbacks share its in-flight bookkeeping. A REST adapter,
@@ -90,6 +91,19 @@ def demo_config(preset: str, root: str | Path | None = None, *, n: int | None = 
     csv = data_dir / f"{preset}.csv"
     df.to_csv(csv, index=False)
     p = DEMO_PRESETS[preset]
+    # The demo sponsor's intent document: the preset's design brief on the template. Presets
+    # without one leave those sections empty, so the interview has something to ask.
+    from . import engagement as eg
+
+    intent = data_dir / f"{preset}_intent.md"
+    design = p.get("design", {})
+    intent.write_text(eg.render_template("new", {
+        "objective": f"Demonstrate a COGNOS model development on synthetic data: "
+                     f"{DEMO_LABELS.get(preset, preset)}.",
+        **{k: design.get(k, "") for k in eg.CORE},
+        "interpretability": design.get("interpretability", ""),
+        "data_sources": f"Synthetic data from cognos.synth ({preset}).",
+    }, name=f"demo_{preset}"), encoding="utf-8")
     raw: dict[str, Any] = {
         "name": f"demo_{preset}",
         "description": f"COGNOS synthetic {preset} demo — {DEMO_LABELS.get(preset, preset)}",
@@ -98,6 +112,7 @@ def demo_config(preset: str, root: str | Path | None = None, *, n: int | None = 
                  "datetime_col": p.get("datetime_col"), "protected_attributes": p.get("protected", []),
                  "drop_columns": p.get("drop", []), "event_time_col": p.get("event_time_col"),
                  "horizon_periods": p.get("horizon_periods")},
+        "engagement": {"kind": "new", "intent": str(intent)},
         "design": p.get("design", {}),
         "migration": p.get("migration", {}),
         "portfolio": p.get("portfolio", {}),
@@ -123,10 +138,51 @@ def load_config(source: CognosConfig | str | Path | dict) -> CognosConfig:
     return CognosConfig.from_yaml(source)
 
 
+# --- engagements: the development mode and its documents ---------------------------------------
+def intent_template(kind: str = "new", name: str = "") -> str:
+    """The business intent document (or model update request) to fill in before a run."""
+    from . import engagement as eg
+
+    return eg.render_template(kind, name=name)
+
+
+def save_upload(filename: str, content: str | bytes, root: str | Path | None = None) -> str:
+    """Keep an uploaded document under ``<runs>/_uploads/`` until a run copies it in. ``content``
+    is bytes or a browser data URL (``data:...;base64,...``). Returns the saved path."""
+    import base64
+    import re
+    import uuid
+
+    if isinstance(content, str):
+        content = base64.b64decode(content.split(",", 1)[1] if content.startswith("data:")
+                                   else content)
+    name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(filename or "document").name).strip("._")
+    dest = runs_root(root) / "_uploads" / uuid.uuid4().hex[:10] / (name or "document")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(content)
+    return str(dest)
+
+
+def with_engagement(source: CognosConfig | str | Path | dict,
+                    engagement: dict[str, Any] | None = None) -> CognosConfig:
+    """The profile with its engagement replaced or extended: ``kind`` (new | update), ``intent``,
+    ``supporting``, ``prior_artifacts``, ``prior_run``. Keys left out keep the profile's value."""
+    cfg = load_config(source)
+    given = {k: v for k, v in (engagement or {}).items() if v not in (None, [], "")}
+    if not given:
+        return cfg
+    raw = cfg.model_dump(mode="json")
+    raw["engagement"] = {**raw.get("engagement", {}), **given}
+    if raw["engagement"].get("kind") != "update":  # a new development reads no prior model
+        raw["engagement"].update(prior_artifacts=[], prior_run=None)
+    return CognosConfig.from_dict(raw)
+
+
 # --- runs ------------------------------------------------------------------------------------
 def create_run(source: CognosConfig | str | Path | dict, *, mode: str = "interactive",
-               provider: str | None = None, root: str | Path | None = None) -> str:
-    cfg = load_config(source)
+               provider: str | None = None, root: str | Path | None = None,
+               engagement: dict[str, Any] | None = None) -> str:
+    cfg = with_engagement(source, engagement)
     eng = Engine(cfg, runs_root=runs_root(root), provider=provider, mode=mode)
     with _guard:
         _engines[str(eng.run_dir.resolve())] = eng
@@ -325,7 +381,14 @@ def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
                 except Exception:
                     champ = None
             waiting = [s for s, v in st.steps.items() if v.status == "awaiting"]
+            kind = "new"
+            try:  # the development mode, as intake recorded it
+                kind = json.loads((d / "stages" / "intake" / "result.json").read_text(
+                    encoding="utf-8"))["payload"].get("kind") or "new"
+            except Exception:
+                pass
             rows.append({"run_id": d.name, "project": st.project, "status": st.status,
+                         "kind": kind,
                          "mode": st.mode, "provider": st.provider, "updated_at": st.updated_at,
                          "champion": champ, "waiting_on": waiting[0] if waiting else None,
                          "spend_usd": st.spend_usd, "legacy": False})
@@ -335,6 +398,7 @@ def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
             except Exception:
                 continue
             rows.append({"run_id": d.name, "project": m.get("project", ""), "status": "legacy",
+                         "kind": "new",
                          "mode": m.get("mode", ""), "provider": "-",
                          "updated_at": m.get("created_at", ""), "champion": None,
                          "waiting_on": None, "spend_usd": 0.0, "legacy": True})

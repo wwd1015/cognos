@@ -2,6 +2,8 @@
 
 > v1.0: **agents recommend, humans decide, the engine disposes**
 > ([ADR-0010](docs/adr/0010-agents-recommend-humans-decide.md)).
+> v1.1: **development modes and intake** — a run starts from the sponsor's business intent, as a new
+> model or as an update of an existing one ([ADR-0011](docs/adr/0011-development-modes-and-intake.md)).
 
 ```
       Dash + Mantine workbench (cognos ui)            CLI (cognos …)
@@ -35,7 +37,7 @@ both first-class and interdependent ([ADR-0001](docs/adr/0001-reasoning-proposes
 Neither layer is optional. Running with the deterministic (heuristic) agents is the offline and demo
 path and the test substrate (`replay` re-runs recorded agent outputs), not a degraded product — it is
 how the deliverable's analysis is always reproduced ([ADR-0003](docs/adr/0003-two-tier-reproducibility.md)).
-In production the LLM agents recommend and a model developer decides at five review gates.
+In production the LLM agents recommend and a model developer decides at six review gates.
 
 The agents run **inside the engine** (v1.0): each stage consults its agent through
 `ctx.recommend()`, and the runner calls the configured backend — `claude -p` in an isolated
@@ -94,8 +96,8 @@ The engine (`engine/engine.py`) is deliberately mechanical. It walks the step gr
 routes challenges, syncs gaps, and marks stale work — it never judges.
 
 ```
-explore → gate_data → ideate → gate_design → model → gate_champion → backtest → validate
-        → gate_validation → comply → document → review → gate_signoff
+intake → gate_intent → explore → gate_data → ideate → gate_design → model → gate_champion
+       → backtest → validate → gate_validation → comply → document → review → gate_signoff
 
 loop:
   ready = steps whose dependencies are done/skipped and that are pending or stale
@@ -111,6 +113,47 @@ and `start()`/`advance()` (background threads — the UI). Every read-modify-wri
 happens under the run's lock after re-loading from disk; a step invalidated while it was running
 stays stale when it finishes. Because stages checkpoint and state is on disk, any process (a CLI
 command, the UI after a restart) resumes a run exactly; `cognos run-stage` still re-runs one stage.
+
+## Development modes and intake
+
+`engagement.kind` is the development mode (not to be confused with the autonomous / interactive
+run mode). It changes what the run starts from, never how the engine measures:
+
+| | `new` — new model development | `update` — model update |
+|---|---|---|
+| Starts from | the business intent document, background material | the existing model's artifacts (white paper, code, validation / monitoring reports, or an earlier COGNOS run) and an update request on the same template |
+| Intake adds | the engagement brief, the interview | the same, plus change items, an update scope (recalibrate / re-estimate / redevelop) and the existing model's family |
+| Design | the engine's slate | the existing model's family is always on the slate and ranked first (the benchmark) |
+| Validation | fit to the stated intent | also: every requested change delivered, the update justified against the existing model |
+| White paper | a business-intent section | also a model change record, with the existing model beside the update |
+
+`engagement.py` is the mechanical half: the intent template (`render_template` / `parse_intent`,
+one document for both modes), reading documents as text (`.md`, `.txt`, `.docx`, source code,
+notebooks, `.pdf` when `pypdf` is installed; an unreadable file is a finding), `ingest` (copies
+every document into `runs/<id>/inputs/` when the run is created and rewrites the run's own
+`config.yaml` to those copies; a missing document refuses the run), a count of the model families
+named in the prior artifacts, and a summary of an earlier COGNOS run read from its results.
+
+`stages/intake.py` is the stage. The **Intake Analyst** fills the brief and writes the interview;
+the engine then decides each field's value by precedence — a sponsor answer, then what the
+document states, then the profile, then the agent's inference (unconfirmed) — and turns every
+open question into a gap whose answer re-runs intake. The loop is the existing gap machinery:
+
+```
+intake ─▶ gate_intent (awaiting) ──answers──▶ intake re-runs ─▶ gate_intent … ──accept──▶ explore
+```
+
+`gate_intent` refuses a bare accept while a blocking question is open (a reason lets the run
+start; the question stays open and still blocks sign-off for the four sponsor decisions). On
+accept, what the document states is written to `overrides.design` / `overrides.compliance`, the
+same route a gate answer takes; the profile is not edited. A core design question shares its id
+(`design-<field>`) with the one `ideate` would raise, so the sponsor is asked once; after the
+intent is confirmed its answer re-enters at `ideate` instead of re-opening the interview.
+
+Every later agent receives the confirmed brief as `project.engagement`. An earlier run's scores
+are `prior.*` facts, scoped to the agents that read results (outcomes analyst, validator,
+model-risk analyst, writer): the design lead and the modeler learn the existing model's family and
+inputs, not how it scored.
 
 ## The stage contract
 
@@ -129,6 +172,7 @@ stages through the `RunContext` and writes its outputs as artifacts under `runs/
 ```
 runs/<run_id>/
   config.yaml              # the profile the run was created from (rehydrates the engine)
+  inputs/  intent/ supporting/ prior/ prior_run.json       # the engagement's documents, as given
   state.json               # RunState: steps, gate decisions, challenges, gaps, overrides, loops, spend,
                            # the live package pointer
   packages/ vN.json        # sealed decision packages: written once by approve, never rewritten
@@ -139,6 +183,7 @@ runs/<run_id>/
   data/    dataset.parquet train.parquet holdout.parquet   # sealed holdout lives here
   models/  champion_scorer.joblib                          # deployable scorer (IMPACT entry point)
   docs/    *.md index.md log.md narrative.md decisions.md  # the OKF white-paper bundle
+  stages/intake/ brief.json brief.md corpus.json           # the brief; the documents as read (text)
   stages/<stage>/result.json + artifacts (profile.json, hypotheses.json, design_brief.md,
                                           ledger.tsv/json, search_cache.joblib, diagnostics.json, …)
   stages/<stage>/result.prev.json          # the result a re-run replaced (kept for comparison)
@@ -148,7 +193,9 @@ Three mechanical readers sit beside the engine. `engine/process.py` maps each ga
 (developer, reviewer, approver), refuses a seat on another seat's gate, and seals `packages/vN.json`
 on `approve`; a later invalidation supersedes the pointer in `state.json`. `compare.py` restates
 two records and subtracts (run vs run, re-run vs `result.prev.json`). `export.py` zips the text
-record of a run with a SHA-256 listing; `data/`, `models/` and binary caches never travel.
+record of a run with a SHA-256 listing; `data/`, `models/` and binary caches never travel. The
+uploaded originals under `inputs/` stay behind too: the export carries the brief and
+`stages/intake/corpus.json`, the documents as the engine read them.
 
 ## The agent layer
 
@@ -181,7 +228,7 @@ enforces a per-call time limit and a per-run spend budget. Provider resolution:
   (every attempt's prompt, context slice and raw output) with the human decisions in `state.json`
   and the decision log, and are replayable with the `replay` provider.
 - **Agents recommend, humans decide** ([ADR-0010](docs/adr/0010-agents-recommend-humans-decide.md)):
-  five review gates; one pushback mechanism (challenges) for human send-backs and validator findings;
+  six review gates; one pushback mechanism (challenges) for human send-backs and validator findings;
   sponsor questions as tracked gaps; the modeler chooses from the one-standard-error admissible set
   before the holdout is scored; only the engine BLOCKs, and a BLOCK is never acceptable.
 - **Primary domain is commercial** model development under SR 11-7
@@ -197,7 +244,7 @@ enforces a per-call time limit and a per-run spend budget. Provider resolution:
   model-risk readiness report that never PASSes or BLOCKs, never marks an unevidenced element compliant
   (ongoing monitoring is always outstanding at dev time), and lists human-only steps (independent
   validation sign-off, monitoring plan, governance). The **only verdict gates are `validate` and
-  `review`** (the five human review gates decide, they never BLOCK);
+  `review`** (the six human review gates decide, they never BLOCK);
   `validate` hard-BLOCKs only on confirmed target leakage, and `review` BLOCKs only on stale docs↔code
   references.
 - **Single interpretable champion** ([ADR-0007](docs/adr/0007-single-interpretable-champion-no-silent-ensemble.md)):

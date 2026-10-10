@@ -3,14 +3,26 @@
 **A multi-agent workbench for regulated model development: agents recommend, you decide, the
 engine disposes.**
 
-COGNOS takes a dataset and a design brief through the model-development lifecycle for **commercial**
-modeling (e.g. commercial credit risk, validated under SR 11-7): data exploration, design, model
-search and statistical testing, outcomes analysis, independent validation, a model-risk readiness
-report, the white paper, and a docs↔code consistency check.
+COGNOS takes a business intent and a dataset through the model-development lifecycle for
+**commercial** modeling (e.g. commercial credit risk, validated under SR 11-7): intake of the
+sponsor's intent, data exploration, design, model search and statistical testing, outcomes
+analysis, independent validation, a model-risk readiness report, the white paper, and a docs↔code
+consistency check.
+
+It runs in two **development modes**:
+
+- **New model development** starts from the sponsor's **business intent document** (plus any
+  background material). There is a template to fill in beforehand: `cognos intent-template`.
+- **Model update** starts from the **existing model's artifacts** (white paper, development or
+  deployment code, validation and monitoring reports, or an earlier COGNOS run) and an **update
+  request** written on the same template: `cognos intent-template --kind update`.
+
+In both, an **Intake Analyst** agent reads the documents, restates the goal, and **interviews**
+you wherever the intent is not clear, before any data is touched.
 
 At every judgment step an **LLM agent recommends** — which columns may be inputs, which econometric
 framework fits, which champion to ship, what a validator would challenge. **People decide in seats**:
-the model developer at data, design and champion; an independent reviewer at validation; an approver
+the model developer at intent, data, design and champion; an independent reviewer at validation; an approver
 at sign-off. A seat cannot act on another seat's gate. A **deterministic engine disposes**: it
 computes every number, keeps the sealed holdout sealed, checks every agent answer (and makes the
 agent retry when it fails), and is the only thing that can BLOCK.
@@ -30,14 +42,15 @@ gates, a challenger loop, and an audit trail — on top of COGNOS's econometric 
 ## The workflow
 
 ```
- explore ─▶ ideate ─▶ model ─▶ backtest ─▶ validate ─▶ comply ─▶ document ─▶ review
-    │          │         │                    │ ⛔                              │ ⛔
- gate_data  gate_design  gate_champion   gate_validation                 gate_signoff
- (you)       (you)        (you)            (you)                           (you)
+ intake ─▶ explore ─▶ ideate ─▶ model ─▶ backtest ─▶ validate ─▶ comply ─▶ document ─▶ review
+    │         │          │         │                    │ ⛔                              │ ⛔
+ gate_intent gate_data gate_design gate_champion  gate_validation                 gate_signoff
+ (you)       (you)      (you)       (you)           (you)                           (you)
 ```
 
 | Stage | The engine computes | The agent recommends | You decide at the gate |
 |---|---|---|---|
+| `intake` | reads the intent document and the prior model's artifacts, parses the template, inventories and hashes every document | **Intake Analyst** — the engagement brief (every "stated" position quoted from the documents), whether the goal is clear, interview questions; for an update, the change items and scope | answer the interview; confirm the intent |
 | `explore` | profile, missingness, leakage suspects | **Data Analyst** — keep/exclude each suspect, data-quality issues, sponsor questions | which columns are inputs |
 | `ideate` | data structure, framework applicability, fittable families | **Design Lead** — framework roles, ranked slate, feature transforms (engine-validated), sponsor questions | the slate; answers to design questions |
 | `model` | budgeted leakage-safe search, the **admissible set** (one-SE rule), refit, inference, battery, sealed-holdout score | **Modeler** — the champion from the admissible set (blind to the holdout), economic sign checks; opt-in guided experiments | accept / override the champion |
@@ -46,6 +59,26 @@ gates, a challenger loop, and an audit trail — on top of COGNOS's econometric 
 | `comply` | SR 11-7 / NIST AI RMF readiness report (non-gating) | **Model-Risk Analyst** — readiness and priority human actions | — |
 | `document` | OKF bundle, Model Card, EU Annex IV, decision log | **Technical Writer** — narrative with `{{fact:…}}` placeholders the engine renders | — |
 | `review` ⛔ | AST-verified docs↔code anchors; **BLOCKs on stale references** | — | sign off / reject |
+
+### The interview
+
+Intake does not guess. Each field of the brief is *stated* (the engine finds the agent's quote in
+your documents, or rejects the answer), *inferred* (to be confirmed) or *missing*. Every required
+field that is not stated becomes a **blocking question**. You answer at the intent gate (or with
+`cognos answer`), intake re-reads the brief with the answer, and the gate re-opens until nothing
+blocks. You may confirm the intent with questions still open, with a reason; they stay open, and
+nobody can sign a package until use, horizon, default definition and segment are answered. What
+the sponsor's document states becomes part of the effective config when you confirm it.
+
+### A model update
+
+The engine reads the existing model mechanically: the family named in its artifacts, the dataset
+columns its code refers to and, when it is an earlier COGNOS run, the champion and scores that run
+recorded. The Intake Analyst turns the request into change items and a scope (recalibrate,
+re-estimate, redevelop). The design keeps the existing model's family at the front of the slate as
+the benchmark, the validator checks that every requested change was delivered, and the white paper
+gains a **model change record** with the existing model beside the update. The existing model's
+scores reach only the agents that read results; the modeler still chooses blind.
 
 Any decision can be revised later; the engine marks everything downstream stale and re-runs it.
 Send-backs and high-severity validator findings reach the stage's agent as **challenges** it must
@@ -75,9 +108,14 @@ cognos demo --task cni --provider claude_cli # live Claude agents, autonomous
 Your own data:
 
 ```bash
-cognos init -o cognos.yaml                   # profile template (design brief, agents, gates)
+cognos init -o cognos.yaml                   # profile template (data, agents, gates)
+cognos intent-template -o intent.md          # the business intent document: fill it in first
 cognos explain --config cognos.yaml
-cognos run --config cognos.yaml --interactive
+cognos run --config cognos.yaml --intent intent.md --interactive      # a new model development
+
+cognos intent-template --kind update -o request.md                    # a model update
+cognos run --config cognos.yaml --kind update --intent request.md \
+           --prior whitepaper.docx --prior score.py --prior-run <run_id> --interactive
 cognos status --run <run_id>                 # steps, questions, challenges
 cognos compare <run_a> <run_b>               # what was decided differently, and what it changed
 cognos export <run_id>                       # one zip: documents, results, decisions, audit (never the data)
@@ -86,14 +124,25 @@ cognos gate gate_validation --run <run_id> --action send_back --target model --m
 cognos answer --run <run_id> --gap design-use_case --text "origination underwriting"
 ```
 
+The documents can also be named in the profile (`engagement:` block). They are copied into the run
+(`runs/<id>/inputs/`), read as text (`.md`, `.txt`, `.docx`, source code, notebooks; `.pdf` when
+`pypdf` is installed), and an unreadable one is a finding, not a crash.
+
 Python:
 
 ```python
 from cognos import service
 cfg = service.demo_config("commercial")
 run_id = service.create_run(cfg, mode="interactive", provider="heuristic")
-state = service.run_until_idle(run_id)                 # pauses at gate_data
-service.submit_gate(run_id, "gate_data", "accept", background=False)
+state = service.run_until_idle(run_id)                 # pauses at gate_intent
+service.submit_gate(run_id, "gate_intent", "edit", {"answers": {"design-horizon": "12-month"}},
+                    background=False)                  # the interview: intake re-reads the brief
+service.submit_gate(run_id, "gate_intent", "accept", reason="the rest is with the sponsor",
+                    background=False)
+
+update = service.create_run(cfg, engagement={          # a model update of that run
+    "kind": "update", "intent": "request.md", "prior_artifacts": ["whitepaper.docx", "score.py"],
+    "prior_run": run_id})
 ```
 
 `Orchestrator` / `run_pipeline` still work as a compatibility wrapper (review gates auto-accepted).
@@ -101,8 +150,10 @@ service.submit_gate(run_id, "gate_data", "accept", background=False)
 ## The workbench
 
 `cognos ui` opens a Dash + Mantine app built for model developers: a runs list with a new-run drawer
-(demo presets or `projects/*.yaml`, interactive or autonomous, agent backend), and a run workspace
-with the stage rail, each stage's engine evidence (profile, framework assessment, slate, experiment
+(new model or model update, demo presets or `projects/*.yaml`, upload of the intent document and
+the existing model's artifacts, a button to download the template, interactive or autonomous, agent
+backend), and a run workspace with the stage rail, each stage's engine evidence (the engagement
+brief and the interview form, profile, framework assessment, slate, experiment
 ledger, admissible set, coefficient and calibration charts, rubric, findings, the rendered white
 paper) beside its agent's recommendation, the gate form, live activity, questions & challenges, and
 an agent audit where every call's prompt, context slice and raw output can be inspected. Light and
@@ -114,6 +165,8 @@ dark themes; all state is on disk, so a refresh or restart loses nothing.
   engine checks (unknown fact ids, a champion outside the admissible set, a non-fittable family, an
   excluded target, a typed metric value…) and retried with the errors; failures are visible, never
   silent.
+- **No assumed intent.** The Intake Analyst may only call a sponsor position "stated" with a quote
+  the engine finds in the documents; everything else is asked, and the answers are on the record.
 - **No LLM math.** Every recorded number comes from the engine; agents cite facts by id and the
   writer's prose is rendered from placeholders.
 - **Frozen substrate.** Metric definitions and the sealed holdout are not agent-editable; the
@@ -136,7 +189,8 @@ src/cognos/
   engine/        workflow graph, RunState, gates, events, the Engine (DAG + staleness + gates)
   agents/        contracts, prompts/, slices (independence), facts, checks, heuristic agents,
                  providers.yaml, runner (retry/audit/limits), backends/ (claude_cli, anthropic, openai)
-  stages/        the 8 stages + stat_tests battery (engine work; judgment via ctx.recommend)
+  engagement.py  development modes, the intent template, document reading, ingest into the run
+  stages/        the 9 stages + stat_tests battery (engine work; judgment via ctx.recommend)
   modeling/      metrics, fitters (GLM links incl. probit/cloglog), ratchet search, hazard,
                  structural (Merton), migration, simulate (Vasicek + stress), credit_metrics,
                  transforms (target-hidden), guided (agent-guided search), ensemble
@@ -145,7 +199,7 @@ src/cognos/
   cli.py  config.py  context.py  artifacts.py  orchestrator.py (compat)  okf.py  synth.py
   integrations/  impact_adapter, autoforge_loop
   runtime/       deployment scorer (IMPACT derived-field entry point)
-projects/  examples/  evals/  tests/  docs/adr/ (0001–0010)  CONTEXT.md (glossary)
+projects/  examples/  evals/  tests/  docs/adr/ (0001–0011)  docs/templates/  CONTEXT.md (glossary)
 ```
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`FEATURES.md`](FEATURES.md), [`CONTEXT.md`](CONTEXT.md),

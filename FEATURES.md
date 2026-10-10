@@ -1,9 +1,40 @@
 # COGNOS — comprehensive feature list
 
+## Development modes and intake (v1.1)
+- **Two development modes** (`engagement.kind`, ADR-0011): **new model development**, from the
+  sponsor's business intent document and background material; and **model update**, from the
+  existing model's artifacts (white paper, development / deployment code, validation and
+  monitoring reports, or an earlier COGNOS run) and an update request.
+- **One template** for the intent document and the update request (`cognos intent-template
+  [--kind update]`, the workbench's download button, `docs/templates/`), prepared before the run.
+  The engine parses its sections; headings are matched by alias, hints and `TBD` count as empty.
+- **Documents by upload or by path**: `.md`, `.txt`, `.docx` (headings kept), source code,
+  notebooks, `.pdf` with `pypdf`. Copied into `runs/<id>/inputs/`, hashed, inventoried; an
+  unreadable file is a finding and a missing one refuses the run.
+- **Intake stage + Intake Analyst**: restates the objective, fills a 12-field engagement brief (17
+  for an update), judges whether the intent is clear / needs clarification / unclear.
+- **The interview**: every required field the documents do not state becomes a blocking question;
+  the agent adds its own (a vague goal, a contradiction, an unmeasurable success criterion).
+  Answers re-run intake until nothing blocks. Answer in the workbench form, with `cognos answer`,
+  or in the terminal prompt of `run --interactive`.
+- **Grounded brief**: a position is *stated* only with a quote the engine finds in the documents;
+  *inferred* positions are asked about, never applied.
+- **`gate_intent`**: answer, confirm, or send back. Confirming with blocking questions open needs
+  a reason. What the document states then enters the effective config (design brief, intended and
+  out-of-scope use); a document that disagrees with the profile is flagged.
+- **Model update**: change items typed and routed to the stage they alter; an update scope
+  (recalibrate / re-estimate / redevelop); the existing model's family and inputs read from its
+  artifacts; the incumbent family always on the slate and ranked first; the validator checks the
+  request was delivered; a **model change record** in the white paper with the existing model's
+  recorded figures beside the update's when it is an earlier COGNOS run.
+- **Scoped prior scores**: `prior.*` facts reach the outcomes analyst, validator, model-risk
+  analyst and writer; the design lead and the modeler see the incumbent's family, not its scores.
+- **Every agent sees the confirmed brief** (`project.engagement`).
+
 ## Workflow engine (v1.0)
-- Eight-stage lifecycle `explore → ideate → model → backtest → validate → comply → document → review`
-  interleaved with **five human review gates**: `gate_data`, `gate_design`, `gate_champion`,
-  `gate_validation`, `gate_signoff` (ADR-0010).
+- Nine-stage lifecycle `intake → explore → ideate → model → backtest → validate → comply →
+  document → review` interleaved with **six human review gates**: `gate_intent`, `gate_data`,
+  `gate_design`, `gate_champion`, `gate_validation`, `gate_signoff` (ADR-0010, ADR-0011).
 - **Mechanical engine** (`engine/`): a step graph with dependencies, statuses
   (pending / running / done / awaiting / stale / failed / blocked / skipped), and **stale
   propagation** — a revised decision, an answered question or a challenge marks everything
@@ -11,7 +42,7 @@
 - **Two modes, one engine**: interactive (pause at every enabled review gate) and autonomous (gates
   auto-accept the agent's recommendation, recorded as actor `auto` and seat `express` — preparation,
   not a signature); gates can be disabled per project.
-- **Seats**: data, design and champion belong to the model developer; validation to the independent
+- **Seats**: intent, data, design and champion belong to the model developer; validation to the independent
   reviewer; sign-off to the approver. The engine refuses a seat on another seat's gate. `approve`
   seals `packages/vN.json` once (a digest of the recorded design, exclusions, slate, champion and
   verdicts). A later invalidation or a re-opened gate supersedes that package; the file stays.
@@ -27,8 +58,9 @@
   machine-readable run summary; per-project YAML profile (`CognosConfig`).
 
 ## Human decisions
-- **Gate actions**: accept, edit (exclusions, slate, design answers), override (champion, from the
-  admissible set, reason required), send back (a challenge to explore / ideate / model), approve and
+- **Gate actions**: accept, edit (interview answers, exclusions, slate, design answers), override
+  (champion, from the admissible set, reason required), send back (a challenge to intake / explore /
+  ideate / model), approve and
   reject (sign-off). Accepting a FAIL requires a reason (recorded risk acceptance).
 - **Overrides** shape the effective config; the profile YAML is never edited.
 - **Tracked questions (gaps)**: every unanswered design point and agent question for the sponsor;
@@ -38,7 +70,7 @@
   the OKF bundle (`docs/decisions.md`).
 
 ## Agents (propose / dispose)
-- **Seven stage agents** — Data Analyst, Design Lead, Modeler (+ guided-search role), Outcomes
+- **Eight stage agents** — Intake Analyst, Data Analyst, Design Lead, Modeler (+ guided-search role), Outcomes
   Analyst, Independent Validator, Model-Risk Analyst, Technical Writer — each with a role prompt
   (commercial-risk playbook), a Pydantic output contract, an independence-scoped context slice,
   engine checks, and a deterministic heuristic implementation.
@@ -68,7 +100,9 @@
 ## Workbench (`cognos ui`)
 - Dash + Mantine app for model developers; light and dark themes.
 - **Runs**: every run with status, what it is waiting on, backend, champion, spend; start a run from
-  a synthetic demo preset or a project profile, interactive or autonomous, with a chosen backend.
+  a synthetic demo preset or a project profile, as a new model or a model update (upload the
+  intent document, background material and the existing model's artifacts; download the template),
+  interactive or autonomous, with a chosen backend.
 - **Run workspace**: one stage rail (status, verdict, and the seat a waiting gate belongs to), each
   stage's engine evidence beside its agent's recommendation (uncertainties, responses to
   challenges), the gate form for the seat that owns it, live activity; a seat switch in the page
@@ -91,10 +125,11 @@
   nothing.
 
 ## CLI
-- `cognos ui | run [--interactive] [--provider] | demo | status | gate | answer | retry |
-  run-stage | providers | agents | init | explain | report | list-runs | compare | export`.
-- Terminal gate review for `run --interactive` (accept / send back), auto-accept on non-tty stdin
-  (never past a BLOCK).
+- `cognos ui | run [--interactive] [--provider] [--kind --intent --support --prior --prior-run] |
+  intent-template | demo | status | gate | answer | retry | run-stage | providers | agents | init |
+  explain | report | list-runs | compare | export`.
+- Terminal gate review for `run --interactive` (the intake interview, accept / send back),
+  auto-accept on non-tty stdin (never past a BLOCK).
 
 ## Data exploration (`explore`)
 - Schema/dtype/missingness profiling; numeric distribution summaries.

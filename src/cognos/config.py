@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -76,6 +76,55 @@ class DesignConfig(BaseModel):
         blanks = [name for name in ("use_case", "horizon", "default_definition", "segment")
                   if not getattr(self, name).strip()]
         return blanks
+
+
+class PriorArtifact(BaseModel):
+    """One artifact of the model being updated. ``auto`` infers the role from the file name."""
+
+    path: str
+    role: Literal["auto", "whitepaper", "code", "validation", "monitoring", "other"] = "auto"
+
+
+class EngagementConfig(BaseModel):
+    """The development mode and the documents the run starts from (engagement.py).
+
+    ``new`` is a complete new model development; ``update`` changes an existing model and needs
+    that model's artifacts plus a change request. The business intent document (and the change
+    request) follow one template: ``cognos intent-template [--kind update]``. Paths are copied
+    into the run (``runs/<id>/inputs/``) when it is created.
+    """
+
+    kind: Literal["new", "update"] = "new"
+    intent: str | None = None  # the business intent document / model update request
+    supporting: list[str] = Field(default_factory=list)  # background material
+    prior_artifacts: list[PriorArtifact] = Field(default_factory=list)  # update: the existing model
+    prior_run: str | None = None  # update: an earlier COGNOS run (id or directory) of that model
+
+    @model_validator(mode="before")
+    @classmethod
+    def _plain_paths(cls, raw: Any) -> Any:
+        if isinstance(raw, dict) and raw.get("prior_artifacts"):
+            raw = dict(raw)
+            raw["prior_artifacts"] = [{"path": a} if isinstance(a, str) else a
+                                      for a in raw["prior_artifacts"]]
+        return raw
+
+    @model_validator(mode="after")
+    def _check_kind(self) -> EngagementConfig:
+        has_prior = bool(self.prior_artifacts or self.prior_run)
+        if self.kind == "update":
+            if not has_prior:
+                raise ValueError(
+                    "a model update needs the existing model: give engagement.prior_artifacts "
+                    "(white paper, code, reports) or engagement.prior_run")
+            if not self.intent:
+                raise ValueError(
+                    "a model update needs the update request: give engagement.intent "
+                    "(template: cognos intent-template --kind update)")
+        elif has_prior:
+            raise ValueError("prior-model artifacts are read only in a model update; set "
+                             "engagement.kind: update")
+        return self
 
 
 class MetricConfig(BaseModel):
@@ -211,13 +260,15 @@ class WorkflowConfig(BaseModel):
     """Human gates and the automatic challenge loop (engine/graph.py)."""
 
     gates: list[str] = Field(default_factory=lambda: [
-        "gate_data", "gate_design", "gate_champion", "gate_validation", "gate_signoff"])
+        "gate_intent", "gate_data", "gate_design", "gate_champion", "gate_validation",
+        "gate_signoff"])
     auto_challenge_loops: int = 2  # validator high findings routed back automatically, at most N times
 
 
 class StagesConfig(BaseModel):
     enabled: list[str] = Field(
         default_factory=lambda: [
+            "intake",
             "explore",
             "ideate",
             "model",
@@ -243,6 +294,7 @@ class CognosConfig(BaseModel):
     task: TaskType
     mode: Mode = Mode.AUTONOMOUS
     data: DataConfig
+    engagement: EngagementConfig = Field(default_factory=EngagementConfig)
     design: DesignConfig = Field(default_factory=DesignConfig)
     metric: MetricConfig = Field(default_factory=MetricConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)

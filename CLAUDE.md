@@ -34,8 +34,8 @@ trustworthy. v1.0 architecture: **agents recommend, humans decide, the engine di
 
 ## The workflow (engine/graph.py)
 ```
-explore → gate_data → ideate → gate_design → model → gate_champion → backtest → validate
-        → gate_validation → comply → document → review → gate_signoff
+intake → gate_intent → explore → gate_data → ideate → gate_design → model → gate_champion
+       → backtest → validate → gate_validation → comply → document → review → gate_signoff
 ```
 `RunState` (`runs/<id>/state.json`) holds step statuses, gate decisions, challenges, gaps (sponsor
 questions) and overrides. Human decisions change the *effective* config through overrides (design
@@ -43,7 +43,7 @@ answers → `ctx.config.design`; exclusions → `ctx.profile()`; slate → model
 `overrides.champion`) — the profile YAML is never edited. A changed decision marks the downstream
 steps `stale`; a step invalidated while running stays stale when it finishes.
 
-Seats (`engine/process.py`): developer on data, design and champion; reviewer on validation;
+Seats (`engine/process.py`): developer on intent, data, design and champion; reviewer on validation;
 approver on sign-off. The engine refuses a seat on another seat's gate. Use, horizon, default
 definition and segment cannot be assumed, and `approve` refuses while any of them is open.
 `approve` writes `packages/vN.json` once (a digest of recorded facts). A later invalidation
@@ -60,6 +60,26 @@ no judgment, nothing stored, and "better" only where the metric has a direction 
 or the run's own metric direction). Exports (`export.py`) never include `data/`, `models/` or binary
 caches — the sealed holdout stays sealed; a new artifact type that should travel must be a text format.
 
+## Development modes and intake (ADR-0011)
+`engagement.kind` is `new` (from a business intent document) or `update` (from the existing
+model's artifacts plus an update request). Say "development mode"; "mode" alone means autonomous /
+interactive. The mode changes a run's inputs and what agents are told, never how the engine
+measures.
+
+- `engagement.py` is mechanical: the template (`render_template` / `parse_intent`; the files in
+  `docs/templates/` are generated from it and a test holds them equal), `read_text` (never raises:
+  an unreadable document is a finding), `ingest` (copies documents into `runs/<id>/inputs/` at run
+  creation; a missing one refuses the run), and the prior-model scan.
+- The interview is gaps: `intake` raises questions (`category: intent`, `reentry: intake`), an
+  answer re-runs it. Do not add a chat loop or a second question store. Core design questions keep
+  the ids `design-<field>` so intake and ideate never ask twice.
+- A brief entry is `stated` only with a quote found in the documents (`checks.intake_analyst`).
+  Inferred positions are asked about, never written to overrides.
+- `intake` never loads the dataset. Prior-model scores are `prior.*` facts and stay out of the
+  design lead's and the modeler's scope (`slices.FACT_SCOPE`).
+- `gate_intent` accept writes the document's stated design / intended-use fields to
+  `overrides.design` / `overrides.compliance`; an existing answer wins.
+
 ## Stage contract
 A stage is a `Stage` subclass with `name`, `requires`, `is_gate`, and `run(ctx) -> StageResult`. It
 reads prior outputs via `ctx.require(<stage>).payload` (explore's via `ctx.profile()`), writes
@@ -70,8 +90,10 @@ artifacts under `runs/<id>/stages/<name>/`, and obtains judgment only via
 `stages/__init__._STAGE_MODULES`.
 
 ## Agents (agents/)
-Each agent = a role prompt (`prompts/<agent>.md` + `_common.md`), an output contract
-(`contracts.py`, `extra="forbid"`, strict-grammar-friendly types — no free-form maps), a slice scope
+Eight agents (intake analyst, data analyst, design lead, modeler, outcomes analyst, validator,
+model-risk analyst, writer). Each agent = a role prompt (`prompts/<agent>.md` + `_common.md`), an
+output contract (`contracts.py`, `extra="forbid"`, strict-grammar-friendly types — no free-form
+maps), a slice scope
 (`slices.FACT_SCOPE`), engine checks (`checks.py`), and a deterministic implementation
 (`heuristic.py`, a pure function of the same slice). Adding or changing an agent means touching all
 five, and the heuristic must pass the checks (the tests hold it to that). Contracts carry
@@ -91,6 +113,10 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   if agents should cite it.
 - **New statistical test** → `stages/stat_tests.py` with H0, severity, and a `_safe` wrapper.
 - **New gate action** → `engine/gates.py::ACTIONS` + handler + a UI control in `ui/panels.py`.
+- **New brief field** → `engagement.FIELDS` (label, hint, aliases, required), the `BriefFieldId`
+  literals in `agents/contracts.py`, a question in `engagement.QUESTIONS` if required, then
+  regenerate `docs/templates/` (`render_template`).
+- **New document format** → a reader in `engagement.read_text` that returns `(None, why)` on failure.
 - **New compliance regime** → extend `stages/comply.py`; emit evidence `document`/`review` can trace.
 - **New stage** → single-responsibility; wire `requires`, a graph node, and (optionally) an agent.
 - **New stage metric** → if it has a good direction, add it to `compare._HIGHER` / `_LOWER` and give it a
@@ -105,6 +131,8 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 `service.py` is the only boundary the CLI (`cli.py`) and the Dash + Mantine workbench (`ui/`) use.
 UI panels are pure functions of (result, state, scheme, seat) — keep them testable without a browser
 (`tests/ui`). Never write `component or fallback`: Dash components define `__len__`, so a childless
-component is falsy — use `graph(fig, placeholder)` / explicit `is None` checks. Charts follow the
+component is falsy — use `graph(fig, placeholder)` / explicit `is None` checks. Never pass an
+explicit `None` for a Mantine style prop (`c=None`): it serializes as `null` and the page stops
+rendering in the browser; branch on the component instead. Charts follow the
 reference palette in `ui/theme.py` (single y-axis, legends for ≥ 2 series, status colors only with an
 icon + label).

@@ -9,18 +9,18 @@ from cognos.orchestrator import Orchestrator, run_pipeline
 def test_autonomous_regression_completes(make_config, runs_dir):
     cfg = make_config("regression")
     ctx, summary = run_pipeline(cfg, runs_root=runs_dir)
-    assert len(summary.stages_run) == 8
+    assert len(summary.stages_run) == 9
     assert summary.final_verdict != Verdict.ERROR
     assert (ctx.run_dir / "summary.json").exists()
     assert summary.champion_metric is not None
 
 
 def test_credit_completes_with_readiness_report(make_config, runs_dir):
-    # ADR-0006: compliance no longer gates. A credit run completes all 8 stages and comply emits a
+    # ADR-0006: compliance no longer gates. A credit run completes all 9 stages and comply emits a
     # non-gating model-risk readiness report (never a BLOCK).
     cfg = make_config("credit")
     ctx, summary = run_pipeline(cfg, runs_root=runs_dir)
-    assert len(summary.stages_run) == 8
+    assert len(summary.stages_run) == 9
     comply = ctx.require("comply")
     assert comply.verdict == Verdict.PASS
     assert comply.payload.get("report_only") is True

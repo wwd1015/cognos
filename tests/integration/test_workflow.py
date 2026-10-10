@@ -50,6 +50,10 @@ def test_autonomous_run_completes_with_auto_decisions(make_config, runs_dir):
 def test_interactive_run_pauses_at_each_gate_and_signs_off(make_config, runs_dir, apply_brief):
     eng = Engine(apply_brief(make_config("classification")), runs_root=runs_dir, mode="interactive")
     state = eng.run_until_idle()
+    assert state.status == "awaiting" and state.status_of("gate_intent") == "awaiting"
+    assert state.status_of("explore") == "pending"  # no data is touched before the intent stands
+    eng.submit_gate("gate_intent", "accept")
+    state = eng.run_until_idle()
     assert state.status == "awaiting" and state.status_of("gate_data") == "awaiting"
     assert state.status_of("ideate") == "pending"
     state = _accept_all(eng)
@@ -58,9 +62,9 @@ def test_interactive_run_pauses_at_each_gate_and_signs_off(make_config, runs_dir
     assert all(d.actor == "human" for d in state.decisions)
 
 
-def test_double_submit_is_rejected_cleanly(make_config, runs_dir):
+def test_double_submit_is_rejected_cleanly(make_config, runs_dir, confirm_intent):
     eng = Engine(make_config("regression"), runs_root=runs_dir, mode="interactive")
-    eng.run_until_idle()
+    confirm_intent(eng)
     eng.submit_gate("gate_data", "accept")
     before = eng.state.version
     with pytest.raises(GateError, match="not awaiting"):
@@ -222,18 +226,19 @@ def test_invalid_agent_fails_step_visibly_and_retry_recovers(make_config, runs_d
     assert eng.run_until_idle().status == "completed"
 
 
-def test_engine_rehydrates_from_run_dir(make_config, runs_dir):
+def test_engine_rehydrates_from_run_dir(make_config, runs_dir, confirm_intent):
     eng = Engine(make_config("regression"), runs_root=runs_dir, mode="interactive")
-    eng.run_until_idle()
+    confirm_intent(eng)
     again = Engine.load(eng.run_dir)
     assert again.state.status_of("gate_data") == "awaiting"
     again.submit_gate("gate_data", "accept")
     assert again.run_until_idle().status_of("gate_design") == "awaiting"
 
 
-def test_sponsor_answer_reaches_the_agent_and_changes_its_recommendation(leak_config, runs_dir):
+def test_sponsor_answer_reaches_the_agent_and_changes_its_recommendation(leak_config, runs_dir,
+                                                                           confirm_intent):
     eng = Engine(leak_config, runs_root=runs_dir, mode="interactive")
-    state = eng.run_until_idle()
+    state = confirm_intent(eng)
     assert "leaky" not in eng.results()["explore"].payload["recommended_exclusions"]
     gap = next(g for g in state.gaps if g.stage == "explore" and "leaky" in g.question)
     eng.answer_gap(gap.id, "No - leaky is recorded after the outcome window.")

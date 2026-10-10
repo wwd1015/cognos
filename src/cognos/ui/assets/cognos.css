@@ -29,3 +29,13 @@ body { background: var(--cognos-page); }
 @keyframes cognos-spin { to { transform: rotate(360deg); } }
 .spin { animation: cognos-spin 1.2s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+/* Document drop zones in the new-run drawer. */
+.cognos-upload {
+  border: 1px dashed var(--mantine-color-gray-5);
+  border-radius: var(--mantine-radius-md);
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--mantine-color-dimmed);
+}
+.cognos-upload:hover { border-color: var(--mantine-color-indigo-5); }

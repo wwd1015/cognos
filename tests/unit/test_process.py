@@ -73,9 +73,9 @@ def test_reset_supersedes_a_sealed_package(make_config, runs_dir):
     assert state.status == "created"
 
 
-def test_reviewer_cannot_take_the_developers_gate(make_config, runs_dir):
+def test_reviewer_cannot_take_the_developers_gate(make_config, runs_dir, confirm_intent):
     eng = Engine(make_config("regression"), runs_root=runs_dir, mode="interactive")
-    eng.run_until_idle()
+    confirm_intent(eng)
     assert eng.state.status_of("gate_data") == "awaiting"
     with pytest.raises(GateError, match="model developer"):
         eng.submit_gate("gate_data", "accept", seat="reviewer")
@@ -88,8 +88,9 @@ def test_approve_seals_a_package_and_a_later_edit_does_not_rewrite_it(make_confi
     eng = Engine(apply_brief(make_config("classification")), runs_root=runs_dir, mode="interactive")
     for _ in range(20):
         state = eng.run_until_idle()
-        waiting = [g for g in ("gate_data", "gate_design", "gate_champion", "gate_validation",
-                               "gate_signoff") if state.status_of(g) == "awaiting"]
+        waiting = [g for g in ("gate_intent", "gate_data", "gate_design", "gate_champion",
+                               "gate_validation", "gate_signoff")
+                   if state.status_of(g) == "awaiting"]
         if not waiting:
             break
         action = "approve" if waiting[0] == "gate_signoff" else "accept"
@@ -114,8 +115,9 @@ def test_open_brief_cannot_be_signed(make_config, runs_dir):
     eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
     for _ in range(20):
         state = eng.run_until_idle()
-        waiting = [g for g in ("gate_data", "gate_design", "gate_champion", "gate_validation",
-                               "gate_signoff") if state.status_of(g) == "awaiting"]
+        waiting = [g for g in ("gate_intent", "gate_data", "gate_design", "gate_champion",
+                               "gate_validation", "gate_signoff")
+                   if state.status_of(g) == "awaiting"]
         if not waiting:
             break
         if waiting[0] == "gate_signoff":

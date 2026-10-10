@@ -1,22 +1,27 @@
 """The workflow graph: every step (stage or human gate), its dependencies, and invalidation.
 
-Deliberately data, not logic: the engine walks ``DEPS`` mechanically. Stages are the eight engine
+Deliberately data, not logic: the engine walks ``DEPS`` mechanically. Stages are the nine engine
 stages (each consults its agent between prepare and finalize); gates are human decision points that
 pause in interactive mode and auto-accept in autonomous mode.
 """
 
 from __future__ import annotations
 
-STAGES = ["explore", "ideate", "model", "backtest", "validate", "comply", "document", "review"]
-GATES = ["gate_data", "gate_design", "gate_champion", "gate_validation", "gate_signoff"]
+STAGES = ["intake", "explore", "ideate", "model", "backtest", "validate", "comply", "document",
+          "review"]
+GATES = ["gate_intent", "gate_data", "gate_design", "gate_champion", "gate_validation",
+         "gate_signoff"]
 
 STEPS = [
+    "intake", "gate_intent",
     "explore", "gate_data", "ideate", "gate_design", "model", "gate_champion", "backtest",
     "validate", "gate_validation", "comply", "document", "review", "gate_signoff",
 ]
 
 DEPS: dict[str, list[str]] = {
-    "explore": [],
+    "intake": [],
+    "gate_intent": ["intake"],
+    "explore": ["gate_intent"],
     "gate_data": ["explore"],
     "ideate": ["gate_data"],
     "gate_design": ["ideate"],
@@ -32,14 +37,16 @@ DEPS: dict[str, list[str]] = {
 }
 
 # The stage each gate reviews (its recommendation is what the human accepts or pushes back on).
-GATE_OF_STAGE = {"explore": "gate_data", "ideate": "gate_design", "model": "gate_champion",
+GATE_OF_STAGE = {"intake": "gate_intent", "explore": "gate_data", "ideate": "gate_design", "model": "gate_champion",
                  "validate": "gate_validation", "review": "gate_signoff"}
 STAGE_OF_GATE = {g: s for s, g in GATE_OF_STAGE.items()}
 
 # Stages a human (or the validator) may send work back to.
-SEND_BACK_TARGETS = ["explore", "ideate", "model"]
+SEND_BACK_TARGETS = ["intake", "explore", "ideate", "model"]
 
 LABELS = {
+    "intake": "Understand the intent",
+    "gate_intent": "Confirm the intent",
     "explore": "Explore data",
     "gate_data": "Review data decisions",
     "ideate": "Design the model",

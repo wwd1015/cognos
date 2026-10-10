@@ -2,6 +2,9 @@
 
   cognos ui         [--port 8050]                              # the Dash workbench
   cognos run        --config cognos.yaml [--interactive] [--provider P]
+                    [--intent intent.md] [--support FILE ...]            # new model development
+                    [--kind update --prior FILE ... | --prior-run ID]    # model update
+  cognos intent-template [--kind new|update] [-o intent.md]   # the document a run starts from
   cognos demo       [--task commercial|cni|migration|...] [--interactive] [--provider P]
   cognos status     --run <run_id>                            # step table, gates, questions
   cognos gate       <gate> --run <run_id> --action accept|edit|override|send_back|approve|reject
@@ -36,6 +39,14 @@ data:
   event_time_col: null    # 1-based period of the event (survival); unlocks the hazard families
   horizon_periods: null   # outcome window in periods; null = max observed event time
 
+engagement:               # the development mode and the documents the run starts from
+  kind: new               # new (complete new model development) | update (change an existing model)
+  intent: null            # the business intent document / update request
+                          #   (template: cognos intent-template [--kind update] -o intent.md)
+  supporting: []          # background material the Intake Analyst may read
+  prior_artifacts: []     # update: the existing model's white paper, code, validation reports
+  prior_run: null         # update: an earlier COGNOS run of that model (id or directory)
+
 design:                   # the sponsor's (MD's) design brief — unanswered fields become
   use_case: ""            #   open questions at the design gate, never silent assumptions
   horizon: ""             #   e.g. origination | surveillance | CECL | IRB
@@ -51,7 +62,7 @@ agents:                   # who makes the recommendations (cognos providers list
   budget_usd: 5.0         # spend cap per run (0 = unlimited)
 
 workflow:
-  gates: [gate_data, gate_design, gate_champion, gate_validation, gate_signoff]
+  gates: [gate_intent, gate_data, gate_design, gate_champion, gate_validation, gate_signoff]
   auto_challenge_loops: 2 # validator findings routed back automatically, at most N times
 
 metric:
@@ -100,7 +111,7 @@ compliance:
   jurisdictions: [US]
 
 stages:
-  enabled: [explore, ideate, model, backtest, validate, comply, document, review]
+  enabled: [intake, explore, ideate, model, backtest, validate, comply, document, review]
   gates: [validate, review]   # verdict gates that may BLOCK
 """
 
@@ -129,8 +140,10 @@ def _gate_prompt(run_id: str, gate: str, root) -> bool:
         for f in res.findings[:8]:
             print(f"    - {f.line()}")
     st = service.state(run_id, root)
-    for g in st.open_gaps()[:6]:
+    for g in st.open_gaps()[:8]:
         print(f"  ? [{g.id}] {g.question}")
+    if gate == "gate_intent" and sys.stdin.isatty() and _interview(run_id, st, root):
+        return True  # answers recorded: intake re-reads the brief, then this gate re-opens
     if not sys.stdin.isatty():
         if res is not None and res.verdict.value == "BLOCK":
             print("  (non-interactive stdin, BLOCK) -> left waiting; resolve with `cognos gate`.")
@@ -152,7 +165,7 @@ def _gate_prompt(run_id: str, gate: str, root) -> bool:
             service.submit_gate(run_id, gate, action, reason=reason, root=root, background=False)
             return True
         if choice.startswith("s"):
-            target = stage if stage in ("explore", "ideate", "model") else (
+            target = stage if stage in ("intake", "explore", "ideate", "model") else (
                 input("  send back to [explore/ideate/model] > ").strip() or "model")
             msg = input("  what should the agent reconsider? > ").strip()
             service.submit_gate(run_id, gate, "send_back", {"target": target, "message": msg},
@@ -162,6 +175,39 @@ def _gate_prompt(run_id: str, gate: str, root) -> bool:
         print(f"  refused: {exc}")
         return True
     return False
+
+
+def _interview(run_id: str, st, root) -> bool:
+    """The Intake Analyst's interview in the terminal: one prompt per open question (Enter skips).
+    True when at least one answer was recorded."""
+    from . import service
+    from .engine import GateError
+
+    gaps = [g for g in st.open_gaps() if g.stage == "intake"]
+    if not gaps:
+        return False
+    print("  The Intake Analyst needs the sponsor's answers (Enter skips a question):")
+    answers = {}
+    for g in gaps:
+        text = input(f"  [{g.id}] {g.question}\n    > ").strip()
+        if text:
+            answers[g.id] = text
+    if not answers:
+        return False
+    try:
+        service.submit_gate(run_id, "gate_intent", "edit", {"answers": answers}, root=root,
+                            background=False)
+    except GateError as exc:
+        print(f"  refused: {exc}")
+        return False
+    return True
+
+
+def _engagement_args(args) -> dict:
+    """The engagement the command line asks for, on top of the profile's."""
+    kind = args.kind or ("update" if (args.prior or args.prior_run) else None)
+    return {"kind": kind, "intent": args.intent, "supporting": args.support,
+            "prior_artifacts": args.prior, "prior_run": args.prior_run}
 
 
 def _drive(run_id: str, root, interactive: bool) -> int:
@@ -195,11 +241,32 @@ def _cmd_init(args) -> int:
     return 0
 
 
+def _cmd_intent_template(args) -> int:
+    from . import service
+
+    text = service.intent_template(args.kind, args.name)
+    if not args.output:
+        print(text)
+        return 0
+    out = Path(args.output)
+    if out.exists() and not args.force:
+        print(f"{out} already exists (use --force to overwrite).")
+        return 1
+    out.write_text(text, encoding="utf-8")
+    print(f"Wrote the {'model update request' if args.kind == 'update' else 'business intent'} "
+          f"template to {out}. Fill it in and start a run with --intent {out}.")
+    return 0
+
+
 def _cmd_explain(args) -> int:
     from .agents import providers
 
     cfg = _load_config(args.config)
     print(f"COGNOS plan for project '{cfg.name}'")
+    eng = cfg.engagement
+    print(f"  development mode: {eng.kind}  intent document: {eng.intent or 'none'}"
+          + (f"  prior model: {len(eng.prior_artifacts)} artifact(s)"
+             + (f" + run {eng.prior_run}" if eng.prior_run else "") if eng.kind == "update" else ""))
     print(f"  task={cfg.task.value}  mode={cfg.mode.value}  metric={cfg.metric.name} ({cfg.metric.direction.value})")
     print(f"  target={cfg.data.target}  holdout={cfg.search.holdout_fraction}  budget={cfg.search.max_candidates} candidates")
     print(f"  stages: {' -> '.join(cfg.stages.enabled)}")
@@ -218,7 +285,11 @@ def _cmd_explain(args) -> int:
 def _cmd_run(args) -> int:
     from . import service
 
-    cfg = _load_config(args.config)
+    try:
+        cfg = service.with_engagement(_load_config(args.config), _engagement_args(args))
+    except ValueError as exc:
+        print(f"refused: {exc}")
+        return 1
     mode = "interactive" if args.interactive else cfg.mode.value
     run_id = args.run_id
     if run_id and (service.runs_root(args.runs_dir) / run_id / "state.json").exists():
@@ -226,8 +297,12 @@ def _cmd_run(args) -> int:
     else:
         from .engine import Engine
 
-        eng = Engine(cfg, run_id=run_id, runs_root=service.runs_root(args.runs_dir),
-                     provider=args.provider, mode=mode)
+        try:
+            eng = Engine(cfg, run_id=run_id, runs_root=service.runs_root(args.runs_dir),
+                         provider=args.provider, mode=mode)
+        except FileNotFoundError as exc:  # a document the engagement names is missing
+            print(f"refused: {exc}")
+            return 1
         run_id = eng.run_id
     return _drive(run_id, args.runs_dir, interactive=mode == "interactive")
 
@@ -477,8 +552,27 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--interactive", action="store_true", help="review each gate in the terminal")
     pr.add_argument("--provider", default=None, help="agent backend (see `cognos providers`)")
     pr.add_argument("--run-id", default=None)
+    pr.add_argument("--kind", choices=["new", "update"], default=None,
+                    help="development mode: a new model, or an update of an existing one")
+    pr.add_argument("--intent", default=None,
+                    help="the business intent document / update request (see intent-template)")
+    pr.add_argument("--support", action="append", default=[], metavar="FILE",
+                    help="background document for the Intake Analyst (repeatable)")
+    pr.add_argument("--prior", action="append", default=[], metavar="FILE",
+                    help="update: an artifact of the existing model, e.g. its white paper or "
+                         "code (repeatable)")
+    pr.add_argument("--prior-run", default=None,
+                    help="update: an earlier COGNOS run of the existing model (id or directory)")
     runs(pr)
     pr.set_defaults(func=_cmd_run)
+
+    pt = sub.add_parser("intent-template",
+                        help="write the business intent document (or update request) to fill in")
+    pt.add_argument("--kind", choices=["new", "update"], default="new")
+    pt.add_argument("--name", default="", help="the model's name, for the title")
+    pt.add_argument("-o", "--output", default=None, help="write to a file instead of stdout")
+    pt.add_argument("--force", action="store_true")
+    pt.set_defaults(func=_cmd_intent_template)
 
     pd = sub.add_parser("demo", help="run end to end on synthetic data")
     pd.add_argument("--task", default="commercial",
@@ -508,7 +602,7 @@ def build_parser() -> argparse.ArgumentParser:
     pg.add_argument("--action", required=True,
                     choices=["accept", "edit", "override", "send_back", "approve", "reject"])
     pg.add_argument("--reason", default="")
-    pg.add_argument("--target", default=None, help="send_back: explore | ideate | model")
+    pg.add_argument("--target", default=None, help="send_back: intake | explore | ideate | model")
     pg.add_argument("--message", default=None, help="send_back: what the agent should reconsider")
     pg.add_argument("--payload", default=None, help="JSON, e.g. '{\"champion\": \"c3\"}'")
     pg.add_argument("--seat", default=None,

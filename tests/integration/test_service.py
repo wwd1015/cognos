@@ -15,6 +15,10 @@ def test_demo_run_through_the_service(tmp_path):
     cfg = service.demo_config("commercial", root, n=600, search_budget=6)
     run_id = service.create_run(cfg, mode="interactive", provider="heuristic", root=root)
     st = service.run_until_idle(run_id, root)
+    assert st.status_of("gate_intent") == "awaiting" and st.status_of("explore") == "pending"
+    service.submit_gate(run_id, "gate_intent", "accept", reason="the sponsor is still deciding",
+                        root=root, background=False)
+    st = service.run_until_idle(run_id, root)
     assert st.status_of("gate_data") == "awaiting"
     service.submit_gate(run_id, "gate_data", "accept", root=root, background=False)
     st = service.run_until_idle(run_id, root)
@@ -25,7 +29,7 @@ def test_demo_run_through_the_service(tmp_path):
             "agent_start", "agent_done"} <= kinds
     calls = service.audit(run_id, root)
     io = service.agent_io(run_id, calls[0]["call_id"], root)
-    assert io["input"]["agent"] == "data_analyst" and "raw" in io["output"]
+    assert io["input"]["agent"] == "intake_analyst" and "raw" in io["output"]
 
 
 def test_background_advance_reaches_the_next_gate(tmp_path):
@@ -35,6 +39,9 @@ def test_background_advance_reaches_the_next_gate(tmp_path):
     service.start(run_id, root)
     eng = service.engine(run_id, root)
     assert eng.wait(timeout=120)
+    assert service.state(run_id, root).status_of("gate_intent") == "awaiting"
+    service.submit_gate(run_id, "gate_intent", "accept", reason="as written", root=root)
+    assert eng.wait(timeout=120)  # the decision advanced the run in the background
     assert service.state(run_id, root).status_of("gate_data") == "awaiting"
 
 
@@ -68,6 +75,14 @@ def test_cli_interactive_gate_commands(tmp_path, capsys):
     service.run_until_idle(run_id, root)
     assert main(["status", "--run", run_id, "--runs-dir", root]) == 0
     assert "gate_data" in capsys.readouterr().out
+    # the intent gate refuses a bare accept while the interview is open; an answer re-runs intake
+    assert main(["gate", "gate_intent", "--run", run_id, "--action", "accept", "--runs-dir", root]) == 1
+    assert "blocking interview question" in capsys.readouterr().out
+    assert main(["answer", "--run", run_id, "--gap", "design-horizon", "--text", "12-month",
+                 "--runs-dir", root]) == 0
+    assert service.state(run_id, root).steps["intake"].runs == 2
+    assert main(["gate", "gate_intent", "--run", run_id, "--action", "accept",
+                 "--reason", "the rest is with the sponsor", "--runs-dir", root]) == 0
     assert main(["gate", "gate_data", "--run", run_id, "--action", "accept", "--runs-dir", root]) == 0
     assert service.state(run_id, root).status_of("gate_design") == "awaiting"
     # a refused decision is reported, not raised

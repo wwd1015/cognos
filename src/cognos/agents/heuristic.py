@@ -60,6 +60,102 @@ def _fact(sl: dict[str, Any], key: str) -> list[str]:
     return [key] if key in sl.get("facts", {}) else []
 
 
+# --- intake ------------------------------------------------------------------------------
+# Change-request wording -> change type and the earliest stage it alters. First match wins.
+_CHANGE_TYPES: list[tuple[str, str, str]] = [
+    (r"recalibrat", "recalibration", "model"),
+    (r"redevelop|rebuild|new methodolog|new framework|replace the model|from scratch",
+     "redevelopment", "ideate"),
+    (r"extend|expand|new (portfolio|product|segment|geograph)|scope", "scope_change", "ideate"),
+    (r"finding|remediat|audit|validation issue|mria|mra\b", "remediation", "model"),
+    (r"variable|feature|driver|factor|coefficient|re-?estimat|specification|segment",
+     "re_estimation", "ideate"),
+    (r"data|refresh|vintage|sample|window|history|source", "data_refresh", "explore"),
+    (r"document|white ?paper|model card", "documentation", "none"),
+]
+_SCOPE_DEPTH = {"documentation": 0, "recalibration": 1, "remediation": 2, "data_refresh": 2,
+                "re_estimation": 2, "scope_change": 3, "redevelopment": 3}
+
+
+def _change(text: str) -> dict[str, str]:
+    for pattern, kind, stage in _CHANGE_TYPES:
+        if re.search(pattern, text.lower()):
+            return {"change": text, "type": kind, "affects": stage}
+    return {"change": text, "type": "re_estimation", "affects": "ideate"}
+
+
+def intake_analyst(sl: dict[str, Any]) -> dict[str, Any]:
+    """Reads the intent template as written: a filled section is the sponsor's stated position
+    (quoted from its first line), an empty required one becomes a blocking interview question.
+    A free-form document that does not follow the template is all 'missing' to this agent."""
+    from ..engagement import QUESTIONS, bullets
+
+    update = sl.get("kind") == "update"
+    answered = {" ".join(a["question"].lower().split()) for a in sl.get("sponsor_answers", [])}
+    brief, interview, values = [], [], {}
+    for f in sl.get("fields", []):
+        name = f["field"]
+        text = str(f.get("template_value") or "").strip()
+        if text:
+            first = next(line.strip() for line in text.splitlines() if line.strip())
+            brief.append({"field": name, "value": " ".join(text.split())[:600], "basis": "stated",
+                          "quote": first[:200]})
+            values[name] = text
+            continue
+        brief.append({"field": name, "value": "", "basis": "missing", "quote": ""})
+        ask = f.get("required") or name == "success_criteria"
+        question = QUESTIONS.get(name)
+        if (ask and question and not f.get("decided")
+                and " ".join(question.lower().split()) not in answered):
+            interview.append({
+                "question": question, "field": name, "blocking": bool(f.get("required")),
+                "why_it_matters": ("Development cannot be scoped without it." if f.get("required")
+                                   else "It sets what 'good enough' means at sign-off.")})
+    n_blocking = sum(q["blocking"] for q in interview)
+    n_required = sum(1 for f in sl.get("fields", []) if f.get("required")) or 1
+    clarity = ("clear" if not n_blocking else
+               "needs_clarification" if n_blocking * 2 <= n_required else "unclear")
+    decided = {f["field"]: f.get("decided") for f in sl.get("fields", [])}
+    objective = values.get("objective") or decided.get("objective") or ""
+    out: dict[str, Any] = {
+        "summary": ((f"The intent document states {len(values)} of {len(brief)} brief fields. "
+                     if sl.get("intent_document") else
+                     "No business intent document was supplied; the brief rests on the profile. ")
+                    + (f"{n_blocking} blocking question(s) for the sponsor before development "
+                       "starts." if n_blocking else "The goal is clear enough to start.")),
+        "uncertainties": ["The deterministic agent reads only the template's sections; a free-form "
+                          "document needs an LLM agent or the sponsor's answers."]
+        if sl.get("intent_document") and not values else [],
+        "responses_to_challenges": _ack(sl),
+        "restated_objective": (" ".join(objective.split())[:400]
+                               or "Not stated; the sponsor has been asked."),
+        "clarity": clarity,
+        "brief": brief,
+        "interview": interview,
+        "update_scope": "not_applicable", "scope_rationale": "", "change_items": [],
+        "incumbent_family": "",
+    }
+    if update:
+        prior = sl.get("prior_model") or {}
+        items = [_change(c) for c in bullets(values.get("requested_changes", ""))][:12]
+        depth = max((_SCOPE_DEPTH[i["type"]] for i in items), default=2)
+        if re.search(r"redevelop|rebuild", values.get("update_reason", "").lower()):
+            depth = 3
+        scope = {0: "recalibrate", 1: "recalibrate", 2: "re_estimate", 3: "redevelop"}[depth]
+        family = prior.get("likely_family") or ""
+        out.update({
+            "update_scope": scope,
+            "scope_rationale": (f"The deepest of the {len(items)} requested change(s) is "
+                                f"{max(items, key=lambda i: _SCOPE_DEPTH[i['type']])['type'].replace('_', ' ')}."
+                                if items else "No change list was given; a re-estimation of the "
+                                              "existing specification is assumed until the "
+                                              "sponsor says otherwise."),
+            "change_items": items,
+            "incumbent_family": family if family in sl.get("engine_families", []) else "",
+        })
+    return out
+
+
 # --- explore -----------------------------------------------------------------------------
 def data_analyst(sl: dict[str, Any]) -> dict[str, Any]:
     features = list(sl.get("features", []))
@@ -295,6 +391,7 @@ def writer(sl: dict[str, Any]) -> dict[str, Any]:
 
 
 AGENTS = {
+    "intake_analyst": intake_analyst,
     "data_analyst": data_analyst,
     "design_lead": design_lead,
     "modeler": modeler,

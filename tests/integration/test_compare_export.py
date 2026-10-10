@@ -136,12 +136,13 @@ def test_config_changes_ignore_where_the_run_lives():
     assert cmp.config_changes(a, b) == [{"key": "search.max_candidates", "a": 8, "b": 20}]
 
 
-def test_two_runs_that_decided_differently(make_config, runs_dir, capsys, apply_brief):
+def test_two_runs_that_decided_differently(make_config, runs_dir, capsys, apply_brief,
+                                           confirm_intent):
     cfg = apply_brief(make_config("classification"))
     first = Engine(cfg, runs_root=runs_dir, mode="interactive")
     _accept_all(first)
     second = Engine(cfg, runs_root=runs_dir, mode="interactive")
-    second.run_until_idle()
+    confirm_intent(second)
     feature = second.results()["explore"].payload["features"][0]
     second.submit_gate("gate_data", "edit", {"exclude_columns": [feature]}, reason="not at origination")
     _accept_all(second)
@@ -195,7 +196,7 @@ def test_export_is_readable_complete_and_never_contains_the_data(make_config, ru
     assert {"state.json", "config.yaml", "docs/model_card.md", "docs/decisions.md", "stages/model/result.json",
             "stages/validate/result.json", "agents/audit.jsonl", "EXPORT.json"} <= set(names)
     assert not [n for n in names if n.startswith("agents/") and n != "agents/audit.jsonl"]  # opt-in only
-    assert state["run_id"] == eng.run_id and len(state["decisions"]) == 5
+    assert state["run_id"] == eng.run_id and len(state["decisions"]) == 6
 
     # the manifest lists every other file with a hash that matches what is in the zip
     import hashlib
