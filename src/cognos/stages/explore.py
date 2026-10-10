@@ -143,7 +143,8 @@ class ExploreStage(Stage):
 
         reg = plugins.registry(base.plugins)
         tools = [{"name": t.name, "description": t.description, "params": t.params,
-                  "needs_target": t.needs_target, "origin": t.origin} for t in reg.tools.values()]
+                  "needs_target": t.needs_target, "origin": t.origin}
+                 for t in reg.tools_for("explore")]
         author = f"the Data Analyst agent ({ctx.runner.provider['id']})"
         with_missing = [c for c in df.columns if df[c].isna().any()]
         records: list[dict] = []

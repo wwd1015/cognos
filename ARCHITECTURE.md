@@ -179,6 +179,27 @@ document: docs/analysis.md (source, target, analyses, every script in full)
   engine infers the task, and `gate_data` writes `overrides.target` / `overrides.task`.
   `RunContext.config` resolves the metric once the task is known.
 
+## Stage tools ([ADR-0013](docs/adr/0013-stage-tools-every-agent-can-use-a-plugin.md))
+
+```
+stage:  ctx.consult_tools(agent, brief)                         (analysis/consult.py)
+          registry.tools_for(stage) ── none ──▶ no agent call
+          <agent>_tools (agent) ──requests──▶ analysis.run.execute ──▶ stages/<stage>/analyses/
+             ▲                                   tool.fn(df, params, env)            t<n>.json
+             │                                   env = exactly tool.needs
+             └── tool_runs + facts tools.<stage>.<id>.* ◀── failed check ─▶ Finding (≤ HIGH)
+        ctx.recommend(agent, {…, "tool_runs": …})   ─▶ payload["tool_runs"], ["tools_unavailable"]
+```
+
+- One request step for every stage agent, under the agent's own prompt plus `prompts/_tools.md`.
+  Plugins supply tools; guidance stays in COGNOS.
+- `plugins.NEEDS` fixes the first stage at which each input exists. `holdout` and `model` start
+  at `backtest`, so no tool before the champion is chosen can see either.
+- `slices.fact_scope` gives an agent the tool facts of its own stage and of the stages it may
+  already read.
+- `integrations/impact_tools.py` registers `impact_test_suite` for validation as unavailable (a
+  placeholder); a later registration under the same name replaces it.
+
 ## The stage contract
 
 Every agent is a `Stage` with one method, `run(ctx) -> StageResult`. It reads inputs from prior

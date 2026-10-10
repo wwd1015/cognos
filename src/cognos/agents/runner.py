@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 from ..engine import events
 from . import checks, heuristic, providers, slices
-from .contracts import AGENT_STAGE, CONTRACTS, FRIENDLY, Contract
+from .contracts import AGENT_STAGE, CONTRACTS, FRIENDLY, Contract, tool_step_of
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
 MIN_ATTEMPT_S = 20.0  # don't start a retry with less time than this left
@@ -67,10 +67,24 @@ class BudgetExceeded(AgentRunError):
     pass
 
 
+TOOL_TASK = ("Before you make your recommendation, decide which of the tools in context.tools "
+             "to run. Request up to context.max_requests runs, each with the question it answers. "
+             "Request nothing when no tool would change your recommendation. Set done=true when "
+             "you need no further round.")
+
+
+def task_of(agent: str) -> str:
+    return TOOL_TASK if tool_step_of(agent) else TASKS[agent]
+
+
 def system_prompt(agent: str) -> str:
-    # guided search is the modeler's role; requesting analyses is the data analyst's
-    name = {"experiment": "modeler", "data_scout": "data_analyst"}.get(agent, agent)
+    # guided search is the modeler's role; requesting analyses is the data analyst's; a
+    # tool-request step is its role agent's, with the shared guidance on using tools
+    role = tool_step_of(agent)
+    name = role or {"experiment": "modeler", "data_scout": "data_analyst"}.get(agent, agent)
     body = (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
+    if role:
+        body += "\n\n" + (PROMPTS_DIR / "_tools.md").read_text(encoding="utf-8")
     common = (PROMPTS_DIR / "_common.md").read_text(encoding="utf-8")
     return f"{body}\n\n{common}"
 
@@ -99,7 +113,7 @@ def output_schema(contract: type[Contract]) -> dict[str, Any]:
 
 
 def build_prompt(agent: str, sl: dict[str, Any], feedback: str | None) -> str:
-    parts = [TASKS[agent],
+    parts = [task_of(agent),
              "## Context\nThe JSON below is your complete context. `facts` holds the only numbers "
              "you may cite (by id).\n```json\n" + json.dumps(sl, indent=1, default=str) + "\n```"]
     if sl.get("challenges"):

@@ -145,7 +145,11 @@ class BacktestStage(Stage):
         # --- the Outcomes Analyst's reading (engine-checked; cites facts) ----------
         res.payload = payload
         oa = outcomes or {}
+        tool_runs = ctx.consult_tools("outcomes_analyst", {
+            "evaluation_sample": payload["evaluation_sample"],
+            "engine_findings": [f.line() for f in res.findings]}, res=res)
         out = ctx.recommend("outcomes_analyst", {
+            "tool_runs": tool_runs,
             "evaluation_sample": payload["evaluation_sample"],
             "outcomes": {k: oa.get(k) for k in ("gini", "ks", "auc", "expected_calibration_error",
                                                 "psi", "psi_label", "calibration_table")},

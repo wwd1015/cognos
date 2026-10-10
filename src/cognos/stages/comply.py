@@ -248,7 +248,11 @@ class ComplyStage(Stage):
         }
         # --- the Model-Risk Analyst's reading (non-gating, like the report) ----------
         res.payload = payload
+        tool_runs = ctx.consult_tools("risk_analyst", {
+            "regimes": list(comp.regimes), "risk_tier": comp.risk_tier,
+            "outstanding_human_steps": outstanding_human_steps}, res=res)
         out = ctx.recommend("risk_analyst", {
+            "tool_runs": tool_runs,
             "sr11_7": sr11_7,
             "nist_ai_rmf": {k: v["status"] for k, v in nist_ai_rmf.items()},
             "trustworthy": trustworthy,

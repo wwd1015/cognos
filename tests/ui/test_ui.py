@@ -267,3 +267,22 @@ def test_own_data_form_builds_a_source_and_explore_shows_charts_and_code(root, t
     assert "proposed by the Data Analyst" in panel and "loans.csv" in panel
     assert "analysis script(s) written by the Data Analyst" in panel  # the gate says what is accepted
     assert '"c": null' not in panel
+
+
+def test_every_stage_page_shows_the_tools_its_agent_ran_and_the_ones_it_could_not(root, monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "examples" / "plugins"))
+    cfg = service.demo_config("cni", root, n=800, search_budget=6)
+    cfg.plugins = ["validation_tools"]
+    run_id = service.create_run(cfg, mode="autonomous", provider="heuristic")
+    service.run_until_idle(run_id)
+    st, results = service.state(run_id), service.results(run_id)
+    panel = _serialize(stage_panel("validate", results["validate"], st, "light"))
+    assert "Tools run (1)" in panel and "score_band_monotonicity" in panel
+    assert "plugin: validation_tools" in panel and "monotonic" in panel
+    assert "Tools not run" in panel and "impact_test_suite" in panel
+    assert '"c": null' not in panel
+    assert "events_per_feature" in _serialize(stage_panel("ideate", results["ideate"], st, "dark"))
+    # a stage with no tool keeps its page as it was
+    assert "Tools run" not in _serialize(stage_panel("comply", results["comply"], st, "light"))

@@ -59,8 +59,18 @@ class Stage(ABC):
 
 def attach_recommendation(payload: dict, ctx: RunContext, agent: str, out) -> None:
     """Record an agent's validated recommendation (and which backend produced it) in a payload."""
+    from ..agents.contracts import AGENT_STAGE, STAGE_AGENT
+    from ..analysis import consult
+
     meta = ctx.runner.last.get(agent, {})
     payload["recommendation"] = {"agent": agent, **meta, "output": out.model_dump()}
+    stage = AGENT_STAGE.get(agent)
+    if stage != "explore" and STAGE_AGENT.get(stage) == agent:
+        # What the agent asked the engine to run (plugin tools), and what it could not be offered.
+        payload["tool_runs"] = consult.recorded(ctx, stage)
+        payload["tools_unavailable"] = ctx.tools_unavailable.get(stage) or (
+            ((ctx.get(stage).payload or {}).get("tools_unavailable") or [])
+            if stage not in ctx.tools_unavailable and ctx.get(stage) is not None else [])
 
 
 def questions_from(texts: list[str], *, category: str, reentry: str, prefix: str,

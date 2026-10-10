@@ -6,6 +6,20 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- **Tools at every stage** ([ADR-0013](docs/adr/0013-stage-tools-every-agent-can-use-a-plugin.md)).
+  A plugin tool declares the stages it serves and the inputs it needs; every stage's agent can
+  request the tools registered for its stage before it recommends. The engine runs them, keeps
+  the results (`tool_runs`, `stages/<stage>/analyses/`), exposes them as facts
+  (`tools.<stage>.<id>.<name>`) and turns failed checks into findings. Guidance stays in COGNOS
+  (`prompts/_tools.md`); a plugin adds tooling only. Example:
+  `examples/plugins/validation_tools.py`.
+- **Custom tests at validation.** A `high` failed check from a validation tool fails the
+  validation. A tool can never block a run.
+- **IMPACT placeholder.** `impact_test_suite` is registered for validation and reported as not
+  run until IMPACT's test interface is available; a plugin replaces it by registering the same
+  name.
+- Every stage page shows the tools its agent ran and the ones registered but not run; the white
+  paper lists both; `cognos plugins` shows each tool's stages and availability.
 - **Data sources** ([ADR-0012](docs/adr/0012-data-sources-plugins-and-agent-written-analysis.md)).
   `data.source` reads an uploaded or local file (CSV, Parquet, Excel, JSON lines), SQLite, or
   Snowflake (`pip install 'cognos[snowflake]'`; credentials from `SNOWFLAKE_*` environment

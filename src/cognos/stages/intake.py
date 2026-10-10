@@ -122,7 +122,12 @@ class IntakeStage(Stage):
 
         res.payload = {"kind": kind, "documents": inventory, "brief": [], "questions": [],
                        "prior": prior}
+        tool_runs = ctx.consult_tools(
+            "intake_analyst", {"kind": kind, "documents": inventory}, res=res,
+            inputs={"documents": [{k: d[k] for k in ("name", "role", "text")}
+                                  for d in docs if d["readable"]]})
         out = ctx.recommend("intake_analyst", {
+            "tool_runs": tool_runs,
             "kind": kind,
             "fields": [{"field": f.id, "label": f.label, "asks": f.hint, "required": f.required,
                         "decided": answered.get(f.id) or profile.get(f.id) or None,

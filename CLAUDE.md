@@ -100,11 +100,27 @@ measures.
 - **Charts are specs** (`analysis/charts.py`), drawn by `ui/charts.py::from_spec`. Core code must
   not import a plotting library.
 
+## Stage tools (ADR-0013)
+- **Every stage agent can request tools.** A stage calls `ctx.consult_tools(agent, brief,
+  res=res)` before `ctx.recommend(agent, {..., "tool_runs": runs})`. `attach_recommendation`
+  records the runs in the payload. A new stage with an agent must do the same.
+- **Plugins add tooling, never guidance.** Prompts stay in `agents/prompts/` (the request step
+  uses the role prompt plus `_tools.md`). Do not let a plugin supply prompt text.
+- **A tool gets only what it declares** (`Tool.needs`), and `plugins.NEEDS` fixes the first
+  stage at which each input exists. Do not make `holdout` or `model` available before
+  `backtest`, and do not hand a tool the run directory.
+- **A tool can fail a check, never block.** Check severity is capped at `high`
+  (`analysis.run._checks`).
+- **No tool, no agent call.** Keep the step free for a stage with nothing registered.
+- **An unavailable tool is recorded** (`tools_unavailable`), not silently dropped. IMPACT's test
+  suite is such a placeholder (`integrations/impact_tools.py`).
+
 ## Stage contract
 A stage is a `Stage` subclass with `name`, `requires`, `is_gate`, and `run(ctx) -> StageResult`. It
 reads prior outputs via `ctx.require(<stage>).payload` (explore's via `ctx.profile()`), writes
 artifacts under `runs/<id>/stages/<name>/`, and obtains judgment only via
-`ctx.recommend(agent, data, fresh={stage: provisional_result}, check=...)`, recording it with
+`ctx.recommend(agent, data, fresh={stage: provisional_result}, check=...)` (after
+`ctx.consult_tools`, see Stage tools), recording it with
 `attach_recommendation(payload, ctx, agent, out)`. Questions for the sponsor go in
 `payload["questions"]` (the engine syncs them to gaps). Register with `@register_stage` and add to
 `stages/__init__._STAGE_MODULES`.
@@ -139,6 +155,9 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 - **New document format** → a reader in `engagement.read_text` that returns `(None, why)` on failure.
 - **New analysis tool** → `analysis/tools.py::register` (built in) or a plugin; return summary
   numbers, a table and a chart spec.
+- **New stage tool / custom test** → a plugin `Tool(stages=..., needs=...)`; return `checks` for
+  pass/fail. A new kind of input → `plugins.NEEDS` (with its first stage) and
+  `analysis/consult.py::_inputs`.
 - **New data source** → a `DataSource` in `datasources.BUILTIN` or a plugin; `available()` must
   explain what is missing instead of raising at import.
 - **New compliance regime** → extend `stages/comply.py`; emit evidence `document`/`review` can trace.

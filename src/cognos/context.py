@@ -56,6 +56,10 @@ class RunContext:
         self.config = self._effective_config(config, self.overrides).with_target(
             *self._decided_target(config))
         self._results: dict[str, StageResult] = {}
+        # Tool runs requested by a stage's agent in this process (analysis/consult.py); the
+        # stage payload is the durable copy.
+        self.tool_runs: dict[str, list[dict[str, Any]]] = {}
+        self.tools_unavailable: dict[str, list[dict[str, str]]] = {}
         self.logger = logging.getLogger(f"cognos.run.{self.run_id}")
 
         self._ensure_dirs()
@@ -292,6 +296,16 @@ class RunContext:
         """Ask ``agent`` for its recommendation. The engine validates it (``check`` adds
         stage-specific rules) and retries with the errors; the result is a validated contract."""
         return self.runner.recommend(self, agent, data, fresh=fresh, check=check)
+
+    def consult_tools(self, agent: str, brief: dict[str, Any] | None = None, *,
+                      res: StageResult | None = None,
+                      inputs: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Let ``agent`` request the tools registered for its stage (built in or from a plugin)
+        before it recommends; the engine runs them. Returns the runs to pass on as
+        ``tool_runs``. A stage with no available tool makes no agent call."""
+        from .analysis import consult
+
+        return consult.consult(self, agent, brief, res=res, inputs=inputs)
 
     def attach_dataset(self, df: pd.DataFrame) -> ArtifactRef:
         """Persist an in-memory DataFrame as the canonical dataset for this run."""

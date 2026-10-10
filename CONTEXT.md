@@ -75,8 +75,20 @@ Where a run's dataset comes from: a file, SQLite, Snowflake, or a plugin's conne
 once; the **snapshot** in the run is what every stage reads, with its provenance and hash.
 
 **Plugin**:
-A module with `register(registry)` that adds **analysis tools** and data sources without editing
-COGNOS. A tool is reviewed code; its numbers are the engine's.
+A module with `register(registry)` that adds **tools** and data sources without editing
+COGNOS. A tool is reviewed code; its numbers are the engine's. A plugin adds tooling only: the
+prompts that guide an agent are COGNOS's own.
+
+**Tool** (stage tool):
+A function registered for one or more stages, with the inputs it needs declared. The stage's
+agent requests it; the engine runs it. "Analysis tool" is the same thing at the data stage.
+
+**Tool request step**:
+The agent call before a stage's recommendation in which the agent chooses which of its stage's
+tools to run (`<agent>_tools`). Skipped when the stage has no available tool.
+
+**Check** (of a tool):
+A pass/fail result a tool reports. A failed check is a finding of the stage, at most `high`.
 
 **Analysis request**:
 What the Data Analyst asks the engine to run during explore: a tool by name, or a script. The

@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import facts as facts_mod
-from .contracts import AGENT_STAGE
+from .contracts import AGENT_STAGE, tool_step_of
 
 UPSTREAM = ("intake.", "prior.", "explore.", "ideate.", "model.", "backtest.", "validate.",
             "comply.")
@@ -69,9 +69,20 @@ def project_brief(ctx) -> dict[str, Any]:
     }
 
 
+def fact_scope(agent: str) -> tuple[str, ...]:
+    """The fact prefixes ``agent`` may see. A tool-request step has its role agent's scope. Tool
+    results (``tools.<stage>.``) follow the stage they came from, plus the agent's own stage:
+    the modeler sees what its own tools found, never ``model.`` results or the holdout."""
+    role = tool_step_of(agent) or agent
+    scope = FACT_SCOPE[role]
+    stages = dict.fromkeys([*(p for p in scope if p not in ("prior.",)),
+                            f"{AGENT_STAGE[role]}."])
+    return (*scope, *(f"tools.{p}" for p in stages))
+
+
 def build(ctx, agent: str, data: dict[str, Any], fresh: dict | None = None) -> dict[str, Any]:
     stage = AGENT_STAGE[agent]
-    challenges = [] if agent in ("experiment", "data_scout") else [
+    challenges = [] if agent in ("experiment", "data_scout") or tool_step_of(agent) else [
         {"id": c.id, "source": c.source, "severity": c.severity, "message": c.message,
          "evidence": c.evidence, "remedy": c.remedy}
         for c in ctx.challenges_for(stage)
@@ -84,7 +95,7 @@ def build(ctx, agent: str, data: dict[str, Any], fresh: dict | None = None) -> d
         "stage": stage,
         "project": project,
         **data,
-        "facts": facts_mod.collect(ctx, fresh=fresh, prefixes=FACT_SCOPE[agent]),
+        "facts": facts_mod.collect(ctx, fresh=fresh, prefixes=fact_scope(agent)),
         "sponsor_answers": ctx.sponsor_answers(),
         "challenges": challenges,
     }

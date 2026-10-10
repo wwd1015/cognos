@@ -162,6 +162,20 @@ def collect(ctx, *, fresh: dict | None = None,
             _put(f, f"comply.sr11_7.{k}", e.get("status"))
         fl = p.get("fair_lending") or {}
         _put(f, "comply.disparate_impact", fl.get("disparate_impact"))
+    # What each stage's requested tools found (analysis/consult.py). A tool is reviewed code
+    # the engine ran, so these are engine numbers like any other.
+    from ..analysis import consult
+    from ..plugins import TOOL_STAGES
+
+    for stage in TOOL_STAGES:
+        if stage == "explore" or not hasattr(ctx, "tool_runs"):
+            continue
+        for r in [r for r in consult.recorded(ctx, stage) if r.get("status") == "ok"][:16]:
+            for key, value in list((r.get("summary") or {}).items())[:8]:
+                _put(f, f"tools.{stage}.{r['id']}.{key}", value)
+            for c in r.get("checks") or []:
+                _put(f, f"tools.{stage}.{r['id']}.check.{c['name']}",
+                     "passed" if c.get("passed") else "failed")
     if prefixes is not None:
         f = {k: v for k, v in f.items() if k.startswith(prefixes)}
     return f

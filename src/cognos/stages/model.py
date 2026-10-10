@@ -21,6 +21,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ..analysis import consult
 from ..artifacts import ArtifactRef, Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..datautil import coerce_target
@@ -332,6 +333,8 @@ class ModelStage(Stage):
         # --- findings ---------------------------------------------------------------
         for f in migration_findings:
             res.add_finding(f)
+        for f in consult.findings(consult.recorded(ctx, "model")):
+            res.add_finding(f)
         for t in diagnostics["failed_tests"]:
             test = next(x for x in diagnostics["tests"] if x["name"] == t)
             res.add_finding(Finding(id=f"diag-{t}", severity=Severity(test["severity"]),
@@ -518,7 +521,13 @@ class ModelStage(Stage):
                 and prev_rec.get("output") and not ctx.challenges_for("model")):
             ctx.runner.last["modeler"] = {**{k: v for k, v in prev_rec.items() if k != "output"}, "reused": True}
             return ModelerOutput.model_validate(prev_rec["output"])
+        # Tools at this stage are given the development sample only: the choice stays blind.
+        tool_runs = ctx.consult_tools("modeler", {
+            "metric": metric,
+            "admissible_set": [{k: a[k] for k in ("label", "family", "n_features", "cv_mean")}
+                               for a in admissible]})
         return ctx.recommend("modeler", {
+            "tool_runs": tool_runs,
             "metric": metric,
             "metric_direction": metric_direction(metric),
             "interpretability": ctx.config.design.interpretability,

@@ -24,6 +24,7 @@ from .contracts import (
     FeatureCandidate,
     IntakeAnalystOutput,
     ModelerOutput,
+    ToolRequestOutput,
     ValidatorOutput,
     WriterOutput,
 )
@@ -306,6 +307,36 @@ def writer(out: WriterOutput, sl: dict[str, Any]) -> list[str]:
     return errs
 
 
+def tool_request(out: ToolRequestOutput, sl: dict[str, Any]) -> list[str]:
+    """Tool requests the engine can run: offered to this stage, known parameters, within the
+    round limit, and not a repeat of a run already made."""
+    errs: list[str] = []
+    tools = {t["name"]: t for t in sl.get("tools", [])}
+    limit = sl.get("max_requests", 8)
+    if len(out.requests) > limit:
+        errs.append(f"at most {limit} tool runs per round; you asked for {len(out.requests)}")
+    ran = {(r["tool"], tuple(sorted((r.get("params") or {}).items())))
+           for r in sl.get("tool_runs", []) if isinstance(r.get("params"), dict)}
+    seen = set()
+    for i, r in enumerate(out.requests, 1):
+        where = f"request {i}"
+        if r.tool not in tools:
+            errs.append(f"{where}: {r.tool!r} is not a tool offered to this stage; choose from "
+                        f"{sorted(tools)}")
+            continue
+        if not r.purpose.strip():
+            errs.append(f"{where}: say what question the run answers (purpose)")
+        unknown = [p.name for p in r.params if p.name not in tools[r.tool].get("params", {})]
+        if unknown:
+            errs.append(f"{where}: {r.tool} has no parameter(s) {unknown}; it takes "
+                        f"{sorted(tools[r.tool].get('params', {}))}")
+        key = (r.tool, tuple(sorted((p.name, p.value) for p in r.params)))
+        if key in seen or key in ran:
+            errs.append(f"{where}: {r.tool} with these parameters is already requested or run")
+        seen.add(key)
+    return errs
+
+
 CHECKS: dict[str, Check] = {
     "intake_analyst": intake_analyst,
     "data_analyst": data_analyst,
@@ -320,6 +351,8 @@ CHECKS: dict[str, Check] = {
 
 def run_checks(agent: str, out: Contract, sl: dict[str, Any], extra: Check | None = None) -> list[str]:
     errs = default(out, sl)
+    if isinstance(out, ToolRequestOutput):
+        errs += tool_request(out, sl)
     if agent in CHECKS:
         errs += CHECKS[agent](out, sl)
     if extra is not None:

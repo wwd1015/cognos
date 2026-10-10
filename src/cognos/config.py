@@ -175,6 +175,7 @@ class AnalysisConfig(BaseModel):
     max_requests: int = 8  # analyses per round
     allow_code: bool = True  # let the agent write Python (run restricted, kept as an artifact)
     code_timeout_s: float = 30.0  # wall-clock limit per script
+    stage_tools: bool = True  # offer every stage's agent the tools registered for its stage
 
 
 class StructuralConfig(BaseModel):

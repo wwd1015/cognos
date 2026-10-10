@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..analysis import consult
 from ..artifacts import ArtifactRef, Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..okf import OKFBundle, OKFConcept
@@ -370,6 +371,8 @@ class DocumentStage(Stage):
 
         # --- narrative (Technical Writer) + decision log ------------------------------
         narrative_payload = self._narrative(ctx, cfg, ip, emit)
+        for f in consult.findings(narrative_payload.get("tool_runs", [])):
+            res.add_finding(f)
 
         concept_names = [
             "overview", "narrative", "decisions", "dataset", "methodology", "model",
@@ -584,6 +587,33 @@ class DocumentStage(Stage):
                           f"- **File:** `{a['code_path']}`  **SHA-256:** `{a['code_sha256'][:16]}`",
                           f"- **Result:** {a['status']}; {status}\n",
                           "```python", code.strip(), "```", ""]
+        # Tools the other stages' agents requested (built in or from a plugin), and the ones
+        # registered for a stage that could not be run: a reviewer must see both.
+        runs, not_run = [], []
+        for stage in ("intake", "ideate", "model", "backtest", "validate", "comply"):
+            res = ctx.get(stage)
+            for r in consult.recorded(ctx, stage):
+                checks = r.get("checks") or []
+                failed = [c["name"] for c in checks if not c["passed"]]
+                runs.append([stage, r["id"], r["tool"],
+                             "cognos" if r.get("origin") == "cognos" else
+                             f"plugin ({r.get('origin')}" + (f" {r['version']})" if r.get("version")
+                                                            else ")"),
+                             r["purpose"].replace("|", "/"),
+                             r["status"] + (f": {r['error'][:80]}" if r.get("error") else ""),
+                             "—" if not checks else (f"FAILED: {', '.join(failed)}" if failed
+                                                     else f"{len(checks)} passed")])
+            for t in ((res.payload if res is not None else None) or {}).get(
+                    "tools_unavailable") or []:
+                not_run.append([stage, t["name"], t.get("origin", ""), t.get("note", "")])
+        if runs:
+            parts += ["", "## Tools run by stage\n",
+                      "Requested by each stage's agent and executed by the engine. A tool is "
+                      "reviewed code; its numbers are recorded as engine facts.\n",
+                      _table(["Stage", "Id", "Tool", "From", "Question", "Status", "Checks"], runs)]
+        if not_run:
+            parts += ["", "## Tools registered but not run\n",
+                      _table(["Stage", "Tool", "From", "Why not"], not_run)]
         return "\n".join(parts)
 
     @staticmethod
@@ -656,7 +686,7 @@ class DocumentStage(Stage):
         """Ask the Technical Writer for the narrative; render placeholders; emit the decision log."""
         from ..agents import facts as facts_mod
         from ..agents.contracts import FRIENDLY, SECTIONS
-        from ..agents.slices import FACT_SCOPE
+        from ..agents.slices import fact_scope
         from ..engine.state import RunState
 
         state = RunState.load(ctx.run_dir) if RunState.exists(ctx.run_dir) else None
@@ -666,7 +696,9 @@ class DocumentStage(Stage):
         challenge_log = [{"id": c.id, "source": c.source, "stage": c.target_stage,
                           "severity": c.severity, "message": c.message, "status": c.status,
                           "response": c.response} for c in (state.challenges if state else [])]
+        tool_runs = ctx.consult_tools("writer", {"sections_required": SECTIONS})
         out = ctx.recommend("writer", {
+            "tool_runs": tool_runs,
             "sections_required": SECTIONS,
             "framework_choices": ip.get("framework_choices") or [],
             "design": cfg.design.model_dump(),
@@ -675,7 +707,7 @@ class DocumentStage(Stage):
             "decisions": decisions,
             "challenge_log": challenge_log,
         })
-        facts = facts_mod.collect(ctx, prefixes=FACT_SCOPE["writer"])
+        facts = facts_mod.collect(ctx, prefixes=fact_scope("writer"))
         titles = {"executive_summary": "Executive summary",
                   "methodology_rationale": "Methodology rationale",
                   "alternatives_considered": "Alternatives considered",

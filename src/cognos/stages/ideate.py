@@ -406,7 +406,9 @@ class IdeateStage(Stage):
             return [f"transform {spec.name!r} rejected by the engine ({why}); fix or drop it"
                     for spec, why in rejected]
 
+        tool_runs = ctx.consult_tools("design_lead", {"data_structure": structure}, res=res)
         out = ctx.recommend("design_lead", {
+            "tool_runs": tool_runs,
             "data_structure": structure,
             "framework_assessment": [{k: f[k] for k in ("framework", "label", "applicable", "role",
                                                           "reason")} for f in frameworks],

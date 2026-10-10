@@ -13,7 +13,7 @@
   cognos answer     --run <run_id> --gap <id> --text "..."   # answer a sponsor question
   cognos retry      <step> --run <run_id>
   cognos run-stage  <stage> --config ... --run <run_id>       # one stage, individually invocable
-  cognos plugins                                              # analysis tools + data sources
+  cognos plugins                                              # tools per stage + data sources
   cognos providers | agents | init | explain | report | list-runs
 """
 
@@ -280,10 +280,12 @@ def _cmd_plugins(args) -> int:
     from . import service
 
     info = service.plugin_list(_load_config(args.config).plugins if args.config else ())
-    print("Analysis tools (the Data Analyst may request these):")
+    print("Tools (the agent of each listed stage may request these):")
     for t in info["tools"]:
         params = f"({', '.join(t['params'])})" if t["params"] else "()"
-        print(f"  {t['name']}{params}  [{t['origin']}]\n      {t['description']}")
+        print(f"  {t['name']}{params}  [{t['origin']}]  stages: {', '.join(t['stages'])}"
+              f"\n      {t['description']}"
+              + ("" if t["available"] else f"\n      unavailable: {t['note']}"))
     print("Data sources (data.source.kind):")
     for s in info["sources"]:
         print(f"  {s['kind']:<10} {s['label']}  [{s['origin']}]"

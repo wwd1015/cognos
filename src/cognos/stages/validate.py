@@ -199,6 +199,16 @@ class ValidateStage(Stage):
         # --- rubric aggregation --------------------------------------------------
         overall_score = sum(rubric.values()) / len(rubric) if rubric else 1.0
 
+        # --- custom tests: tools registered for validation (built in or from a plugin) ------
+        # Requested by the Independent Validator, run by the engine. A failed check is a
+        # finding like the rubric's (HIGH fails validation); a tool can never block.
+        tool_runs = ctx.consult_tools("validator", {
+            "rubric": rubric,
+            "engine_findings": [{"id": f.id, "severity": f.severity.value, "category": f.category,
+                                 "message": f.message} for f in res.findings],
+            "champion": {"family": champion.get("family"), "features": champ_features},
+        }, res=res)
+
         # --- decision rule -------------------------------------------------------
         has_block = any(f.severity == Severity.CRITICAL for f in res.findings) or bool(blockers)
         has_high = any(f.severity == Severity.HIGH for f in res.findings)
@@ -260,6 +270,9 @@ class ValidateStage(Stage):
                                                             "note")} for c in code_review]}
         diagnostics = model.get("diagnostics") or {}
         out = ctx.recommend("validator", {
+            "tool_runs": tool_runs,
+            "tools_not_run": [{k: t[k] for k in ("name", "note")}
+                              for t in ctx.tools_unavailable.get("validate", [])],
             "engine_verdict": verdict.value,
             "rubric": rubric,
             "blockers": blockers,

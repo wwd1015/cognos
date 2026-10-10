@@ -146,6 +146,20 @@ class DataScoutOutput(Contract):
     notes: str = ""
 
 
+class ToolRequest(Contract):
+    purpose: str = Field(description="The question this run answers, in one sentence")
+    tool: str = Field(description="A tool name from context.tools")
+    params: list[ToolParam] = Field(default_factory=list)
+
+
+class ToolRequestOutput(Contract):
+    """Any stage agent's request step: which of the tools offered to its stage to run."""
+
+    requests: list[ToolRequest] = Field(default_factory=list)
+    done: bool = Field(description="true when you need no further round of tool runs")
+    notes: str = ""
+
+
 # --- ideate: design lead --------------------------------------------------------------------
 class FrameworkChoice(Contract):
     framework: str = Field(description="A framework id from context.framework_assessment")
@@ -281,8 +295,25 @@ AGENT_STAGE = {"intake_analyst": "intake", "data_analyst": "explore", "data_scou
 STAGE_AGENT = {"intake": "intake_analyst", "explore": "data_analyst", "ideate": "design_lead", "model": "modeler",
                "backtest": "outcomes_analyst", "validate": "validator", "comply": "risk_analyst",
                "document": "writer"}
+# Agents that get a tool-request step (``<agent>_tools``) before they recommend. The Data
+# Analyst has its own (``data_scout``), which may also write code.
+TOOL_USERS = ("intake_analyst", "design_lead", "modeler", "outcomes_analyst", "validator",
+              "risk_analyst", "writer")
+
+
+def tool_step_of(agent: str) -> str | None:
+    """The role agent a tool-request step belongs to, or None."""
+    base = agent[:-len("_tools")] if agent.endswith("_tools") else ""
+    return base if base in TOOL_USERS else None
+
+
 FRIENDLY = {"intake_analyst": "Intake Analyst", "data_analyst": "Data Analyst",
             "data_scout": "Data Analyst (analysis requests)", "design_lead": "Design Lead", "modeler": "Modeler",
             "experiment": "Modeler (guided search)", "outcomes_analyst": "Outcomes Analyst",
             "validator": "Independent Validator", "risk_analyst": "Model-Risk Analyst",
             "writer": "Technical Writer"}
+
+for _agent in TOOL_USERS:
+    CONTRACTS[f"{_agent}_tools"] = ToolRequestOutput
+    AGENT_STAGE[f"{_agent}_tools"] = AGENT_STAGE[_agent]
+    FRIENDLY[f"{_agent}_tools"] = f"{FRIENDLY[_agent]} (tool requests)"

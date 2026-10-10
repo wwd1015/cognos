@@ -96,6 +96,30 @@ network or OS). That code is a model-development artifact: saved with its hash u
 accepted), re-run by validation to confirm it reproduces, printed in the white paper and included
 in the export. `analysis.allow_code: false` turns code off; tools and plugins still work.
 
+### Tools at every stage
+
+Plugins are not limited to data exploration. A tool names the stages it serves, and the agent of
+each of those stages can request it before it recommends: the Design Lead a sample-size screen,
+the Independent Validator your institution's own model tests. The engine runs the tool with
+exactly the inputs it declared, keeps the result, and turns a failed check into a finding (a
+`high` one fails validation; a tool can never block a run).
+
+```python
+from cognos.plugins import Tool
+
+def register(registry):
+    registry.add_tool(Tool("band_test", "Does the outcome rise with the score?", band_test,
+                           stages=("backtest", "validate"), needs=("model", "holdout")))
+```
+
+Nothing before `backtest` can be handed the sealed holdout or the fitted model. The prompts that
+guide each agent stay inside COGNOS; a plugin adds tools, not instructions. A stage with no tool
+makes no extra agent call. `examples/plugins/validation_tools.py` is a worked example.
+
+**IMPACT** is registered as a validation tool (`impact_test_suite`) but is a placeholder: its
+test interface is not available yet, so every validation lists it as *not run*. A plugin that
+registers a tool under the same name replaces it.
+
 ### A model update
 
 The engine reads the existing model mechanically: the family named in its artifacts, the dataset
@@ -139,7 +163,7 @@ cognos intent-template -o intent.md          # the business intent document: fil
 cognos explain --config cognos.yaml
 cognos run --config cognos.yaml --intent intent.md --interactive      # a new model development
 cognos run --data loans.csv --intent intent.md --interactive           # no profile: just the data
-cognos plugins                               # analysis tools, data sources, loaded plugins
+cognos plugins                               # tools per stage, data sources, loaded plugins
 
 cognos intent-template --kind update -o request.md                    # a model update
 cognos run --config cognos.yaml --kind update --intent request.md \
@@ -220,7 +244,7 @@ src/cognos/
   agents/        contracts, prompts/, slices (independence), facts, checks, heuristic agents,
                  providers.yaml, runner (retry/audit/limits), backends/ (claude_cli, anthropic, openai)
   datasources.py connectors (file, sqlite, snowflake) and snapshot provenance
-  plugins.py     the plugin registry: analysis tools and data sources
+  plugins.py     the plugin registry: tools (per stage) and data sources
   analysis/      built-in tools, chart specs, the restricted code runner, the executor
   engagement.py  development modes, the intent template, document reading, ingest into the run
   stages/        the 9 stages + stat_tests battery (engine work; judgment via ctx.recommend)
@@ -232,7 +256,7 @@ src/cognos/
   cli.py  config.py  context.py  artifacts.py  orchestrator.py (compat)  okf.py  synth.py
   integrations/  impact_adapter, autoforge_loop
   runtime/       deployment scorer (IMPACT derived-field entry point)
-projects/  examples/  evals/  tests/  docs/adr/ (0001–0012)  docs/templates/  CONTEXT.md (glossary)
+projects/  examples/  evals/  tests/  docs/adr/ (0001–0013)  docs/templates/  CONTEXT.md (glossary)
 ```
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`FEATURES.md`](FEATURES.md), [`CONTEXT.md`](CONTEXT.md),

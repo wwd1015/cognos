@@ -443,6 +443,15 @@ def writer(sl: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def tool_request(sl: dict[str, Any]) -> dict[str, Any]:
+    """Run every tool offered to the stage once, with its default parameters. A tool was
+    registered for this stage on purpose, so the deterministic agent uses it."""
+    ran = {r["tool"] for r in sl.get("tool_runs", [])}
+    reqs = [{"purpose": t["description"], "tool": t["name"], "params": []}
+            for t in sl.get("tools", []) if t["name"] not in ran][: sl.get("max_requests", 8)]
+    return {"requests": reqs, "done": True, "notes": ""}
+
+
 AGENTS = {
     "intake_analyst": intake_analyst,
     "data_analyst": data_analyst,
@@ -458,4 +467,6 @@ AGENTS = {
 
 
 def recommend(agent: str, sl: dict[str, Any]) -> dict[str, Any]:
+    if agent.endswith("_tools"):
+        return tool_request(sl)
     return AGENTS[agent](sl)

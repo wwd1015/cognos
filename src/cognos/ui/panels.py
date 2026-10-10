@@ -289,6 +289,13 @@ def analysis_card(run_id: str, a: dict, scheme: str) -> Any:
         parts.append(dmc.Group([dmc.Badge(f"{k}: {fmt(v, 3) if not isinstance(v, str) else v}",
                                           variant="default", size="sm", tt="none")
                                 for k, v in list(a["summary"].items())[:8]], gap=4, mt=4))
+    for c in a.get("checks") or []:
+        parts.append(dmc.Group([
+            dmc.Badge("passed" if c["passed"] else f"failed · {c['severity']}",
+                      color="green" if c["passed"] else "red", variant="light", size="sm",
+                      leftSection=icon("tabler:check" if c["passed"] else "tabler:x", 12)),
+            dmc.Text(c["name"], size="xs", fw=600),
+            dmc.Text(c.get("detail") or "", size="xs", c="dimmed")], gap=6, mt=4))
     folds = []
     for t in result.get("tables", [])[:3]:
         folds.append(dmc.AccordionItem([
@@ -309,6 +316,28 @@ def analysis_card(run_id: str, a: dict, scheme: str) -> Any:
                                    value="code" if is_code else None))
     # (a card keeps its own height: a tall neighbour in the grid must not stretch its chart)
     return dmc.Card([p for p in parts if p is not None], p="md", style={"alignSelf": "start"})
+
+
+def tools_section(res: StageResult, state: RunState, scheme: str) -> list:
+    """What the stage's agent asked the engine to run (plugin or built-in tools), and the tools
+    registered for the stage that could not be run. Empty for a stage with neither."""
+    p = res.payload or {}
+    runs, missing = p.get("tool_runs") or [], p.get("tools_unavailable") or []
+    out: list[Any] = []
+    if runs:
+        out.append(section(
+            f"Tools run ({len(runs)})",
+            dmc.SimpleGrid([analysis_card(state.run_id, a, scheme) for a in runs],
+                           cols={"base": 1, "lg": 2}, spacing="md"),
+            description="Requested by this stage's agent, run by the engine. A tool is reviewed "
+                        "code from COGNOS or a plugin; a failed check is a finding of this stage."))
+    if missing:
+        out.append(section(
+            "Tools not run",
+            table(["Tool", "From", "Why not"],
+                  [[dmc.Code(t["name"]), t.get("origin", ""), t.get("note", "")] for t in missing]),
+            description="Registered for this stage but unavailable in this run."))
+    return out
 
 
 def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
@@ -901,4 +930,4 @@ def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: st
     else:
         notice = rerun_note(stage, state, changes)
     body = PANELS[stage](res, state, scheme, seat)
-    return [head, notice, *[b for b in body if b is not None]]
+    return [head, notice, *[b for b in body if b is not None], *tools_section(res, state, scheme)]

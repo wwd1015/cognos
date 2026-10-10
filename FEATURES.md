@@ -50,6 +50,17 @@
 - **Plugins**: `register(registry)` modules adding tools and data sources, by entry point,
   profile list or `COGNOS_PLUGINS`; `cognos plugins` lists them and any load problems. Example in
   `examples/plugins/`.
+- **Tools at every stage** (ADR-0013): a tool declares the stages it serves and the inputs it
+  needs (`data`, `documents`, `results`, `train`, `holdout`, `model`). Each stage's agent
+  requests tools before it recommends; the engine runs them, records origin, version, inputs
+  and parameters, and returns the results as citable facts. Nothing before `backtest` receives
+  the holdout or the model.
+- **Custom tests**: a tool result may carry pass/fail checks. A failed check is a finding of
+  the stage; `high` fails validation; a tool cannot block.
+- **Unavailable tools on the record**: a tool whose dependency is missing is listed as
+  registered but not run, in the stage payload, the workbench and the white paper.
+- **IMPACT placeholder**: `impact_test_suite` is registered for validation and reported as not
+  run until IMPACT's test interface exists; a plugin can supply it under the same name.
 - **Agent-written Python**: syntax-tree check (numerical imports only; no files, network, OS,
   private attributes or string evaluation), then an isolated subprocess with restricted builtins
   and a time limit. A rejected script is returned to the agent with the reason.
