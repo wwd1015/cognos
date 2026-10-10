@@ -179,6 +179,17 @@ document: docs/analysis.md (source, target, analyses, every script in full)
   engine infers the task, and `gate_data` writes `overrides.target` / `overrides.task`.
   `RunContext.config` resolves the metric once the task is known.
 
+## Linked sources and shared runs ([ADR-0014](docs/adr/0014-linked-sources-the-join-is-proposed-and-confirmed.md), [ADR-0015](docs/adr/0015-a-team-on-one-runs-folder.md))
+
+`linking.py` is mechanical: `snapshot` (each source once, under `data/sources/`), `profile`
+(candidate links between two tables, measured), `resolve` (a base table and chosen links into
+ordered join steps, or what is wrong), `apply` (left joins that never add a row). Explore calls
+`linked_dataset`, which takes the plan from `overrides.join`, the profile's `data.join`, or the
+Data Analyst (`data_linker`), and writes the usual `data/dataset.parquet`.
+
+`engine/state.py::RunLock` makes the run lock hold across processes (a lock file under
+`<runs>/_locks/`); `identity.py` names the person on every human action.
+
 ## Stage tools ([ADR-0013](docs/adr/0013-stage-tools-every-agent-can-use-a-plugin.md))
 
 ```

@@ -4,14 +4,17 @@
 findings routed to a stage's agent), information gaps (sponsor questions), the human overrides that
 shape the effective config, and loop counters. Every read-modify-write happens under the run's lock
 and re-loads from disk first, so background step threads and UI callbacks never clobber each other.
+The lock also holds across processes and machines (a lock file beside the runs), so a team that
+shares a runs folder cannot overwrite each other's decisions.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import threading
+import time
 import uuid
-from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -42,6 +45,7 @@ class StepState(BaseModel):
     # Why this step was last invalidated (the decision, answer or challenge that made it stale).
     # Kept through the re-run, so "why did this change?" still has an answer once it is done.
     rerun_reason: str | None = None
+    by: str = ""  # person@machine whose process ran (or is running) this step
     updated_at: str = Field(default_factory=utcnow)
 
 
@@ -52,6 +56,7 @@ class GateDecision(BaseModel):
     actor: Literal["human", "auto"] = "human"
     # developer | reviewer | approver | express. Empty on decisions recorded before seats.
     seat: str = ""
+    by: str = ""  # the person (identity.whoami); empty on express and older decisions
     reason: str = ""
     payload: dict[str, Any] = Field(default_factory=dict)
     at: str = Field(default_factory=utcnow)
@@ -65,6 +70,7 @@ class PackageSeal(BaseModel):
     digest: str
     sealed_at: str = Field(default_factory=utcnow)
     seat: str = "approver"
+    by: str = ""  # the person who approved
     preparation: Literal["human", "express"] = "human"
     status: Literal["sealed", "superseded"] = "sealed"
     superseded_because: str = ""
@@ -100,6 +106,7 @@ class Gap(BaseModel):
     status: Literal["open", "answered", "assumed"] = "open"
     answer: str | None = None
     answered_at: str | None = None
+    answered_by: str = ""
 
 
 class Overrides(BaseModel):
@@ -108,6 +115,8 @@ class Overrides(BaseModel):
     exclude_columns: list[str] = Field(default_factory=list)
     target: str | None = None  # the dependent variable, when the profile leaves it open
     task: str | None = None  # ... and the task it implies
+    # Several sources: the confirmed join ({"base": table, "steps": [...]}, see linking.py)
+    join: dict[str, Any] | None = None
     design: dict[str, str] = Field(default_factory=dict)
     compliance: dict[str, str] = Field(default_factory=dict)  # intended / out-of-scope use
     slate: list[dict[str, Any]] | None = None
@@ -122,6 +131,7 @@ class RunState(BaseModel):
     status: RunStatus = "created"
     halted_reason: str | None = None
     created_at: str = Field(default_factory=utcnow)
+    created_by: str = ""
     updated_at: str = Field(default_factory=utcnow)
     version: int = 0  # bumped on every save; the UI re-renders when it changes
     steps: dict[str, StepState] = Field(default_factory=lambda: {s: StepState() for s in STEPS})
@@ -168,10 +178,11 @@ class RunState(BaseModel):
         return st.status if st else "pending"
 
     def set_step(self, step: str, status: str, message: str | None = None, *,
-                 verdict: str | None = None, rerun_reason: str | None = None) -> None:
+                 verdict: str | None = None, rerun_reason: str | None = None,
+                 by: str | None = None) -> None:
         prev = self.steps.get(step) or StepState()
         self.steps[step] = StepState(
-            status=status, message=message,
+            status=status, message=message, by=by if by is not None else prev.by,
             rerun_reason=rerun_reason if rerun_reason is not None else prev.rerun_reason,
             verdict=verdict if verdict is not None else (None if status in ("pending", "stale")
                                                          else prev.verdict),
@@ -209,13 +220,109 @@ class RunState(BaseModel):
         return next((d for d in reversed(self.decisions) if d.gate == gate), None)
 
 
-_locks: dict[str, threading.RLock] = defaultdict(threading.RLock)
+class RunBusy(RuntimeError):
+    """Another process holds the run's lock and did not release it in time."""
+
+
+class RunLock:
+    """The run's lock: one thread at a time in this process, one process at a time on the
+    runs folder. The second part is a lock file (``<runs>/_locks/<run_id>.lock``) created
+    exclusively, which holds on a network share where advisory file locks often do not.
+
+    It guards the short read-modify-write of ``state.json`` only, never a running stage. A
+    holder that died leaves its file behind: a waiter that sees the same holder for
+    ``STALE_S`` seconds of its own clock takes the lock over (no clock is compared between
+    machines)."""
+
+    STALE_S = 30.0
+    TIMEOUT_S = 90.0
+    POLL_S = 0.05
+
+    def __init__(self, run_dir: Path) -> None:
+        run_dir = Path(run_dir)
+        self.path = run_dir.parent / "_locks" / f"{run_dir.name}.lock"
+        self._thread = threading.RLock()
+        self._depth = 0
+        self._token = ""
+
+    def __enter__(self) -> RunLock:
+        self._thread.acquire()
+        try:
+            if self._depth == 0:
+                self._acquire_file()
+            self._depth += 1
+        except BaseException:
+            self._thread.release()
+            raise
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._depth -= 1
+        try:
+            if self._depth == 0:
+                self._release_file()
+        finally:
+            self._thread.release()
+
+    def _holder(self) -> str:
+        try:
+            return self.path.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+
+    def _acquire_file(self) -> None:
+        from ..identity import stamp
+
+        token = f"{stamp()} pid={os.getpid()} {uuid.uuid4().hex}"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        started = time.monotonic()
+        seen, seen_since = "", started
+        while True:
+            try:
+                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except (FileExistsError, PermissionError):
+                # PermissionError: Windows, while the previous holder's file is being removed
+                now = time.monotonic()
+                holder = self._holder()
+                if holder != seen:
+                    seen, seen_since = holder, now
+                elif holder and now - seen_since > self.STALE_S:
+                    try:  # the holder is gone: take its file away and try again
+                        if self._holder() == holder:
+                            self.path.unlink()
+                    except OSError:
+                        pass
+                    seen = ""
+                    continue
+                if now - started > self.TIMEOUT_S:
+                    who = holder.split(" ")[0] if holder else "another process"
+                    raise RunBusy(f"{who} is updating this run; try again in a moment") from None
+                time.sleep(self.POLL_S)
+                continue
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(token)
+            self._token = token
+            return
+
+    def _release_file(self) -> None:
+        # Only our own file: a lock taken over after a stall belongs to someone else now.
+        try:
+            if self._holder() == self._token:
+                self.path.unlink()
+        except OSError:
+            pass
+        self._token = ""
+
+
+_locks: dict[str, RunLock] = {}
 _locks_guard = threading.Lock()
 
 
-def run_lock(run_dir: Path) -> threading.RLock:
+def run_lock(run_dir: Path) -> RunLock:
     key = str(Path(run_dir).resolve())
     with _locks_guard:
+        if key not in _locks:
+            _locks[key] = RunLock(Path(run_dir))
         return _locks[key]
 
 

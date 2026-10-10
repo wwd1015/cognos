@@ -186,7 +186,8 @@ BUILTIN: tuple[DataSource, ...] = (
 
 
 def effective_source(config: Any):
-    """The source a profile means: ``data.source``, or the older ``data.path`` + ``data.format``."""
+    """The source a profile means: ``data.source``, the older ``data.path`` + ``data.format``,
+    or the only entry of ``data.sources``. (Several sources are joined first: linking.py.)"""
     from .config import SourceConfig
 
     dc = config.data
@@ -194,20 +195,19 @@ def effective_source(config: Any):
         return dc.source
     if dc.path:
         return SourceConfig(kind="file", path=dc.path, options={"format": dc.format})
+    if len(dc.sources) == 1:
+        return dc.sources[0]
     return None
 
 
-def load(config: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """Fetch the dataset and say where it came from. No secret is part of the provenance."""
+def load_source(source: Any, plugin_modules: Any = ()) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Fetch one source and say where it came from. No secret is part of the provenance."""
     from . import plugins
 
-    source = effective_source(config)
-    if source is None:
-        raise SourceError("no data source: set data.source or data.path")
-    connector = plugins.registry(config.plugins).sources.get(source.kind)
+    connector = plugins.registry(plugin_modules).sources.get(source.kind)
     if connector is None:
         raise SourceError(f"unknown data source {source.kind!r}; known: "
-                          f"{sorted(plugins.registry(config.plugins).sources)}")
+                          f"{sorted(plugins.registry(plugin_modules).sources)}")
     df = connector.load(source)
     if df.empty:
         raise SourceError(f"the {source.kind} source returned no rows")
@@ -220,3 +220,11 @@ def load(config: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
         "n_rows": int(len(df)), "n_cols": int(df.shape[1]),
         "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
+
+
+def load(config: Any) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Fetch the dataset and say where it came from."""
+    source = effective_source(config)
+    if source is None:
+        raise SourceError("no data source: set data.source or data.path")
+    return load_source(source, config.plugins)

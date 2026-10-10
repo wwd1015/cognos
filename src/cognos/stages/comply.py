@@ -110,7 +110,7 @@ class ComplyStage(Stage):
         if has_backtest and oos_metric is not None:
             outcomes = {
                 "status": PASS,
-                "evidence": f"Out-of-sample backtest ran ({backtest.get('oos_metric_name', 'oos')}={oos_metric}); outcomes analysis is evidenced.",
+                "evidence": f"Out-of-sample backtest ran ({backtest.get('oos_metric_name', 'oos')}={float(oos_metric):.4f}); outcomes analysis is evidenced.",
             }
         else:
             outcomes = {

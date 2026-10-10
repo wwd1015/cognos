@@ -99,3 +99,37 @@ def test_cli_providers_and_agents(capsys):
     assert "heuristic" in out and "claude_cli" in out
     assert main(["agents"]) == 0
     assert "Independent Validator" in capsys.readouterr().out
+
+
+def test_delete_runs_removes_only_real_runs(tmp_path):
+    root = tmp_path / "runs"
+    cfg = service.demo_config("regression", root, n=150, search_budget=4)
+    keep = service.create_run(cfg, mode="autonomous", provider="heuristic", root=root)
+    gone = service.create_run(cfg, mode="autonomous", provider="heuristic", root=root)
+    (root / gone / "packages").mkdir()
+    (root / gone / "packages" / "v1.json").write_text("{}", encoding="utf-8")
+
+    preview = service.deletion_preview([gone], root)[0]
+    assert preview["packages"] == 1 and preview["size_bytes"] > 0 and not preview["blocked"]
+    assert (root / gone).exists()  # a preview deletes nothing
+
+    for bad in ("../runs", "_demo_data", str(root / keep), "", "no-such-run"):
+        with pytest.raises((KeyError, ValueError)):
+            service.delete_runs([bad], root)
+    assert (root / "_demo_data").exists() and (root / keep).exists()
+
+    assert [r["run_id"] for r in service.delete_runs([gone], root)] == [gone]
+    assert not (root / gone).exists()
+    assert [r["run_id"] for r in service.list_runs(root)] == [keep]
+    with pytest.raises(KeyError):  # the cached engine went with it
+        service.engine(gone, root)
+
+
+def test_delete_refuses_a_run_that_is_working(tmp_path, monkeypatch):
+    root = tmp_path / "runs"
+    cfg = service.demo_config("regression", root, n=150, search_budget=4)
+    run_id = service.create_run(cfg, mode="autonomous", provider="heuristic", root=root)
+    monkeypatch.setattr(service, "is_busy", lambda *a, **k: True)
+    with pytest.raises(RuntimeError, match="still running"):
+        service.delete_runs([run_id], root)
+    assert (root / run_id).exists()

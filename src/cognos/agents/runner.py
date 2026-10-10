@@ -39,6 +39,11 @@ TASKS = {
                   "fixed, name the dependent variable the business intent describes. Request up "
                   "to context.max_requests analyses: a tool from context.tools, or Python when "
                   "no tool fits. Set done=true when you need no further round.",
+    "data_linker": "The run has several data sources. From context.tables and context.links "
+                   "(every link the engine measured), choose the base table whose rows are the "
+                   "modelling observations and the links that join the other tables to it. Say "
+                   "how to keep one row per observation where a key matches several rows, why "
+                   "any table is left out, and what the developer should check.",
     "design_lead": "Design the model: decide the role of every econometric framework, rank a slate of "
                    "engine-fittable specifications, optionally propose feature transforms, and list "
                    "design questions the sponsor must answer.",
@@ -81,7 +86,8 @@ def system_prompt(agent: str) -> str:
     # guided search is the modeler's role; requesting analyses is the data analyst's; a
     # tool-request step is its role agent's, with the shared guidance on using tools
     role = tool_step_of(agent)
-    name = role or {"experiment": "modeler", "data_scout": "data_analyst"}.get(agent, agent)
+    name = role or {"experiment": "modeler", "data_scout": "data_analyst",
+                    "data_linker": "data_analyst"}.get(agent, agent)
     body = (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
     if role:
         body += "\n\n" + (PROMPTS_DIR / "_tools.md").read_text(encoding="utf-8")

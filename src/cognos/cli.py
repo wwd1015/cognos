@@ -4,6 +4,8 @@
   cognos run        --config cognos.yaml [--interactive] [--provider P]
   cognos run        --data loans.csv --intent intent.md      # no profile: the Data Analyst
                                                               #   proposes the target
+  cognos run        --data loans.csv financials.csv ...       # several sources: it also proposes
+                                                              #   the join; you confirm at the gate
                     [--intent intent.md] [--support FILE ...]            # new model development
                     [--kind update --prior FILE ... | --prior-run ID]    # model update
   cognos intent-template [--kind new|update] [-o intent.md]   # the document a run starts from
@@ -11,9 +13,11 @@
   cognos status     --run <run_id>                            # step table, gates, questions
   cognos gate       <gate> --run <run_id> --action accept|edit|override|send_back|approve|reject
   cognos answer     --run <run_id> --gap <id> --text "..."   # answer a sponsor question
-  cognos retry      <step> --run <run_id>
+  cognos retry      <step> --run <run_id> [--stuck]           # --stuck: take over a step a dead
+                                                              #   process left running
   cognos run-stage  <stage> --config ... --run <run_id>       # one stage, individually invocable
   cognos plugins                                              # tools per stage + data sources
+  cognos delete-run <run_id> [<run_id> ...] [--yes]           # remove runs for good (asks first)
   cognos providers | agents | init | explain | report | list-runs
 """
 
@@ -42,6 +46,12 @@ data:
   #   limit: null
   #   options: {warehouse: ANALYTICS_WH, role: env:MY_ROLE}   # never a secret: account, user and
   #                       #   the password / key come from SNOWFLAKE_* environment variables
+  # sources:              # or several inputs of any kind; the engine measures how they connect,
+  #   - {name: loans, kind: snowflake, table: RISK.CREDIT.LOANS}     # the Data Analyst
+  #   - {name: financials, kind: file, path: financials.csv}        # proposes the join and you
+  # base: loans           #   confirm it at the data gate. base / join state it instead:
+  # join:
+  #   - {left: loans, left_on: obligor_id, right: financials, right_on: obligor_id, many: aggregate}
   target: target          # leave empty ("") and the Data Analyst proposes the dependent
                           #   variable from the business intent; you confirm it at the data gate
   features: []            # empty = all non-target/non-protected columns
@@ -332,13 +342,20 @@ def _cmd_run(args) -> int:
         if not args.config and not args.data:
             print("refused: give --config, or --data to start from a data file alone")
             return 1
+        files = list(args.data or [])
+        if len(files) > 1:  # several files: joined at the data stage (linking.py)
+            from . import linking
+
+            spec: dict = linking.named_sources(files)
+            keys = {"path": None, "source": None, **spec}
+        elif files:
+            spec = {"kind": "file", "path": files[0]}
+            keys = {"path": None, "source": spec, "sources": []}
         base = (_load_config(args.config) if args.config else
-                service.config_from_data(Path(args.data).stem, {"kind": "file", "path": args.data},
-                                         root=args.runs_dir))
-        if args.config and args.data:
+                service.config_from_data(Path(files[0]).stem, spec, root=args.runs_dir))
+        if args.config and files:
             base = service.load_config({**base.model_dump(mode="json"), "data": {
-                **base.data.model_dump(mode="json"), "path": None,
-                "source": {"kind": "file", "path": args.data}}})
+                **base.data.model_dump(mode="json"), **keys}})
         cfg = service.with_engagement(base, _engagement_args(args))
     except ValueError as exc:
         print(f"refused: {exc}")
@@ -446,7 +463,7 @@ def _cmd_retry(args) -> int:
     from .engine import GateError
 
     try:
-        service.retry(args.run, args.step, args.runs_dir, background=False)
+        service.retry(args.run, args.step, args.runs_dir, background=False, stuck=args.stuck)
     except GateError as exc:
         print(f"refused: {exc}")
         return 1
@@ -490,6 +507,32 @@ def _cmd_list_runs(args) -> int:
         wait = f" waiting={r['waiting_on']}" if r["waiting_on"] else ""
         print(f"{r['run_id']}  project={r['project']}  status={r['status']}  "
               f"agents={r['provider']}{wait}")
+    return 0
+
+
+def _cmd_delete_run(args) -> int:
+    from . import service
+
+    try:
+        rows = service.deletion_preview(args.runs, args.runs_dir)
+    except (KeyError, ValueError) as exc:
+        print(exc.args[0] if exc.args else exc)
+        return 1
+    for r in rows:
+        signed = f"  SIGNED PACKAGES: {r['packages']}" if r["packages"] else ""
+        print(f"{r['run_id']}  project={r['project']}  status={r['status']}  "
+              f"{r['size_bytes'] / 1e6:.1f} MB{signed}")
+    print("This removes each run's results, documents, decisions and audit log for good. "
+          "Export first (cognos export <run_id>) to keep a copy.")
+    if not args.yes and input(f"Delete {len(rows)} run(s)? Type 'delete' to confirm: ") != "delete":
+        print("Nothing deleted.")
+        return 1
+    try:
+        service.delete_runs(args.runs, args.runs_dir)
+    except RuntimeError as exc:
+        print(exc)
+        return 1
+    print(f"Deleted {len(rows)} run(s).")
     return 0
 
 
@@ -602,9 +645,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     pr = sub.add_parser("run", help="run the workflow (resumes when --run-id exists)")
     pr.add_argument("--config", default=None)
-    pr.add_argument("--data", default=None,
+    pr.add_argument("--data", default=None, nargs="+", metavar="FILE",
                     help="a data file (.csv, .parquet, .xlsx); without --config the Data Analyst "
-                         "proposes the target")
+                         "proposes the target. Several files: it also proposes how they join")
     pr.add_argument("--interactive", action="store_true", help="review each gate in the terminal")
     pr.add_argument("--provider", default=None, help="agent backend (see `cognos providers`)")
     pr.add_argument("--run-id", default=None)
@@ -678,6 +721,8 @@ def build_parser() -> argparse.ArgumentParser:
     prt = sub.add_parser("retry", help="retry a failed step")
     prt.add_argument("step")
     prt.add_argument("--run", required=True)
+    prt.add_argument("--stuck", action="store_true",
+                     help="take over a step left 'running' by a process that died")
     runs(prt)
     prt.set_defaults(func=_cmd_retry)
 
@@ -709,6 +754,12 @@ def build_parser() -> argparse.ArgumentParser:
     pl = sub.add_parser("list-runs", help="list runs")
     runs(pl)
     pl.set_defaults(func=_cmd_list_runs)
+
+    pd_ = sub.add_parser("delete-run", help="delete runs for good (asks for confirmation)")
+    pd_.add_argument("runs", nargs="+", metavar="run_id")
+    pd_.add_argument("--yes", action="store_true", help="do not ask (for scripts)")
+    runs(pd_)
+    pd_.set_defaults(func=_cmd_delete_run)
 
     pag = sub.add_parser("agents", help="list the stages and the agent behind each")
     pag.set_defaults(func=_cmd_agents)

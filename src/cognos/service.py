@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import threading
 from pathlib import Path
 from typing import Any
@@ -62,7 +63,11 @@ DEMO_PRESETS: dict[str, dict[str, Any]] = {
                               "segment": "large corporate (agency-rated universe)",
                               "interpretability": "required"}),
 }
+# The C&I portfolio again, arriving as three sources of two kinds (two CSV files and a SQLite
+# table): the Data Analyst proposes how they join and the developer confirms it.
+DEMO_PRESETS["linked"] = {**DEMO_PRESETS["cni"], "generator": "cni", "linked": True}
 DEMO_LABELS = {
+    "linked": "C&I portfolio from three linked sources (the Data Analyst proposes the join)",
     "commercial": "Commercial PD (vintage panel, out-of-time)",
     "cni": "C&I portfolio (hazard term structure, portfolio sim, stress)",
     "migration": "Rating migration (agency transition matrix, loss forecast)",
@@ -86,11 +91,15 @@ def demo_config(preset: str, root: str | Path | None = None, *, n: int | None = 
         raise KeyError(f"unknown demo preset {preset!r}; choose from {sorted(DEMO_PRESETS)}")
     data_dir = runs_root(root) / "_demo_data"
     data_dir.mkdir(parents=True, exist_ok=True)
-    gen = synth.GENERATORS[preset]
+    p = DEMO_PRESETS[preset]
+    gen = synth.GENERATORS[p.get("generator", preset)]
     df = gen(n=n) if n else gen()
     csv = data_dir / f"{preset}.csv"
-    df.to_csv(csv, index=False)
-    p = DEMO_PRESETS[preset]
+    if p.get("linked"):
+        data_spec = _linked_demo_sources(df, data_dir)
+    else:
+        df.to_csv(csv, index=False)
+        data_spec = {"path": str(csv), "format": "csv"}
     # The demo sponsor's intent document: the preset's design brief on the template. Presets
     # without one leave those sections empty, so the interview has something to ask.
     from . import engagement as eg
@@ -108,7 +117,7 @@ def demo_config(preset: str, root: str | Path | None = None, *, n: int | None = 
         "name": f"demo_{preset}",
         "description": f"COGNOS synthetic {preset} demo — {DEMO_LABELS.get(preset, preset)}",
         "task": p["task"],
-        "data": {"path": str(csv), "format": "csv", "target": p["target"],
+        "data": {**data_spec, "target": p["target"],
                  "datetime_col": p.get("datetime_col"), "protected_attributes": p.get("protected", []),
                  "drop_columns": p.get("drop", []), "event_time_col": p.get("event_time_col"),
                  "horizon_periods": p.get("horizon_periods")},
@@ -128,6 +137,34 @@ def demo_config(preset: str, root: str | Path | None = None, *, n: int | None = 
     if search_budget:
         raw["search"] = {"max_candidates": search_budget}
     return CognosConfig.from_dict(raw)
+
+
+def _linked_demo_sources(df: Any, data_dir: Path) -> dict[str, Any]:
+    """Split the C&I demo data the way it would arrive in practice: the loan book (a CSV with
+    the outcome), obligor financials (a database table, a few obligors missing) and a macro
+    series by vintage (a CSV)."""
+    import sqlite3
+
+    firm = ["debt_to_ebitda", "interest_coverage", "current_ratio", "operating_margin",
+            "revenue_growth", "log_total_assets", "sector", "region"]
+    macro = ["unemployment_rate", "gdp_growth"]
+    loans = data_dir / "linked_loans.csv"
+    df.drop(columns=firm + macro).to_csv(loans, index=False)
+    series = data_dir / "linked_macro.csv"
+    df.groupby("vintage", as_index=False)[macro].mean().to_csv(series, index=False)
+    db = data_dir / "linked_financials.db"
+    db.unlink(missing_ok=True)
+    financials = df[["obligor_id", *firm]].iloc[: int(len(df) * 0.97)]
+    con = sqlite3.connect(db)
+    try:
+        financials.to_sql("obligor_financials", con, index=False)
+    finally:
+        con.close()
+    return {"sources": [
+        {"name": "loans", "kind": "file", "path": str(loans)},
+        {"name": "financials", "kind": "sqlite", "path": str(db), "table": "obligor_financials"},
+        {"name": "macro", "kind": "file", "path": str(series)},
+    ]}
 
 
 def load_config(source: CognosConfig | str | Path | dict) -> CognosConfig:
@@ -155,8 +192,10 @@ def config_from_data(name: str, source: dict[str, Any], *, description: str = ""
     import re
 
     slug = re.sub(r"[^A-Za-z0-9_]+", "_", name or "model").strip("_").lower() or "model"
+    # {"sources": [...]}: several inputs, joined at the data stage (linking.py)
+    data = {"sources": source["sources"]} if "sources" in source else {"source": source}
     return CognosConfig.from_dict({"name": slug, "description": description,
-                                   "data": {"source": source}, "runs_dir": str(runs_root(root)),
+                                   "data": data, "runs_dir": str(runs_root(root)),
                                    **extra})
 
 
@@ -246,9 +285,10 @@ def run_until_idle(run_id: str, root: str | Path | None = None) -> RunState:
 
 def submit_gate(run_id: str, gate: str, action: str, payload: dict | None = None,
                 reason: str = "", *, root: str | Path | None = None,
-                background: bool = True, seat: str | None = None) -> RunState:
+                background: bool = True, seat: str | None = None,
+                by: str | None = None) -> RunState:
     eng = engine(run_id, root)
-    state = eng.submit_gate(gate, action, payload, reason, seat=seat)
+    state = eng.submit_gate(gate, action, payload, reason, seat=seat, by=by)
     if background:
         eng.start()
     return state
@@ -256,18 +296,18 @@ def submit_gate(run_id: str, gate: str, action: str, payload: dict | None = None
 
 def answer_gap(run_id: str, gap_id: str, answer: str, *, assume: bool = False,
                root: str | Path | None = None, background: bool = True,
-               seat: str | None = None) -> RunState:
+               seat: str | None = None, by: str | None = None) -> RunState:
     eng = engine(run_id, root)
-    state = eng.answer_gap(gap_id, answer, assume=assume, seat=seat)
+    state = eng.answer_gap(gap_id, answer, assume=assume, seat=seat, by=by)
     if background:
         eng.start()
     return state
 
 
 def retry(run_id: str, step: str, root: str | Path | None = None,
-          background: bool = True) -> RunState:
+          background: bool = True, *, stuck: bool = False) -> RunState:
     eng = engine(run_id, root)
-    state = eng.retry(step)
+    state = eng.retry(step, stuck=stuck)
     if background:
         eng.start()
     return state
@@ -276,6 +316,13 @@ def retry(run_id: str, step: str, root: str | Path | None = None,
 def reopen(run_id: str, gate: str, root: str | Path | None = None,
            *, seat: str | None = None) -> RunState:
     return engine(run_id, root).reopen(gate, seat=seat)
+
+
+def whoami() -> str:
+    """The person this process acts for (``COGNOS_USER``, else the login name)."""
+    from . import identity
+
+    return identity.whoami()
 
 
 def state(run_id: str, root: str | Path | None = None) -> RunState:
@@ -436,6 +483,59 @@ def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
                          "updated_at": m.get("created_at", ""), "champion": None,
                          "waiting_on": None, "spend_usd": 0.0, "legacy": True})
     return sorted(rows, key=lambda r: r["updated_at"] or "", reverse=True)
+
+
+def _run_dir(run_id: str, root: str | Path | None = None) -> Path:
+    """The directory of a run that exists under the runs root. Refuses anything that is not a
+    plain run id (a path, a working folder such as ``_uploads``), so a delete can never leave
+    the runs root."""
+    base = runs_root(root)
+    name = str(run_id or "")
+    if not name or name != Path(name).name or name.startswith(("_", ".")):
+        raise ValueError(f"not a run id: {run_id!r}")
+    d = base / name
+    if not d.is_dir() or not (RunState.exists(d) or (d / "manifest.json").exists()):
+        raise KeyError(f"no run {name} under {base}")
+    return d
+
+
+def deletion_preview(run_ids: list[str], root: str | Path | None = None) -> list[dict[str, Any]]:
+    """What deleting these runs would remove: shown to the person before they confirm.
+    ``blocked`` says why a run cannot be deleted now (this process is still working on it)."""
+    out = []
+    for run_id in run_ids:
+        d = _run_dir(run_id, root)
+        size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+        row = {"run_id": d.name, "project": "", "status": "legacy", "size_bytes": size,
+               "packages": len(list((d / "packages").glob("v*.json"))), "blocked": ""}
+        if RunState.exists(d):
+            try:
+                st = RunState.load(d)
+                row.update(project=st.project, status=st.status)
+            except Exception:
+                row["status"] = "unreadable"
+            if is_busy(d.name, root):
+                row["blocked"] = "a step is running in this workbench"
+        out.append(row)
+    return out
+
+
+def delete_runs(run_ids: list[str], root: str | Path | None = None) -> list[dict[str, Any]]:
+    """Delete runs from disk, for good: results, documents, decisions, the audit log and any
+    signed package. The caller confirms first (``deletion_preview``); a run this process is
+    still working on is refused. Returns what was removed."""
+    rows = deletion_preview(run_ids, root)
+    busy = [r for r in rows if r["blocked"]]
+    if busy:
+        raise RuntimeError("still running, wait for it to pause or finish: "
+                           + ", ".join(r["run_id"] for r in busy))
+    for r in rows:
+        d = _run_dir(r["run_id"], root)
+        with _guard:
+            _engines.pop(str(d.resolve()), None)
+        shutil.rmtree(d)
+        (d.parent / "_locks" / f"{d.name}.lock").unlink(missing_ok=True)
+    return rows
 
 
 def list_profiles(directory: str | Path = "projects") -> list[dict[str, str]]:

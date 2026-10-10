@@ -10,9 +10,11 @@ The **Data Analyst** agent reads the data against the confirmed business intent 
 First it *requests analyses* — a registered tool (built in or from a plugin) or Python it writes
 — and the engine runs them, keeping every result and every script as an artifact
 (``stages/explore/analyses/``). When the profile leaves the dependent variable open, the analyst
-names it in the first round. Then it *recommends*: the target, the features worth considering,
+names it in the first round. When the run has several sources, the analyst first proposes how
+they join (``data_linker``): the engine measures the links, runs the chosen plan and keeps one
+row per row of the base table. Then it *recommends*: the target, the features worth considering,
 keep/exclude for every leakage suspect, and questions for the sponsor. The target and the
-exclusions take effect only when the human accepts them at ``gate_data``; downstream stages read
+exclusions (and the join) take effect only when the human accepts them at ``gate_data``; downstream stages read
 the filtered view via ``RunContext.profile()``.
 """
 
@@ -24,6 +26,7 @@ import shutil
 import numpy as np
 import pandas as pd
 
+from .. import linking
 from ..analysis import run as analysis
 from ..artifacts import Finding, Severity, StageResult, Verdict
 from ..context import RunContext
@@ -93,14 +96,91 @@ def _intent_text(ctx: RunContext) -> str:
     return " ".join([*parts, d.default_definition, d.use_case, ctx.config.description])
 
 
+def linked_dataset(ctx: RunContext) -> tuple[pd.DataFrame, dict]:
+    """Several sources as one modelling table, and how it was made. The plan in force is the
+    data-gate decision, else the profile's stated join, else the Data Analyst's proposal. The
+    engine runs it and writes the snapshot every later stage reads."""
+    import hashlib
+    import json
+    from datetime import UTC, datetime
+
+    from ..fsutil import atomic_write
+
+    base = ctx.base_config
+    tables, provenance = linking.snapshot(ctx)
+    target = base.data.target or ctx.overrides.target or ""
+    prof = linking.profile(tables, base.data.join, target)
+    rationale: dict = {}
+    if ctx.overrides.join:
+        source = "decision"
+        base_table, steps = ctx.overrides.join["base"], list(ctx.overrides.join["steps"])
+    elif base.data.join:
+        source = "profile"
+        base_table = base.data.base or base.data.join[0].left
+        stated = {(lk["a"], tuple(lk["a_on"]), lk["b"], tuple(lk["b_on"])): lk["id"]
+                  for lk in prof["links"]}
+        steps, problems = linking.resolve(base_table, [
+            {"link": stated[(j.left, tuple(j.left_on), j.right, tuple(j.right_on))],
+             "many": j.many, "unmatched": j.unmatched} for j in base.data.join], prof)
+        if problems:
+            raise linking.LinkError("data.join: " + "; ".join(problems))
+    else:
+        source = "agent"
+        out = ctx.recommend("data_linker", {
+            "tables": prof["tables"], "links": prof["links"], "target": target,
+            "base_table": base.data.base or "",
+        })
+        base_table = out.base_table
+        steps, _ = linking.resolve(base_table, [
+            {"link": j.link, "many": j.many, "unmatched": j.unmatched} for j in out.joins], prof)
+        rationale = {"base": out.base_rationale, "joins": {j.link: j.reason for j in out.joins},
+                     "unmatched": {j.link: j.unmatched_reason for j in out.joins},
+                     "left_out": [t.model_dump() for t in out.left_out],
+                     "concerns": list(out.concerns)}
+    df, report = linking.apply(tables, base_table, steps)
+    joined = {base_table, *(s["right"] for s in steps)}
+    path = ctx.data_dir / "dataset.parquet"
+    df.to_parquet(path, index=False)
+    plan = {"base": base_table, "steps": steps, "source": source,
+            "digest": linking.plan_digest(base_table, steps)}
+    atomic_write(ctx.data_dir / "source.json", json.dumps({
+        "kind": "linked", "connector": "Linked sources", "origin": "cognos",
+        "location": " + ".join(sorted(joined, key=[t["name"] for t in prof["tables"]].index)),
+        "n_rows": int(len(df)), "n_cols": int(df.shape[1]),
+        "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "snapshot_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "sources": provenance, "join": plan,
+    }, indent=1, default=str))
+    by_name = {p["name"]: p for p in provenance}
+    info = {
+        "tables": [{**t, **{k: by_name[t["name"]].get(k) for k in (
+            "connector", "kind", "location", "query", "snapshot_sha256")}}
+            for t in prof["tables"]],
+        "links": prof["links"], "plan": plan, "rationale": rationale, "report": report,
+        "left_out": [t["name"] for t in prof["tables"] if t["name"] not in joined],
+    }
+    ctx.save_json("stages/explore/join.json", info)
+    return df, info
+
+
 @register_stage
 class ExploreStage(Stage):
     name = "explore"
     description = "Fetch and profile the dataset; settle the target; flag data-quality / leakage risks."
 
     def run(self, ctx: RunContext) -> StageResult:
-        df = ctx.load_dataset()
         base = ctx.base_config
+        linked = None
+        if linking.is_linked(base):
+            from ..agents.runner import AgentRunError
+
+            try:
+                df, linked = linked_dataset(ctx)
+            except (linking.LinkError, AgentRunError) as exc:
+                return StageResult(stage=self.name, verdict=Verdict.FAIL,
+                                   summary=f"The sources could not be joined: {exc}")
+        else:
+            df = ctx.load_dataset()
         res = StageResult(stage=self.name, verdict=Verdict.PASS)
         shutil.rmtree(ctx.stages_dir / "explore" / "analyses", ignore_errors=True)
 
@@ -264,6 +344,7 @@ class ExploreStage(Stage):
             "target_source": target_source,
             "target_candidates": candidates,
             "source": ctx.data_source(),
+            "linking": linked,
             "analyses": records,
             "features": features,
             "numeric_features": numeric_cols,
@@ -304,6 +385,23 @@ class ExploreStage(Stage):
         ref = ctx.save_json("stages/explore/profile.json", profile)
         res.add_artifact(ref)
         res.payload = profile
+        for step in (linked or {}).get("report", {}).get("steps", []):
+            if step["dropped_rows"]:
+                res.add_finding(Finding(
+                    id=f"join-dropped-{step['right']}", category="data-quality",
+                    severity=Severity.MEDIUM if step["match_rate"] < 0.9 else Severity.LOW,
+                    message=f"{step['dropped_rows']} base row(s) ({1 - step['match_rate']:.1%}) "
+                            f"had no match in {step['right']} ({'; '.join(step['on'])}) and were "
+                            "dropped: the model is built without them.", location=step["right"],
+                    suggestion="Confirm the dropped rows are not a distinct group the model "
+                               "must cover."))
+            elif step["match_rate"] < 1:
+                res.add_finding(Finding(
+                    id=f"join-match-{step['right']}", category="data-quality",
+                    severity=Severity.MEDIUM if step["match_rate"] < 0.8 else Severity.LOW,
+                    message=f"{1 - step['match_rate']:.1%} of the rows found no match in "
+                            f"{step['right']} ({'; '.join(step['on'])}) and have missing values "
+                            "in its columns.", location=step["right"]))
         failed = [r for r in records if r["status"] != "ok"]
         if failed:
             res.add_finding(Finding(
@@ -323,5 +421,8 @@ class ExploreStage(Stage):
                if target_source == "agent" else "")
             + (f" {len(records)} analysis(es) run, {n_code} from agent-written code."
                if records else "")
+            + (f" Built from {len(linked['plan']['steps']) + 1} joined source(s)"
+               + (" as the Data Analyst proposed." if linked["plan"]["source"] == "agent"
+                  else ".") if linked else "")
         )
         return res

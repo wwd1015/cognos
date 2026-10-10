@@ -12,6 +12,24 @@ versioning is SemVer.
   feed. Still pure Dash + Mantine; no behaviour changed.
 
 ### Added
+- **Linked sources** ([ADR-0014](docs/adr/0014-linked-sources-the-join-is-proposed-and-confirmed.md)).
+  `data.sources` lists several inputs of any kind (a Snowflake table and a CSV, ...). The engine
+  measures how they connect, the Data Analyst proposes the base table and the joins
+  (`data_linker`), the engine runs the plan without ever adding a row, and the developer
+  confirms or changes it at the data gate. `data.base` / `data.join` state the join instead.
+  Whether to drop base rows with no match is recommended from the measured risk (how many,
+  and whether their outcome differs from the matched rows), with the reason shown.
+  New-run form option "Several sources", `cognos run --data a.csv b.csv`, demo `linked`
+  (two CSVs and a SQLite table). The white paper prints the sources and the join.
+- **A team on one runs folder** ([ADR-0015](docs/adr/0015-a-team-on-one-runs-folder.md)). The
+  run lock now holds across processes and machines; decisions, answers, package seals and
+  running steps record who (`COGNOS_USER`, else the login name), shown in the masthead, the
+  record and the decision log; `cognos retry <step> --stuck` takes over a step a dead process
+  left running.
+- **Delete runs.** "Delete runs" on the runs page (pick runs, read what will be lost, tick the
+  box, confirm) and `cognos delete-run <run_id> ... [--yes]`. The warning names the size on
+  disk and any signed-off package; a run with a step in flight is refused; only real runs under
+  the runs root can be removed (`service.deletion_preview` / `delete_runs`).
 - **Tools at every stage** ([ADR-0013](docs/adr/0013-stage-tools-every-agent-can-use-a-plugin.md)).
   A plugin tool declares the stages it serves and the inputs it needs; every stage's agent can
   request the tools registered for its stage before it recommends. The engine runs them, keeps

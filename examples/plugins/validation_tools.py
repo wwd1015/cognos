@@ -37,8 +37,8 @@ def score_band_monotonicity(df, params: dict[str, str], env: dict) -> dict:
     return {
         "title": "Observed outcome by score band (sealed holdout)",
         "summary": {"n_bands": int(len(tab)), "reversals": reversals,
-                    "top_to_bottom_ratio": float(tab["observed"].iloc[-1]
-                                                 / max(tab["observed"].iloc[0], 1e-9))},
+                    "bottom_band": float(tab["observed"].iloc[0]),
+                    "top_band": float(tab["observed"].iloc[-1])},
         "table": {"columns": list(tab.columns), "rows": tab.round(4).to_numpy().tolist()},
         "chart": {"kind": "bar", "title": "Observed outcome by score band",
                   "x": [str(b) for b in tab["band"]], "x_title": "score band (low to high)",

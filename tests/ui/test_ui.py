@@ -286,3 +286,59 @@ def test_every_stage_page_shows_the_tools_its_agent_ran_and_the_ones_it_could_no
     assert "events_per_feature" in _serialize(stage_panel("ideate", results["ideate"], st, "dark"))
     # a stage with no tool keeps its page as it was
     assert "Tools run" not in _serialize(stage_panel("comply", results["comply"], st, "light"))
+
+
+def test_delete_runs_warns_before_anything_is_removed(root, completed_run):
+    page = _serialize(ui.runs_page())
+    assert "Delete runs" in page and "del-sure" in page
+    assert completed_run in json.dumps(ui.delete_options())
+    assert ui.deletion_blocked([]) and not ui.deletion_blocked([completed_run])
+    warning = _serialize(ui.deletion_warning([completed_run]))
+    assert "cannot be undone" in warning and "1 run," in warning
+    assert "red" in _serialize(ui.deletion_warning(["../elsewhere"]))
+    assert (root / completed_run).exists()
+
+
+def test_linked_sources_show_the_join_and_let_the_developer_change_it(root):
+    cfg = service.demo_config("linked", root, n=500, search_budget=4)
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic")
+    service.run_until_idle(run_id)
+    service.submit_gate(run_id, "gate_intent", "accept", background=False)
+    service.run_until_idle(run_id)
+    st = service.state(run_id)
+    page = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light"))
+    assert "Sources and join" in page and "loans.obligor_id = financials.obligor_id" in page
+    assert "join_links" in page and "Base rows with no match" in page and "dropped" in page
+    payload, _ = ui.gate_payload("gate_data", "edit", {
+        "join_base": "loans", "join_links": ["L1"], "join_many": "first",
+        "join_unmatched": "keep", "exclude": []}, run_id)
+    assert payload["join"] == {"base": "loans", "links": ["L1"], "many": "first",
+                               "unmatched": "keep"}
+    assert "of the rows have no match" in page  # why the unmatched rows are dropped, from the measurements
+    # applying the form untouched ("as recommended") is not a change to the join
+    plan = service.results(run_id)["explore"].payload["linking"]["plan"]
+    same, _ = ui.gate_payload("gate_data", "edit", {
+        "join_base": plan["base"], "join_links": [s["link"] for s in plan["steps"]],
+        "join_many": "aggregate", "join_unmatched": "plan", "exclude": []}, run_id)
+    st = service.submit_gate(run_id, "gate_data", "edit", same, background=False)
+    assert st.status_of("gate_data") == "done" and st.status_of("explore") == "done"
+    assert "linked" in json.dumps(ui.runs_page(), cls=plotly.utils.PlotlyJSONEncoder)
+
+
+def test_several_sources_form_needs_two_and_names_them():
+    assert isinstance(ui.linked_sources_spec(["/tmp/a.csv"], ""), str)
+    assert "name = TABLE" in ui.linked_sources_spec(["/tmp/a.csv"], "RISK.LOANS")
+    spec = ui.linked_sources_spec(["/tmp/a.csv"], "ratings = RISK.RATINGS")
+    assert [s["name"] for s in spec["sources"]] == ["a", "ratings"]
+    assert service.config_from_data("m", spec).data.sources[1].kind == "snowflake"
+
+
+def test_the_record_names_the_person(root, monkeypatch):
+    monkeypatch.setenv("COGNOS_USER", "maria")
+    cfg = service.demo_config("cni", root, n=500, search_budget=4)
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic")
+    service.run_until_idle(run_id)
+    service.submit_gate(run_id, "gate_intent", "accept", background=False)
+    st = service.state(run_id)
+    assert "maria" in _serialize(ui.questions_tab(st, "developer"))
+    assert "maria" in _serialize(ui.header()) and "maria" in _serialize(ui.run_header(st))

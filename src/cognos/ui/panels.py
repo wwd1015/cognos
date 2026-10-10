@@ -11,7 +11,7 @@ import json
 from typing import Any
 
 import dash_mantine_components as dmc
-from dash import dcc
+from dash import dcc, html
 
 from .. import service
 from ..artifacts import StageResult
@@ -312,8 +312,9 @@ def analysis_card(run_id: str, a: dict, scheme: str) -> Any:
             dmc.AccordionPanel(dmc.Code(code, block=True)),
         ], value="code"))
     if folds:
-        parts.append(dmc.Accordion(folds, variant="separated", mt="xs",
-                                   value="code" if is_code else None))
+        # Closed until asked for: the gate's notice says there is code to read, and a script
+        # opened by default pushes the other analyses off the page.
+        parts.append(dmc.Accordion(folds, variant="separated", mt="xs"))
     # (a card keeps its own height: a tall neighbour in the grid must not stretch its chart)
     return dmc.Card([p for p in parts if p is not None], className="cognos-tile",
                     style={"alignSelf": "start"})
@@ -339,6 +340,75 @@ def tools_section(res: StageResult, state: RunState, scheme: str) -> list:
                   [[dmc.Code(t["name"]), t.get("origin", ""), t.get("note", "")] for t in missing]),
             description="Registered for this stage but unavailable in this run."))
     return out
+
+
+def _link_label(lk: dict) -> str:
+    on = ", ".join(f"{a} = {b}" for a, b in zip(lk["a_on"], lk["b_on"], strict=True))
+    return (f"{lk['id']}: {lk['a']} – {lk['b']} on {on} ({lk['relation']}, "
+            f"{max(lk['a_in_b'], lk['b_in_a']):.0%} matched)")
+
+
+def linking_section(linked: dict | None) -> Any:
+    """Several sources: what they are, the join as the engine ran it, and the links it measured
+    but did not use."""
+    if not linked:
+        return None
+    plan, report = linked["plan"], linked["report"]
+    why = (linked.get("rationale") or {})
+    reasons = why.get("joins") or {}
+    unmatched = why.get("unmatched") or {}
+    how = {"profile": "stated in the project profile", "decision": "set at the data gate",
+           "agent": "proposed by the Data Analyst"}.get(plan["source"], "")
+    used = {s["link"] for s in plan["steps"]}
+    sources = table(["Source", "Connector", "Location", "Rows × columns", "Role"], [
+        [dmc.Text(t["name"], ff="monospace", size="sm", fw=600), t.get("connector") or "—",
+         dmc.Text(str(t.get("query") or t.get("location") or "—"), size="xs", ff="monospace"),
+         f"{fmt(t['n_rows'])} × {fmt(t['n_cols'])}",
+         dmc.Badge("base", color="oxblood", variant="light", size="sm") if t["name"] == plan["base"]
+         else dmc.Badge("not joined", color="gray", variant="outline", size="sm")
+         if t["name"] in linked.get("left_out", []) else dmc.Badge("joined", color="gray",
+                                                                  variant="light", size="sm")]
+        for t in linked["tables"]])
+    steps = table(["Added", "On", "Rows matched", "Unmatched", "Rows per key", "Columns"], [
+        [dmc.Text(s["right"], ff="monospace", size="sm"),
+         dmc.Text("; ".join(s["on"]), ff="monospace", size="xs"),
+         dmc.Badge(f"{s['match_rate']:.1%}", variant="light", size="sm",
+                   color="green" if s["match_rate"] >= 0.95 else
+                   "yellow" if s["match_rate"] >= 0.8 else "red"),
+         (f"{fmt(s['dropped_rows'])} dropped" if s.get("dropped_rows") else
+          "none" if s["match_rate"] >= 1 else "kept, missing values"),
+         {"none": "one", "aggregate": "several, aggregated",
+          "first": "several, first kept"}.get(s["reduced"], s["reduced"]),
+         fmt(len(s["columns_added"]))]
+        for s in report["steps"]]) if report["steps"] else empty("No table was joined to the base.")
+    spare = [lk for lk in linked["links"] if lk["id"] not in used]
+    notes = [*why.get("concerns", []),
+             *(f"{t['table']} is left out: {t['reason']}" for t in why.get("left_out", []))]
+    return section(
+        "Sources and join", sources,
+        dmc.Group([dmc.Text("Base table", size="sm", c="dimmed"),
+                   dmc.Text(plan["base"], ff="monospace", fw=650),
+                   dmc.Badge(how, variant="outline", size="sm", color="gray", tt="none")],
+                  gap="xs", mt="md"),
+        dmc.Text(why["base"], size="sm", mt=4) if why.get("base") else None,
+        html.Div(steps, style={"marginTop": 12}),
+        dmc.List([dmc.ListItem(reasons[s["link"]]) for s in report["steps"]
+                  if reasons.get(s["link"])], size="xs", c="dimmed", mt="xs")
+        if any(reasons.get(s["link"]) for s in report["steps"]) else None,
+        dmc.List([dmc.ListItem([html.B(f"{s['right']}, unmatched rows: "), unmatched[s["link"]]])
+                  for s in report["steps"] if s["match_rate"] < 1 and unmatched.get(s["link"])],
+                 size="sm", mt="xs")
+        if any(s["match_rate"] < 1 and unmatched.get(s["link"]) for s in report["steps"])
+        else None,
+        dmc.Alert(dmc.List([dmc.ListItem(n) for n in notes], size="sm"),
+                  title="Check before accepting", color="yellow", variant="light", mt="sm",
+                  icon=icon("tabler:alert-triangle")) if notes else None,
+        dmc.Text("Other links the engine measured: " + "; ".join(_link_label(lk) for lk in spare),
+                 size="xs", c="dimmed", mt="sm") if spare else None,
+        description=f"{len(linked['tables'])} sources joined into one modelling table of "
+                    f"{fmt(report['n_rows'])} rows (the base table has "
+                    f"{fmt(report.get('base_rows', report['n_rows']))}). A join never adds or "
+                    "repeats a row.")
 
 
 def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
@@ -388,7 +458,40 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                             color="gray"),
                   fmt(corr.get(c["column"]), 3), dmc.Text(c["rationale"], size="xs")]
                  for c in p.get("feature_candidates", [])]
+    linked = p.get("linking") or None
+    join_fixed = bool(linked) and linked["plan"]["source"] == "profile"
+    join_fields = [] if not linked else [
+        dmc.Select(id=_field("gate_data", "join_base"), label="Base table",
+                   data=[t["name"] for t in linked["tables"]], value=linked["plan"]["base"],
+                   allowDeselect=False, disabled=join_fixed,
+                   description="Its rows are the modelling observations."),
+        dmc.MultiSelect(id=_field("gate_data", "join_links"), label="Links to join on",
+                        data=[{"value": lk["id"], "label": _link_label(lk)}
+                              for lk in linked["links"]],
+                        value=[s["link"] for s in linked["plan"]["steps"]], disabled=join_fixed,
+                        clearable=True,
+                        description="Stated in the project profile." if join_fixed else
+                        "Every link the engine measured. Changing the join rebuilds the dataset "
+                        "and re-runs the exploration."),
+        dmc.Select(id=_field("gate_data", "join_many"), label="When a key matches several rows",
+                   data=[{"value": "aggregate", "label": "Aggregate them (numbers averaged)"},
+                         {"value": "first", "label": "Keep the first row"}],
+                   value=next((s["many"] for s in linked["plan"]["steps"]
+                               if s["many"] in ("aggregate", "first")), "aggregate"),
+                   allowDeselect=False, disabled=join_fixed),
+        dmc.Select(id=_field("gate_data", "join_unmatched"),
+                   label="Base rows with no match",
+                   data=[{"value": "plan", "label": "As recommended for each table (below)"},
+                         {"value": "drop", "label": "Drop them for every table (counted and "
+                                                    "reported)"},
+                         {"value": "keep", "label": "Keep them for every table, with missing "
+                                                    "values"}],
+                   value="plan", allowDeselect=False, disabled=join_fixed,
+                   description="Dropping changes the population; keeping leaves missing "
+                               "values, which most model families fail on."),
+    ]
     gate = gate_block("gate_data", state, res, seat=seat, body=[
+        *join_fields,
         dmc.Select(id=_field("gate_data", "target"), label="Dependent variable",
                    data=target_options, value=p.get("target"), allowDeselect=False,
                    disabled=fixed, searchable=True,
@@ -427,6 +530,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                 dmc.Text(p.get("target_rationale") or "", size="sm", mt=4)
                 if p.get("target_rationale") else None,
                 description="The outcome the business intent describes.") if p.get("target") else None,
+        linking_section(linked),
         section("Features to consider", table(["Feature", "Expected", "Corr.", "Why"], cand_rows),
                 description="The Data Analyst's candidates for the design stage: hypotheses, "
                             "not a selection.") if cand_rows else None,

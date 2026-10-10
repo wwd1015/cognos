@@ -6,12 +6,13 @@ agents/stages are project-agnostic; adding a new modeling problem means writing 
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class TaskType(str, Enum):
@@ -57,10 +58,55 @@ class SourceConfig(BaseModel):
     options: dict[str, str] = Field(default_factory=dict)
 
 
+class NamedSource(SourceConfig):
+    """One of several inputs (``data.sources``). ``name`` is how the join plan, the column
+    origins and the white paper refer to it."""
+
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def _plain_name(cls, v: str) -> str:
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", v or ""):
+            raise ValueError(f"a source name is letters, digits and underscores, got {v!r}")
+        return v
+
+
+class JoinStep(BaseModel):
+    """One stated join: add ``right`` to what is already joined, matching ``left_on`` (columns
+    of ``left``, the base table or one added earlier) to ``right_on``."""
+
+    left: str
+    left_on: list[str]
+    right: str
+    right_on: list[str]
+    # What to do when a key matches several rows of ``right``: one row per base row is kept.
+    many: Literal["aggregate", "first", "refuse"] = "refuse"
+    # A base row with no match: keep it with missing values, or drop it (counted, reported).
+    unmatched: Literal["keep", "drop"] = "keep"
+
+    @field_validator("left_on", "right_on", mode="before")
+    @classmethod
+    def _one_or_many(cls, v: Any) -> Any:
+        return [v] if isinstance(v, str) else v
+
+    @model_validator(mode="after")
+    def _same_width(self) -> JoinStep:
+        if not self.left_on or len(self.left_on) != len(self.right_on):
+            raise ValueError("left_on and right_on must name the same number of columns")
+        return self
+
+
 class DataConfig(BaseModel):
     path: str | None = None  # CSV/Parquet path; may be None when a DataFrame is passed in code
     format: str = "csv"  # csv | parquet
     source: SourceConfig | None = None  # a connector instead of path (file | sqlite | snowflake)
+    # Several inputs of any kind (a Snowflake table and a CSV, ...). The engine profiles how
+    # they connect, the Data Analyst proposes the join, the developer confirms it at the data
+    # gate. ``base`` and ``join`` state the join instead (no proposal); see linking.py.
+    sources: list[NamedSource] = Field(default_factory=list)
+    base: str | None = None  # the table whose rows the model is built on
+    join: list[JoinStep] = Field(default_factory=list)
     # The dependent variable. Leave it empty and the Data Analyst proposes it from the business
     # intent; the model developer confirms it at the data gate.
     target: str = ""
@@ -73,6 +119,21 @@ class DataConfig(BaseModel):
     # the label's *timing*, consumed only by the hazard families (modeling/hazard.py).
     event_time_col: str | None = None
     horizon_periods: int | None = None  # outcome window in periods; None => max observed event time
+
+    @model_validator(mode="after")
+    def _sources_consistent(self) -> DataConfig:
+        names = [s.name for s in self.sources]
+        if len(names) != len(set(names)):
+            raise ValueError("data.sources: every source needs its own name")
+        if self.sources and (self.source is not None or self.path):
+            raise ValueError("give data.sources, or one data.source / data.path, not both")
+        if (self.base or self.join) and len(self.sources) < 2:
+            raise ValueError("data.base and data.join need two or more data.sources")
+        known = set(names)
+        for name in [self.base, *(t for j in self.join for t in (j.left, j.right))]:
+            if name and name not in known:
+                raise ValueError(f"data.join names an unknown source {name!r}; known: {sorted(known)}")
+        return self
 
 
 class DesignConfig(BaseModel):

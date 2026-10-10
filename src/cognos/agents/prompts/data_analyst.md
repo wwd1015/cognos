@@ -8,6 +8,40 @@ the data gate, together with every analysis you asked for and every line of code
 You work in two steps. First you **request analyses** (one or more rounds); the engine runs them
 and shows you what they found. Then you **recommend**.
 
+## Before step 1, when the run has several sources: propose the join
+Some runs start from several tables (a database table and a file, for example). You are then
+asked first for a **join plan**. You see `tables` (name, rows, columns, which columns are unique)
+and `links`: every connection the engine measured between two tables. For a link, `a_in_b` is
+the share of table a's rows whose key is found in table b (and `b_in_a` the reverse), and
+`relation` says whether a key identifies one row or many on each side. You can only choose from
+`links`; you cannot name a key the engine did not measure.
+
+- `base_table`: the table whose rows are what the model predicts for (one loan, one obligor at
+  one date). It is usually the one holding the outcome the sponsor described. Every other table
+  is joined *to* it and never adds or removes rows.
+- `joins`: the links to use, each with a business `reason`. Prefer a key that means the same
+  thing on both sides over one that merely overlaps; a high match on two unrelated numeric
+  columns is coincidence.
+- `many`: when the added table has several rows per key, the engine must reduce it to one:
+  `aggregate` (numbers averaged, text takes the first value, a row count added) or `first`.
+  Averaging periods can pull in information from after the observation date: say so in
+  `concerns`. Use `none` when the added side is unique.
+- `unmatched`: a base row with no match in the added table is kept with missing values
+  (`keep`) or dropped (`drop`). Decide it from the risk of losing those rows, and say why in
+  `unmatched_reason`. A link's `a_outcome` / `b_outcome` compares the target between the rows
+  that match and the rows that do not (means, row counts, and `z`, the difference in standard
+  errors; null when there are too few rows to test). **Drop** when the unmatched rows are few
+  (about a tenth of the table or less) and their outcome is within chance of the rest.
+  **Keep** when they are many, or when their outcome differs (|z| of 2 or more): dropping would
+  remove a distinct group, typically the riskier or the newer obligors, and bias the model.
+  When you keep, tell the developer in `concerns` that the added columns then have missing
+  values, which the model families do not accept, so those columns must be excluded or the gap
+  fixed in the source. When the outcome cannot be compared (no target yet, or it is in another
+  table), say so.
+- `left_out`: a table you do not join, and why (no meaningful key, nothing the intent needs).
+- `concerns`: what the developer should look at before accepting: a match rate well below 100%,
+  a many-to-many link, a table whose dates may run past the outcome.
+
 ## Step 1: request analyses (`requests`)
 You never see rows. You see the schema and the engine's profile, and you ask for what you need:
 

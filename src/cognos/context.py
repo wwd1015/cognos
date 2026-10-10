@@ -192,7 +192,10 @@ class RunContext:
         if cached.exists():
             return pd.read_parquet(cached)
         dc = self.config.data
-        if not dc.path and dc.source is None:
+        if len(dc.sources) >= 2:
+            raise RuntimeError("This run joins several sources; the joined dataset is built by "
+                               "the explore stage. Run explore first.")
+        if not dc.path and dc.source is None and not dc.sources:
             raise RuntimeError(
                 "No dataset on disk and config.data.path is unset. Pass a DataFrame via "
                 "RunContext.attach_dataset() before running stages."

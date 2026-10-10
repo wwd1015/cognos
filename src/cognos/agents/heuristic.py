@@ -239,6 +239,52 @@ def data_analyst(sl: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def data_linker(sl: dict[str, Any]) -> dict[str, Any]:
+    """The join the measurements point to: the table holding the target (else the largest) as
+    the base, then for each other table the link that matches most rows, same-named keys first."""
+    from .. import linking
+
+    prof = {"tables": sl.get("tables", []), "links": sl.get("links", [])}
+    plan = linking.suggest(prof, sl.get("base_table") or None, sl.get("target") or "")
+    links = {lk["id"]: lk for lk in prof["links"]}
+    steps, _ = linking.resolve(plan["base"], plan["joins"], prof)
+    joins, concerns = [], []
+    for ch, step in zip(plan["joins"], steps, strict=False):
+        lk = links[ch["link"]]
+        on = ", ".join(f"{a} = {b}" for a, b in zip(step["left_on"], step["right_on"], strict=True))
+        joins.append({"link": ch["link"], "many": ch["many"], "unmatched": ch["unmatched"],
+                      "unmatched_reason": ch["unmatched_reason"],
+                      "reason": f"{step['left']} and {step['right']} share the key {on} "
+                                f"({lk['relation']})."})
+        if step["expected_match"] < 0.9:
+            concerns.append(f"Only {step['expected_match']:.0%} of the rows of {step['left']} "
+                            f"find a match in {step['right']} (link {lk['id']}).")
+        if ch["unmatched"] == "drop":
+            concerns.append(f"Rows without a match in {step['right']} are dropped. Check that "
+                            "they are not a group the model must cover (new obligors, a "
+                            "segment missing from that source).")
+        elif step["expected_match"] < 1:
+            concerns.append(f"Rows without a match in {step['right']} are kept, with missing "
+                            f"values in its columns. {ch['unmatched_reason']} The model "
+                            "families do not take missing values: exclude those columns at "
+                            "this gate, fill the gap in the source, or choose to drop the rows.")
+        if ch["many"] == "aggregate":
+            concerns.append(f"{step['right']} has several rows per key and is averaged; if the "
+                            "rows are periods, check that none is dated after the observation.")
+    holds = sl.get("target") and sl["target"] in next(
+        (t["columns"] for t in prof["tables"] if t["name"] == plan["base"]), [])
+    return {
+        "base_table": plan["base"],
+        "base_rationale": ("It holds the dependent variable." if holds else
+                           "It has the most rows, so each of its rows is taken as one "
+                           "observation."),
+        "joins": joins,
+        "left_out": [{"table": t, "reason": "No measured link connects it to the joined tables."}
+                     for t in plan["left_out"]],
+        "concerns": concerns,
+    }
+
+
 def data_scout(sl: dict[str, Any]) -> dict[str, Any]:
     """The standard look at a dataset, as tool calls. Round one settles the target when the
     profile leaves it open (the engine's first candidate); the visuals follow once it is known.
@@ -456,6 +502,7 @@ AGENTS = {
     "intake_analyst": intake_analyst,
     "data_analyst": data_analyst,
     "data_scout": data_scout,
+    "data_linker": data_linker,
     "design_lead": design_lead,
     "modeler": modeler,
     "experiment": experiment,

@@ -52,6 +52,9 @@ def header() -> dmc.AppShellHeader:
             html.Span("agents recommend · you decide · the engine disposes",
                       className="masthead-meta"),
             dcc.Link("All runs", href="/", className="masthead-link"),
+            html.Span(["as ", html.B(service.whoami())], className="masthead-meta",
+                      title="Recorded on your decisions and answers (COGNOS_USER, else your "
+                            "login name)."),
             html.Span(f"v{__version__}", className="masthead-meta"),
             dmc.Switch(id="theme-switch", onLabel=icon("tabler:moon", 13),
                        offLabel=icon("tabler:sun", 13), size="sm", color="dark"),
@@ -85,7 +88,9 @@ def runs_page() -> Any:
     snow = sources.get("snowflake", {})
     own = [{"value": "data:file", "label": "Upload a data file (.csv, .parquet, .xlsx)"},
            {"value": "data:snowflake", "label": "Snowflake table or query"
-            + ("" if snow.get("available") else " — not configured")}]
+            + ("" if snow.get("available") else " — not configured")},
+           {"value": "data:linked", "label": "Several sources (files, Snowflake tables): the "
+                                             "Data Analyst proposes the join"}]
     source_data = ([{"group": "Your data — the Data Analyst proposes the target", "items": own}]
                    + [{"group": "Synthetic demos", "items": [
         {"value": f"demo:{k}", "label": v} for k, v in service.DEMO_LABELS.items()]}]
@@ -117,6 +122,19 @@ def runs_page() -> Any:
                          "and password or key in this server's environment. Nothing secret is "
                          "stored in the run.", size="xs", c="dimmed"),
             ], gap=4), id="new-data-sf", style={"display": "none"}),
+            html.Div(dmc.Stack([
+                dmc.Text("Data files", size="sm", fw=500),
+                upload_box("new-data-multi", "Drop the files, or click to choose (.csv, "
+                                             ".parquet, .xlsx)", multiple=True),
+                dmc.Textarea(id="new-linked-sf", label="Snowflake tables or queries (optional)",
+                             autosize=True, minRows=2,
+                             placeholder="one per line:\nloans = RISK.CREDIT.LOANS\n"
+                                         "ratings = SELECT obligor_id, rating FROM RISK.CREDIT.RATINGS"),
+                dmc.Text("Give two or more sources in total. The engine measures how they "
+                         "connect, the Data Analyst proposes the base table and the joins, and "
+                         "you confirm or change the join at the data gate. If you already have "
+                         "the join, use one query instead.", size="xs", c="dimmed"),
+            ], gap=4), id="new-data-linked", style={"display": "none"}),
         ], gap="xs"), id="new-data-wrap", style={"display": "none"}),
         dmc.Stack([
             dmc.Group([
@@ -166,13 +184,15 @@ def runs_page() -> Any:
         ], justify="space-between", align="flex-end", mt="lg", mb="xl", wrap="nowrap"),
         html.Div(id="runs-figures", children=runs_figures()),
         dmc.Card([
-            dmc.Group([html.Div("All runs", className="ledger-title"), compare_picker()],
+            dmc.Group([html.Div("All runs", className="ledger-title"),
+                       html.Div(id="runs-tools", children=runs_tools())],
                       justify="space-between", align="center", mb="xs", wrap="nowrap"),
             html.Div(id="runs-table", children=runs_table()),
         ], mt="xl"),
         html.Div([html.Span("Agents recommend, people decide, the engine computes every number."),
                   html.Span("Internal use")], className="page-foot"),
         drawer,
+        delete_modal(),
         dcc.Download(id="template-download"),
     ], size="xl", py="md")
 
@@ -240,6 +260,80 @@ def compare_picker() -> Any:
     ], gap="xs", wrap="nowrap")
 
 
+def runs_tools() -> Any:
+    """The controls beside the run list: compare two runs, delete old ones."""
+    tools = [dmc.Button("Delete runs", id="del-open", variant="subtle", color="red", size="xs",
+                        leftSection=icon("tabler:trash", 14), n_clicks=0)]
+    picker = compare_picker()
+    if picker is not None:
+        tools.insert(0, picker)
+    return dmc.Group(tools, gap="xs", wrap="nowrap")
+
+
+def delete_options() -> list[dict[str, str]]:
+    return [{"value": r["run_id"], "label": f"{r['project']} · {r['run_id']} · {r['status']}"}
+            for r in service.list_runs()]
+
+
+def delete_modal() -> Any:
+    """Pick runs, read what will be lost, tick the box, delete. Nothing is removed before the
+    box is ticked and the button pressed."""
+    return dmc.Modal(id="del-modal", title=dmc.Text("Delete runs", fw=650), size="lg",
+                     children=dmc.Stack([
+        dmc.MultiSelect(id="del-pick", label="Runs to delete", data=delete_options(),
+                        searchable=True, clearable=True, placeholder="Pick one or more runs",
+                        comboboxProps={"withinPortal": True}),
+        html.Div(id="del-warning"),
+        dmc.Checkbox(id="del-sure", checked=False,
+                     label="I understand these runs are removed for good and cannot be restored."),
+        dmc.Group([
+            dmc.Button("Cancel", id="del-cancel", variant="default", n_clicks=0),
+            dmc.Button("Delete for good", id="del-go", color="red", disabled=True, n_clicks=0,
+                       leftSection=icon("tabler:trash", 16)),
+        ], justify="flex-end"),
+    ], gap="md"))
+
+
+def deletion_warning(run_ids: list[str] | None) -> Any:
+    """What the picked runs hold, so the person confirms knowing what goes."""
+    if not run_ids:
+        return dmc.Text("Deleting a run removes its results, documents, decisions and audit log "
+                        "from this workspace. Export a run first to keep a copy.",
+                        size="sm", c="dimmed")
+    try:
+        rows = service.deletion_preview(list(run_ids))
+    except (KeyError, ValueError) as exc:
+        return dmc.Alert(str(exc.args[0] if exc.args else exc), color="red", variant="light")
+    size = sum(r["size_bytes"] for r in rows) / 1e6
+    lines = [f"{len(rows)} run{'s' if len(rows) != 1 else ''}, {size:,.1f} MB on disk. Results, "
+             "documents, decisions and the audit log go with them. Export first to keep a copy."]
+    signed = [r for r in rows if r["packages"]]
+    if signed:
+        lines.append("Signed-off packages will be lost: "
+                     + ", ".join(f"{r['run_id']} ({r['packages']})" for r in signed) + ".")
+    elsewhere = [r for r in rows if r["status"] == "running" and not r["blocked"]]
+    if elsewhere:
+        lines.append("Marked as running, another process may still be working on: "
+                     + ", ".join(r["run_id"] for r in elsewhere) + ".")
+    blocked = [r for r in rows if r["blocked"]]
+    if blocked:
+        lines.append("Cannot be deleted while a step is running: "
+                     + ", ".join(r["run_id"] for r in blocked) + ". Remove them from the list.")
+    return dmc.Alert(dmc.Stack([dmc.Text(t, size="sm") for t in lines], gap=4),
+                     title="This cannot be undone", color="red" if signed or blocked else "yellow",
+                     variant="light", icon=icon("tabler:alert-triangle"))
+
+
+def deletion_blocked(run_ids: list[str] | None) -> bool:
+    """True when the picked runs cannot all be deleted now (nothing picked counts)."""
+    if not run_ids:
+        return True
+    try:
+        return any(r["blocked"] for r in service.deletion_preview(list(run_ids)))
+    except (KeyError, ValueError):
+        return True
+
+
 def runs_table() -> Any:
     rows = service.list_runs()
     if not rows:
@@ -305,6 +399,8 @@ def run_header(st) -> Any:
     res = service.results(st.run_id)
     model = res.get("model")
     facts = [("Mode", st.mode), ("Agents", st.provider)]
+    if st.created_by:
+        facts.append(("Started by", st.created_by))
     if model is not None:
         facts += [("Champion", str(model.metrics.get("champion", ""))),
                   ("CV", fmt(model.metrics.get("cv_mean")))]
@@ -351,6 +447,8 @@ def rail(st, selected: str) -> Any:
         if status == "stale" and st.steps[stage].rerun_reason:  # say what made it out of date
             why = st.steps[stage].rerun_reason
             desc = "Out of date — " + (why if len(why) <= 70 else why[:69].rstrip() + "…")
+        if status == "running" and st.steps[stage].by:  # whose machine is doing the work
+            desc = f"Running — {st.steps[stage].by}"
         items.append(dmc.NavLink(
             id={"type": "rail", "step": stage},
             label=dmc.Text([html.Span(f"{i:02d}", className="rail-no"), LABELS[stage]],
@@ -400,8 +498,9 @@ def questions_tab(st, seat: str = "developer") -> Any:
                     "A sponsor decision — answer it. It cannot be assumed.", size="xs", c="dimmed"),
             ], gap="xs", wrap="nowrap")
         else:
-            ctrl = dmc.Text([dmc.Badge(g.status, size="xs", variant="light"), " ", g.answer or ""],
-                            size="sm")
+            ctrl = dmc.Text([dmc.Badge(g.status, size="xs", variant="light"), " ", g.answer or "",
+                             *([html.Span(f" — {g.answered_by}", className="stamp")]
+                               if g.answered_by else [])], size="sm")
         q_rows.append([dmc.Code(g.id), dmc.Badge(g.category, size="xs", variant="outline"),
                        dmc.Stack([dmc.Text(g.question, size="sm"), ctrl], gap=4)])
     c_rows = [[dmc.Code(c.id), c.source, LABELS.get(c.target_stage, c.target_stage),
@@ -410,10 +509,10 @@ def questions_tab(st, seat: str = "developer") -> Any:
                dmc.Stack([dmc.Text(c.message, size="sm"),
                           dmc.Text(f"↳ {c.response}", size="xs", c="dimmed") if c.response else None],
                          gap=2)] for c in st.challenges]
-    d_rows = [[d.gate, d.action.replace("_", " "), d.seat or d.actor, d.reason or "—",
-               (d.at or "")[:19].replace("T", " ")] for d in st.decisions]
+    d_rows = [[LABELS.get(d.gate, d.gate), d.action.replace("_", " "), d.by or "—",
+               d.seat or d.actor, d.reason or "—", stamp(d.at)] for d in st.decisions]
     record = journal(st, service.results(st.run_id))
-    r_rows = [[(row["at"] or "")[:19].replace("T", " "), row["who"], row["name"],
+    r_rows = [[stamp(row["at"]), row["who"], row["name"],
                dmc.Text(row["what"], size="sm")] for row in record]
     return dmc.Stack([
         section("The record", table(["When", "Who", "Name", "What"], r_rows)
@@ -428,9 +527,14 @@ def questions_tab(st, seat: str = "developer") -> Any:
                 if c_rows else empty("No challenges yet."),
                 description="Send-backs from you and findings routed back by the independent "
                             "validator; each agent must answer every challenge."),
-        section("Decision log", table(["Gate", "Action", "Seat", "Reason", "At"], d_rows)
+        section("Decision log", table(["Gate", "Action", "By", "Seat", "Reason", "At"], d_rows)
                 if d_rows else empty("No decisions yet.")),
     ], gap="md")
+
+
+def stamp(at: str | None) -> Any:
+    """A recorded time, on one line."""
+    return html.Span((at or "")[:19].replace("T", " "), className="stamp")
 
 
 def audit_tab(run_id: str) -> Any:
@@ -446,8 +550,8 @@ def audit_tab(run_id: str) -> Any:
             fmt(a.get("duration_s"), 2), f"${a['cost_usd']:.4f}" if a.get("cost_usd") else "—",
             dmc.Text((a.get("error") or "")[:140], size="xs", c="dimmed"),
         ])
-    return section("Agent calls", table(["Call", "Agent", "Try", "Status", "Backend", "Seconds",
-                                         "Cost", "Engine check"], rows, max_height=640)
+    return section("Agent calls", table(["Call", "Agent", "Try", "Status", "Backend", "Sec.",
+                                         "Cost", "Check"], rows, max_height=640)
                    if rows else empty("No agent calls yet."),
                    description="Every attempt is kept with its full input (prompt + context slice) "
                                "and raw output. Click a call to inspect it.")
@@ -538,6 +642,39 @@ def register_callbacks(app: Dash) -> None:
             return no_update
         return runs_table()
 
+    @app.callback(Output("del-modal", "opened"), Output("del-pick", "data"),
+                  Output("del-pick", "value"), Output("del-sure", "checked"),
+                  Input("del-open", "n_clicks"), Input("del-cancel", "n_clicks"),
+                  prevent_initial_call=True)
+    def open_delete(opened, cancelled):
+        if ctx.triggered_id == "del-open" and opened:
+            return True, delete_options(), [], False
+        if ctx.triggered_id == "del-cancel" and cancelled:
+            return False, no_update, [], False
+        return no_update, no_update, no_update, no_update
+
+    @app.callback(Output("del-warning", "children"), Output("del-go", "disabled"),
+                  Input("del-pick", "value"), Input("del-sure", "checked"))
+    def warn_delete(picked, sure):
+        return deletion_warning(picked), not sure or deletion_blocked(picked)
+
+    @app.callback(Output("del-modal", "opened", allow_duplicate=True),
+                  Output("runs-table", "children", allow_duplicate=True),
+                  Output("runs-figures", "children"), Output("runs-tools", "children"),
+                  Output("notify", "sendNotifications", allow_duplicate=True),
+                  Input("del-go", "n_clicks"), State("del-pick", "value"),
+                  State("del-sure", "checked"), prevent_initial_call=True)
+    def delete(clicks, picked, sure):
+        if not clicks or not picked or not sure:  # never without the ticked box
+            return (no_update,) * 5
+        try:
+            gone = service.delete_runs(list(picked))
+        except (KeyError, ValueError, RuntimeError, OSError) as exc:
+            return (no_update,) * 4 + ([notice("Nothing deleted", str(exc), "red")],)
+        return (False, runs_table(), runs_figures(), runs_tools(),
+                [notice("Deleted", f"{len(gone)} run{'s' if len(gone) != 1 else ''} removed.",
+                        "oxblood")])
+
     @app.callback(Output("new-drawer", "opened"), Input("new-open", "n_clicks"),
                   prevent_initial_call=True)
     def open_drawer(clicks):
@@ -560,14 +697,16 @@ def register_callbacks(app: Dash) -> None:
                 "type": "text/markdown"}
 
     @app.callback(Output("new-data-wrap", "style"), Output("new-data-file", "style"),
-                  Output("new-data-sf", "style"), Input("new-source", "value"))
+                  Output("new-data-sf", "style"), Output("new-data-linked", "style"),
+                  Input("new-source", "value"))
     def show_data(source):
         show, hide = {"display": "block"}, {"display": "none"}
         own = str(source or "").startswith("data:")
         return (show if own else hide, show if source == "data:file" else hide,
-                show if source == "data:snowflake" else hide)
+                show if source == "data:snowflake" else hide,
+                show if source == "data:linked" else hide)
 
-    for _box in ("new-intent", "new-support", "new-prior", "new-data"):
+    for _box in ("new-intent", "new-support", "new-prior", "new-data", "new-data-multi"):
         app.callback(Output(f"{_box}-names", "children"), Input(_box, "filename"))(upload_names)
 
     @app.callback(Output("url", "pathname"), Output("new-feedback", "children"),
@@ -580,14 +719,22 @@ def register_callbacks(app: Dash) -> None:
                   State("new-prior-run", "value"), State("new-name", "value"),
                   State("new-data", "contents"), State("new-data", "filename"),
                   State("new-sf-table", "value"), State("new-sf-query", "value"),
-                  State("new-sf-limit", "value"), prevent_initial_call=True)
+                  State("new-sf-limit", "value"),
+                  State("new-data-multi", "contents"), State("new-data-multi", "filename"),
+                  State("new-linked-sf", "value"), prevent_initial_call=True)
     def create(clicks, source, mode, provider, kind, intent, intent_name, support,
                support_names, prior, prior_names, prior_run, name=None, data=None,
-               data_name=None, sf_table=None, sf_query=None, sf_limit=None):
+               data_name=None, sf_table=None, sf_query=None, sf_limit=None, multi=None,
+               multi_names=None, linked_sf=None):
         if not clicks:  # the button was just rendered, not clicked
             return no_update, no_update
         try:
-            if source.startswith("data:"):
+            if source == "data:linked":
+                spec = linked_sources_spec(saved_uploads(multi, multi_names), linked_sf)
+                if isinstance(spec, str):
+                    return no_update, dmc.Alert(spec, color="yellow", variant="light")
+                cfg = service.config_from_data(name or "linked_model", spec)
+            elif source.startswith("data:"):
                 spec = data_source_spec(source[5:], saved_uploads(data, data_name), sf_table,
                                         sf_query, sf_limit)
                 if isinstance(spec, str):
@@ -774,6 +921,17 @@ def data_source_spec(kind: str, uploaded: list[str], table: str | None, query: s
     return spec
 
 
+def linked_sources_spec(uploaded: list[str], snowflake_lines: str | None) -> dict | str:
+    """``{"sources": [...]}`` for the several-sources form, or (a string) why it is not
+    complete yet."""
+    from .. import linking
+
+    try:
+        return linking.named_sources(uploaded, snowflake_lines or "")
+    except linking.LinkError as exc:
+        return str(exc)
+
+
 def engagement_problem(kind: str | None, cfg, has_intent: bool, has_prior: bool) -> str | None:
     """Why a run cannot start yet, in the words of the form. A development starts from the
     sponsor's intent; an update also from the model it changes."""
@@ -805,6 +963,11 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
         payload["exclude_columns"] = list(fields.get("exclude") or [])
         if fields.get("target"):
             payload["target"] = fields["target"]
+        if fields.get("join_base"):  # several sources: the join as the form now states it
+            payload["join"] = {"base": fields["join_base"],
+                               "links": list(fields.get("join_links") or []),
+                               "many": fields.get("join_many") or "aggregate",
+                               "unmatched": fields.get("join_unmatched") or "plan"}
     if gate in ("gate_intent", "gate_design"):
         answers = {k.split("::", 1)[1]: v for k, v in fields.items()
                    if k.startswith("answer::") and v and str(v).strip()}

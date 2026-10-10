@@ -168,6 +168,10 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.06em;
   border-radius: 2px; text-transform: uppercase;
 }
+/* a label is never clipped to fit a narrow table column */
+.mantine-Table-td .mantine-Badge-root { max-width: none; overflow: visible; flex-shrink: 0; }
+.mantine-Table-td .mantine-Badge-label { overflow: visible; text-overflow: clip; }
+.stamp { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
 .mantine-Badge-root[data-variant="outline"] { border-color: var(--line-strong); color: var(--ink-2); }
 .mantine-Badge-root[data-variant="default"] {
   background: var(--bg-surface); border-color: var(--hair); color: var(--ink);
@@ -196,6 +200,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 .mantine-Tabs-tab:hover { color: var(--ink); border-color: var(--line-strong); }
 .mantine-Tabs-tab[data-active] { color: var(--ink); font-weight: 600; border-color: var(--ink); }
+.mantine-Tabs-tab:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.mantine-Tabs-tab:focus:not(:focus-visible) { outline: 0; }
 
 /* ── Segmented control: bordered strip, ink fill when active ── */
 .mantine-SegmentedControl-root {
@@ -323,3 +329,11 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   transition: border-color 0.2s var(--ease);
 }
 .cognos-upload:hover { border-color: var(--accent); color: var(--ink); }
+
+/* Mantine's "outline" tabs box the active tab; the Ledger tab is an underline in every variant. */
+.mantine-Tabs-tab[data-variant="outline"] {
+  border-top-color: transparent !important; border-left-color: transparent !important;
+  border-right-color: transparent !important; border-bottom: 2px solid transparent;
+}
+.mantine-Tabs-tab[data-variant="outline"][data-active] { border-bottom-color: var(--ink); }
+.mantine-Tabs-tab[data-variant="outline"]::before, .mantine-Tabs-tab[data-variant="outline"]::after { display: none; }

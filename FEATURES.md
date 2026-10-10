@@ -50,6 +50,11 @@
 - **Plugins**: `register(registry)` modules adding tools and data sources, by entry point,
   profile list or `COGNOS_PLUGINS`; `cognos plugins` lists them and any load problems. Example in
   `examples/plugins/`.
+- **Linked sources** (ADR-0014): several inputs of any kind; the engine measures the links, the
+  Data Analyst proposes the join, the developer confirms it at the data gate; a join never adds
+  a row.
+- **Team use on a shared runs folder** (ADR-0015): cross-machine run lock, names on decisions
+  and answers, take-over of a stuck step, run deletion with confirmation.
 - **Tools at every stage** (ADR-0013): a tool declares the stages it serves and the inputs it
   needs (`data`, `documents`, `results`, `train`, `holdout`, `model`). Each stage's agent
   requests tools before it recommends; the engine runs them, records origin, version, inputs

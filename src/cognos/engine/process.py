@@ -128,7 +128,8 @@ def digest_of(body: dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def seal_package(state: RunState, config: Any, results: dict[str, Any], run_dir: Path) -> PackageSeal:
+def seal_package(state: RunState, config: Any, results: dict[str, Any], run_dir: Path,
+                 *, by: str = "") -> PackageSeal:
     """Write ``packages/vN.json`` once. A later decision supersedes the pointer in
     ``state.json``; it does not rewrite the file."""
     version = (state.package.version + 1) if state.package is not None else 1
@@ -145,18 +146,19 @@ def seal_package(state: RunState, config: Any, results: dict[str, Any], run_dir:
         "digest": digest,
         "sealed_at": sealed_at,
         "seat": "approver",
+        "by": by,
         "preparation": prep,
         "material": body,
         "decisions": [
             {"gate": d.gate, "action": d.action, "seat": d.seat, "actor": d.actor,
-             "reason": d.reason, "at": d.at}
+             "by": d.by, "reason": d.reason, "at": d.at}
             for d in state.decisions
         ],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(path, json.dumps(snapshot, indent=1, ensure_ascii=False, default=str))
     state.package = PackageSeal(
-        version=version, digest=digest, sealed_at=sealed_at, preparation=prep,
+        version=version, digest=digest, sealed_at=sealed_at, preparation=prep, by=by,
         status="sealed", path=rel)
     return state.package
 
@@ -229,7 +231,8 @@ def journal(state: RunState, results: dict[str, Any]) -> list[dict[str, str]]:
         rows.append({
             "at": decision.at,
             "who": "system" if express else "person",
-            "name": decision.seat or decision.actor,
+            "name": (f"{decision.by} ({decision.seat})" if decision.by and not express
+                     else decision.seat or decision.actor),
             "what": what,
         })
     if state.package is not None:
@@ -241,6 +244,8 @@ def journal(state: RunState, results: dict[str, Any]) -> list[dict[str, str]]:
                 what += f" ({pkg.superseded_because})"
         elif pkg.preparation == "express":
             what += " (express prepared the analysis)"
+        if pkg.by:
+            what += f", approved by {pkg.by}"
         rows.append({"at": pkg.sealed_at, "who": "system", "name": "engine", "what": what})
     rows.sort(key=lambda row: row.get("at") or "")
     return rows

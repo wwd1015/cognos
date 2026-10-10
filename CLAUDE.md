@@ -100,6 +100,34 @@ measures.
 - **Charts are specs** (`analysis/charts.py`), drawn by `ui/charts.py::from_spec`. Core code must
   not import a plotting library.
 
+## Linked sources (ADR-0014)
+- **Several sources become one table at explore** (`linking.py`, `explore.linked_dataset`).
+  Every later stage still reads `data/dataset.parquet`; `ctx.load_dataset()` refuses before
+  explore has built it.
+- **The agent chooses among measured links, it never names a key.** `linking.profile` is the
+  only source of links; `checks.data_linker` and the gate handler both go through
+  `linking.resolve`.
+- **A join never adds or repeats a base row.** Reduce a many-side to one row per key first;
+  keep the row-count assertion in `linking.apply`. Dropping unmatched rows is allowed only
+  when the plan says `unmatched: drop`, and is always counted and raised as a finding.
+- **Plan precedence**: `overrides.join` (data gate) > `data.join` (profile, not changeable at
+  the gate) > the Data Analyst's proposal. Accepting the gate writes the plan to
+  `overrides.join`.
+- **Keep or drop is advice from measurements** (`linking.unmatched_advice`: share of rows,
+  outcome among unmatched vs matched). Do not turn it back into a blanket default, and keep
+  the reason on the page.
+- Time is not checked: do not claim an aggregated table is leak-free.
+
+## Shared runs folder (ADR-0015)
+- **Every change to `state.json` goes through `with engine.lock:`** and re-reads state inside
+  it. The lock is cross-process (`state.RunLock`, a lock file under `<runs>/_locks/`); never
+  hold it across a stage, an agent call or anything slow.
+- **Human actions take `by`** (default `identity.whoami()`) and record it: decisions, answers,
+  package seals, re-opens. A new human action must do the same.
+- The engine never decides a running step is dead; only `retry(step, stuck=True)` takes one
+  over.
+- Run deletion goes through `service.delete_runs` (run ids only, refused while in flight).
+
 ## Stage tools (ADR-0013)
 - **Every stage agent can request tools.** A stage calls `ctx.consult_tools(agent, brief,
   res=res)` before `ctx.recommend(agent, {..., "tool_runs": runs})`. `attach_recommendation`
@@ -158,6 +186,9 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 - **New stage tool / custom test** → a plugin `Tool(stages=..., needs=...)`; return `checks` for
   pass/fail. A new kind of input → `plugins.NEEDS` (with its first stage) and
   `analysis/consult.py::_inputs`.
+- **New join rule** (another way to reduce several rows, an as-of join) → `linking.apply` /
+  `_one_row_per_key`, the `many` literals in `config.JoinStep` and `contracts.JoinChoice`, the
+  gate form in `ui/panels.py`, and the prompt.
 - **New data source** → a `DataSource` in `datasources.BUILTIN` or a plugin; `available()` must
   explain what is missing instead of raising at import.
 - **New compliance regime** → extend `stages/comply.py`; emit evidence `document`/`review` can trace.

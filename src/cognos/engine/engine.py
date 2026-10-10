@@ -21,6 +21,7 @@ from ..artifacts import RunSummary, StageResult, Verdict
 from ..config import CognosConfig, Mode
 from ..context import RunContext, new_run_id
 from ..fsutil import atomic_write
+from ..identity import stamp, whoami
 from . import events, gates, process
 from .graph import GATE_OF_STAGE, GATES, LABELS, STAGE_OF_GATE, STAGES, STEPS, descendants
 from .state import Challenge, Gap, GateDecision, RunState, run_lock
@@ -84,7 +85,7 @@ class Engine:
     def _new_state(self, provider: str | None, mode: str | None) -> RunState:
         cfg = self.config
         mode = mode or cfg.mode.value
-        state = RunState(run_id=self.run_id, project=cfg.name,
+        state = RunState(run_id=self.run_id, project=cfg.name, created_by=whoami(),
                          mode="interactive" if mode in ("interactive", Mode.INTERACTIVE) else "autonomous",
                          provider=self._resolve_provider(provider))
         enabled = set(cfg.stages.enabled)
@@ -202,7 +203,7 @@ class Engine:
             if state.status_of(step) not in ("pending", "stale"):
                 return
             open_ids = [c.id for c in state.open_challenges(step)]
-            state.set_step(step, "running")
+            state.set_step(step, "running", by=stamp())
             self._save(state)
         events.publish(self.run_dir, "step_start", f"{LABELS[step]} started.", step=step)
         if step in GATES:
@@ -354,14 +355,28 @@ class Engine:
         events.publish(self.run_dir, "gate_waiting", f"{LABELS[gate]}: waiting for your decision.",
                        step=gate)
 
+    @staticmethod
+    def _answered(state: RunState) -> dict[str, str | None]:
+        return {g.id: g.answered_at for g in state.gaps}
+
+    @staticmethod
+    def _sign_answers(state: RunState, before: dict[str, str | None], by: str) -> None:
+        """Put the person's name on every question answered since ``before``."""
+        for g in state.gaps:
+            if g.answered_at and g.answered_at != before.get(g.id):
+                g.answered_by = by
+
     def submit_gate(self, gate: str, action: str, payload: dict[str, Any] | None = None,
-                    reason: str = "", *, seat: str | None = None) -> RunState:
+                    reason: str = "", *, seat: str | None = None,
+                    by: str | None = None) -> RunState:
         if gate not in GATES:
             raise gates.GateError(f"unknown gate {gate!r}")
         seat = process.resolve_seat(gate, seat)
+        by = by or whoami()
         payload = dict(payload or {})  # a handler may stamp what the decision covered
         with self.lock:
             state = self.state
+            answered = self._answered(state)
             if state.status_of(gate) != "awaiting":
                 raise gates.GateError(f"{gate} is not awaiting a decision "
                                       f"(it is {state.status_of(gate)})")
@@ -373,67 +388,85 @@ class Engine:
                         "Answer use, horizon, default definition and segment before anyone can sign.")
             invalidate, done = gates.handle(state, gate, action, payload, reason,
                                             self.results())
+            self._sign_answers(state, answered, by)
             state.decisions.append(GateDecision(
-                gate=gate, action=action, actor="human", seat=seat,
+                gate=gate, action=action, actor="human", seat=seat, by=by,
                 reason=reason, payload=payload))
             if action == "approve" and done:
-                process.seal_package(state, self.config, self.results(), self.run_dir)
+                process.seal_package(state, self.config, self.results(), self.run_dir, by=by)
             if done:
-                state.set_step(gate, "done", f"{action} by the {process.seat_label(seat)}")
+                state.set_step(gate, "done", f"{action} by {by}, {process.seat_label(seat)}",
+                               by=by)
             why = gates.why(gate, action, payload, reason)
             state.invalidate([s for s in invalidate if s != gate] if done else invalidate, why)
             if not done and state.status_of(gate) == "awaiting":
                 state.set_step(gate, "stale", "re-opens after the re-run")
             self._save(state)
         events.publish(self.run_dir, "gate_decision",
-                       f"{LABELS[gate]}: {action.replace('_', ' ')}" + (f" — {reason}" if reason else ""),
-                       step=gate, action=action)
+                       f"{LABELS[gate]}: {action.replace('_', ' ')} by {by}"
+                       + (f" — {reason}" if reason else ""), step=gate, action=action, by=by)
         return self.state
 
-    def reopen(self, gate: str, *, seat: str | None = None) -> RunState:
+    def reopen(self, gate: str, *, seat: str | None = None, by: str | None = None) -> RunState:
         """Re-open a decided gate so the human can revise it; a changed decision marks the work
         downstream stale. Re-opening a sealed run supersedes the package."""
         if gate not in GATES:
             raise gates.GateError(f"unknown gate {gate!r}")
         seat = process.resolve_seat(gate, seat)
+        by = by or whoami()
         with self.lock:
             state = self.state
             if state.status_of(gate) != "done":
                 raise gates.GateError(f"{gate} is {state.status_of(gate)}; only a decided gate "
                                       "can be re-opened")
-            process.supersede(state, f"{LABELS[gate]} re-opened by the {process.seat_label(seat)}")
+            process.supersede(state, f"{LABELS[gate]} re-opened by {by}, "
+                                     f"{process.seat_label(seat)}")
             if state.status in ("approved", "rejected"):
                 state.status = "running"
             state.set_step(gate, "awaiting", "re-opened for revision")
             self._save(state)
-        events.publish(self.run_dir, "gate_waiting", f"{LABELS[gate]}: re-opened for revision.",
-                       step=gate)
+        events.publish(self.run_dir, "gate_waiting",
+                       f"{LABELS[gate]}: re-opened for revision by {by}.", step=gate, by=by)
         return self.state
 
     def answer_gap(self, gap_id: str, answer: str, *, assume: bool = False,
-                   seat: str | None = None) -> RunState:
+                   seat: str | None = None, by: str | None = None) -> RunState:
         """Answer (or, for a data question, accept as an assumption) an open question.
         Sponsor questions belong to the model developer."""
         if seat not in (None, "", "developer"):
             raise gates.GateError("Sponsor questions are answered by the model developer.")
+        by = by or whoami()
         with self.lock:
             state = self.state
+            answered = self._answered(state)
             rerun = gates.apply_answers(state, {gap_id: answer}, assume=assume)
+            self._sign_answers(state, answered, by)
             ran = [s for s in rerun if state.status_of(s) not in ("pending", "skipped")]
             gap = state.gap(gap_id)
             state.invalidate(ran, f"Question {gap_id} answered"
                              + (f": “{gates._clip(gap.question, 90)}” → {gates._clip(answer, 60)}" if gap else ""))
             self._save(state)
         events.publish(self.run_dir, "gap_answered",
-                       f"Question {gap_id} {'accepted as an assumption' if assume else 'answered'}.")
+                       f"Question {gap_id} {'accepted as an assumption' if assume else 'answered'} "
+                       f"by {by}.", by=by)
         return self.state
 
-    def retry(self, step: str) -> RunState:
+    def retry(self, step: str, *, stuck: bool = False) -> RunState:
+        """Run a failed or blocked step again. ``stuck`` also takes over a step left
+        ``running`` by a process that died (a closed laptop on a shared runs folder): the
+        engine cannot tell a dead process from a slow one, so a person has to say so."""
         with self.lock:
             state = self.state
-            if state.status_of(step) not in ("failed", "blocked"):
-                raise gates.GateError(f"{step} is {state.status_of(step)}, not failed")
-            state.set_step(step, "pending", "retry requested")
+            status = state.status_of(step)
+            if status == "running" and stuck:
+                if step in self._inflight:
+                    raise gates.GateError(f"{step} is running in this process; it is not stuck")
+                was = state.steps[step].by or "an unknown process"
+                state.set_step(step, "pending", f"taken over from {was} by {whoami()}")
+            elif status in ("failed", "blocked"):
+                state.set_step(step, "pending", "retry requested")
+            else:
+                raise gates.GateError(f"{step} is {status}, not failed")
             self._save(state)
         return self.state
 
@@ -455,7 +488,7 @@ class Engine:
         with self.lock:
             state = self.state
             open_ids = [c.id for c in state.open_challenges(stage)]
-            state.set_step(stage, "running")
+            state.set_step(stage, "running", by=stamp())
             self._save(state)
         result = self._run_stage(stage)
         self._finish_stage(stage, result, open_ids)

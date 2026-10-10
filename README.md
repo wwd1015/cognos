@@ -96,6 +96,31 @@ network or OS). That code is a model-development artifact: saved with its hash u
 accepted), re-run by validation to confirm it reproduces, printed in the white paper and included
 in the export. `analysis.allow_code: false` turns code off; tools and plugins still work.
 
+### Several sources
+
+```yaml
+data:
+  sources:
+    - {name: loans, kind: snowflake, table: RISK.CREDIT.LOANS}
+    - {name: financials, kind: file, path: financials.csv}
+  # base: loans        # optional: state the join yourself and no proposal is made
+  # join: [{left: loans, left_on: obligor_id, right: financials, right_on: obligor_id}]
+```
+
+If you already have the join, write it as one `query`. Use `sources` when the inputs are of
+different kinds or you want the connection found. The engine fetches each source, measures
+every plausible link between two tables (key columns, share of rows matched, one row or many
+per key), and the Data Analyst proposes a base table and the joins from those links only. The
+engine runs the plan: a join never adds or repeats a base row, a table with several rows per
+key is aggregated first, and a base row without a match is kept or dropped as the plan says,
+counted either way. The recommendation to drop is made only when those rows are few and their
+outcome looks like the rest; when they are many or their default rate differs, it is to keep
+them, and the page shows the numbers behind it. You confirm or change the join at the data gate. Not checked for you:
+whether an aggregated table carries rows dated after the observation
+([ADR-0014](docs/adr/0014-linked-sources-the-join-is-proposed-and-confirmed.md)).
+`cognos run --data loans.csv financials.csv` does the same from files; `cognos demo --task
+linked` shows it on two CSVs and a SQLite table.
+
 ### Tools at every stage
 
 Plugins are not limited to data exploration. A tool names the stages it serves, and the agent of
@@ -171,6 +196,7 @@ cognos run --config cognos.yaml --kind update --intent request.md \
 cognos status --run <run_id>                 # steps, questions, challenges
 cognos compare <run_a> <run_b>               # what was decided differently, and what it changed
 cognos export <run_id>                       # one zip: documents, results, decisions, audit (never the data)
+cognos delete-run <run_id> [<run_id> ...]    # remove runs for good; shows what is lost and asks first
 cognos gate gate_champion --run <run_id> --action override --payload '{"champion": "c3"}' --reason "..."
 cognos gate gate_validation --run <run_id> --action send_back --target model --message "..."
 cognos answer --run <run_id> --gap design-use_case --text "origination underwriting"
@@ -210,6 +236,18 @@ ledger, admissible set, coefficient and calibration charts, rubric, findings, th
 paper) beside its agent's recommendation, the gate form, live activity, questions & challenges, and
 an agent audit where every call's prompt, context slice and raw output can be inspected. Light and
 dark themes; all state is on disk, so a refresh or restart loses nothing.
+
+### Working as a team without a server
+
+Each person runs the workbench locally against one shared network folder:
+`cognos ui --runs-dir /Volumes/team/cognos-runs`. Keep code, profiles, plugins and intent
+documents in git; keep runs on the share (they hold data and fitted models). State changes are
+locked across machines, every decision and answer records who made it (`COGNOS_USER`, else your
+login name), and a step left running by a closed laptop is taken over with
+`cognos retry <step> --run <id> --stuck`. It is not access control: names are labels and seats
+are chosen. Use a real network share, not a syncing folder
+([ADR-0015](docs/adr/0015-a-team-on-one-runs-folder.md)). Old runs are removed with
+"Delete runs" on the runs page or `cognos delete-run`.
 
 ## What makes it trustworthy
 

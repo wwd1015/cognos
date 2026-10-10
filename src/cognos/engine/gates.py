@@ -47,6 +47,8 @@ def why(gate: str, action: str, payload: dict[str, Any] | None, reason: str = ""
         return f"{label}: the brief was accepted"
     if gate == "gate_data":
         cols = payload.get("exclude_columns")
+        if payload.get("join_changed"):
+            return f"{label}: the join of the sources was changed"
         if payload.get("target"):
             return f"{label}: dependent variable set to {payload['target']}"
         if action == "edit" and cols is not None:
@@ -129,8 +131,44 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
         payload["reviewed_analyses"] = [
             {"id": a["id"], "sha256": a["code_sha256"]}
             for a in profile.get("analyses") or [] if a.get("kind") == "code"]
+        linked = profile.get("linking") or {}
+        plan = linked.get("plan") or {}
+        if plan:  # several sources: the join the developer had in front of them
+            payload["reviewed_join"] = plan.get("digest")
+        asked = payload.get("join") if action == "edit" else None
+        if asked and plan:
+            from .. import linking
+
+            # One answer for every link when the developer gives one; otherwise each link
+            # keeps what the plan on the page says, and a link added here takes the rule's
+            # advice (linking.unmatched_advice).
+            current = {s["link"]: s for s in plan["steps"]}
+            fixed = asked.get("unmatched") if asked.get("unmatched") in linking.UNMATCHED else None
+            steps, problems = linking.resolve(
+                asked.get("base") or plan["base"],
+                [{"link": i, "many": asked.get("many") or "aggregate",
+                  "unmatched": fixed or current.get(i, {}).get("unmatched") or "keep"}
+                 for i in asked.get("links") or []], linked)
+            if problems:
+                raise GateError("the join cannot be run: " + "; ".join(problems))
+            for step in steps:
+                if not fixed and step["link"] not in current:
+                    step["unmatched"] = linking.unmatched_advice(step)[0]
+            base_table = asked.get("base") or plan["base"]
+            if linking.plan_digest(base_table, steps) != plan.get("digest"):
+                if plan.get("source") == "profile":
+                    raise GateError("the profile states the join; change data.join there and "
+                                    "start a new run")
+                state.overrides.join = {"base": base_table, "steps": steps}
+                payload["join_changed"] = True
+        elif plan and plan.get("source") != "profile":
+            state.overrides.join = {"base": plan["base"], "steps": plan["steps"]}
         pick = payload.get("target") if action == "edit" else None
         analysed = profile.get("target")
+        if payload.get("join_changed"):
+            if pick and pick != analysed and profile.get("target_source") != "profile":
+                state.overrides.target, state.overrides.task = pick, None
+            return ["explore"], False  # explore rebuilds the dataset from the new join
         if pick and pick != analysed:
             if profile.get("target_source") == "profile":
                 raise GateError("the profile fixes the dependent variable; change data.target "

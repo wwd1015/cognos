@@ -18,6 +18,7 @@ from .contracts import (
     ColumnDecision,
     Contract,
     DataAnalystOutput,
+    DataLinkerOutput,
     DataScoutOutput,
     DesignLeadOutput,
     ExperimentProposal,
@@ -171,6 +172,38 @@ def data_analyst(out: DataAnalystOutput, sl: dict[str, Any]) -> list[str]:
             errs.append(f"{c!r} is both a feature candidate and excluded; choose one")
     if len(named) != len(set(named)):
         errs.append("each column may appear in feature_candidates only once")
+    return errs
+
+
+def data_linker(out: DataLinkerOutput, sl: dict[str, Any]) -> list[str]:
+    """A join plan the engine can run: a base table, links the engine measured, in an order
+    that reaches the base, with a rule wherever a key matches several rows."""
+    from .. import linking
+
+    prof = {"tables": sl.get("tables", []), "links": sl.get("links", [])}
+    names = [t["name"] for t in prof["tables"]]
+    errs: list[str] = []
+    fixed = sl.get("base_table")
+    if fixed and out.base_table != fixed:
+        errs.append(f"the profile fixes the base table as {fixed!r}")
+    steps, problems = linking.resolve(
+        out.base_table, [{"link": j.link, "many": j.many, "unmatched": j.unmatched}
+                         for j in out.joins], prof)
+    errs += problems
+    target = sl.get("target")
+    if target and out.base_table in names:
+        reachable = {out.base_table, *(s["right"] for s in steps)}
+        holders = [t["name"] for t in prof["tables"] if target in t["columns"]]
+        if holders and not reachable & set(holders):
+            errs.append(f"the target {target!r} is in {holders}; the plan must include one of them")
+    joined = {out.base_table, *(s["right"] for s in steps)}
+    explained = {t.table for t in out.left_out}
+    unexplained = [n for n in names if n not in joined and n not in explained]
+    if unexplained and not problems:
+        errs.append(f"say in left_out why {unexplained} are not joined")
+    wrong = sorted(explained & joined)
+    if wrong:
+        errs.append(f"{wrong} are joined and also listed in left_out")
     return errs
 
 
@@ -341,6 +374,7 @@ CHECKS: dict[str, Check] = {
     "intake_analyst": intake_analyst,
     "data_analyst": data_analyst,
     "data_scout": data_scout,
+    "data_linker": data_linker,
     "design_lead": design_lead,
     "modeler": modeler,
     "experiment": experiment,

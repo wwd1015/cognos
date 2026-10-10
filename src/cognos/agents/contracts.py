@@ -146,6 +146,42 @@ class DataScoutOutput(Contract):
     notes: str = ""
 
 
+class JoinChoice(Contract):
+    link: str = Field(description="A link id from context.links")
+    many: Literal["none", "aggregate", "first"] = Field(
+        description="When a key can match several rows of the table being added: aggregate "
+                    "(numbers averaged, text takes the first value, a row count is added) or "
+                    "first (keep the first row). none when the link's added side is unique")
+    unmatched: Literal["keep", "drop"] = Field(
+        description="A base row with no match in the added table: keep it with missing values "
+                    "(most model families then fail on it) or drop it (the engine reports how "
+                    "many)")
+    unmatched_reason: str = Field(
+        description="Why keep or drop: how many rows have no match and whether their outcome "
+                    "differs from the matched rows (the link's a_outcome / b_outcome)")
+    reason: str = Field(description="Why these two tables connect through this key, in "
+                                    "business terms")
+
+
+class LeftOutTable(Contract):
+    table: str
+    reason: str
+
+
+class DataLinkerOutput(Contract):
+    """The Data Analyst's join plan when a run has several sources."""
+
+    base_table: str = Field(description="The table whose rows are the modelling observations")
+    base_rationale: str
+    joins: list[JoinChoice] = Field(default_factory=list)
+    left_out: list[LeftOutTable] = Field(
+        default_factory=list, description="Every source you do not join, and why")
+    concerns: list[str] = Field(
+        default_factory=list, description="What the developer should check before accepting: "
+                                          "low match rates, aggregation that hides timing, "
+                                          "columns recorded after the outcome")
+
+
 class ToolRequest(Contract):
     purpose: str = Field(description="The question this run answers, in one sentence")
     tool: str = Field(description="A tool name from context.tools")
@@ -279,6 +315,7 @@ CONTRACTS: dict[str, type[Contract]] = {
     "intake_analyst": IntakeAnalystOutput,
     "data_analyst": DataAnalystOutput,
     "data_scout": DataScoutOutput,
+    "data_linker": DataLinkerOutput,
     "design_lead": DesignLeadOutput,
     "modeler": ModelerOutput,
     "experiment": ExperimentProposal,
@@ -289,7 +326,7 @@ CONTRACTS: dict[str, type[Contract]] = {
 }
 
 # Which stage each agent serves (the experiment proposer is the modeler's guided-search role).
-AGENT_STAGE = {"intake_analyst": "intake", "data_analyst": "explore", "data_scout": "explore", "design_lead": "ideate", "modeler": "model",
+AGENT_STAGE = {"intake_analyst": "intake", "data_analyst": "explore", "data_scout": "explore", "data_linker": "explore", "design_lead": "ideate", "modeler": "model",
                "experiment": "model", "outcomes_analyst": "backtest", "validator": "validate",
                "risk_analyst": "comply", "writer": "document"}
 STAGE_AGENT = {"intake": "intake_analyst", "explore": "data_analyst", "ideate": "design_lead", "model": "modeler",
@@ -308,7 +345,8 @@ def tool_step_of(agent: str) -> str | None:
 
 
 FRIENDLY = {"intake_analyst": "Intake Analyst", "data_analyst": "Data Analyst",
-            "data_scout": "Data Analyst (analysis requests)", "design_lead": "Design Lead", "modeler": "Modeler",
+            "data_scout": "Data Analyst (analysis requests)",
+            "data_linker": "Data Analyst (joining sources)", "design_lead": "Design Lead", "modeler": "Modeler",
             "experiment": "Modeler (guided search)", "outcomes_analyst": "Outcomes Analyst",
             "validator": "Independent Validator", "risk_analyst": "Model-Risk Analyst",
             "writer": "Technical Writer"}

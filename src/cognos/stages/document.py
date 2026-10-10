@@ -536,6 +536,41 @@ class DocumentStage(Stage):
         )
 
     @staticmethod
+    def _join_body(linked: dict | None) -> list[str]:
+        """How several sources became the modelling table: each source, the join as run, and
+        who decided it."""
+        if not linked:
+            return []
+        plan, report = linked["plan"], linked["report"]
+        who = {"profile": "stated in the project profile", "decision": "set at the data gate",
+               "agent": "proposed by the Data Analyst, confirmed at the data gate"}
+        reasons = (linked.get("rationale") or {}).get("joins") or {}
+        parts = [
+            "## Sources and join\n",
+            _table(["Source", "Connector", "Location", "Rows", "Columns", "SHA-256"],
+                   [[t["name"], t.get("connector") or "n/a",
+                     " ".join(str(t.get("query") or t.get("location") or "n/a").split())[:120],
+                     str(t["n_rows"]), str(t["n_cols"]),
+                     f"`{str(t.get('snapshot_sha256') or '')[:16]}`"]
+                    for t in linked["tables"]]), "",
+            f"- **Base table:** `{plan['base']}` ({report.get('base_rows', report['n_rows'])} "
+            f"rows; {report['n_rows']} in the modelling table; a join never adds a row)",
+            f"- **Join:** {who.get(plan['source'], 'n/a')}\n",
+        ]
+        if report["steps"]:
+            parts += [_table(["Added", "On", "Rows matched", "Unmatched rows", "Rows per key", "Why"],
+                             [[s["right"], "; ".join(s["on"]), f"{s['match_rate']:.1%}",
+                               (f"{s['dropped_rows']} dropped" if s.get("dropped_rows") else
+                                "none" if s["match_rate"] >= 1 else "kept with missing values"),
+                               {"none": "one", "aggregate": "several, aggregated",
+                                "first": "several, first kept"}.get(s["reduced"], s["reduced"]),
+                               str(reasons.get(s["link"], "")).replace("|", "/")]
+                              for s in report["steps"]]), ""]
+        if linked.get("left_out"):
+            parts.append(f"- **Not joined:** {', '.join(linked['left_out'])}\n")
+        return parts
+
+    @staticmethod
     def _analysis_body(ctx: RunContext, ep: dict, vp: dict) -> str:
         """Provenance, the target decision and the analysis log, then each script in full. The
         code is printed as recorded: it is a development artifact a validator has to read."""
@@ -552,6 +587,7 @@ class DocumentStage(Stage):
             + (f" — query: `{' '.join(str(src['query']).split())[:300]}`" if src.get("query") else ""),
             f"- **Snapshot:** {src.get('n_rows', 'n/a')} rows × {src.get('n_cols', 'n/a')} columns, "
             f"fetched {src.get('fetched_at', 'n/a')}, SHA-256 `{str(src.get('snapshot_sha256', ''))[:16]}`\n",
+            *DocumentStage._join_body(ep.get("linking")),
             "## Dependent variable\n",
             f"- **Target:** `{ep.get('target', 'n/a')}` ({ep.get('task', 'n/a')}), "
             f"{how.get(ep.get('target_source', ''), 'n/a')}",

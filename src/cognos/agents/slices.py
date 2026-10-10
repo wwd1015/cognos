@@ -26,6 +26,7 @@ FACT_SCOPE: dict[str, tuple[str, ...]] = {
     "intake_analyst": ("intake.",),
     "data_analyst": ("intake.", "explore."),
     "data_scout": ("intake.", "explore."),
+    "data_linker": ("intake.",),
     "design_lead": ("intake.", "explore.", "ideate."),
     "modeler": ("intake.", "explore.", "ideate."),
     "experiment": ("intake.", "explore.", "ideate."),
@@ -82,7 +83,7 @@ def fact_scope(agent: str) -> tuple[str, ...]:
 
 def build(ctx, agent: str, data: dict[str, Any], fresh: dict | None = None) -> dict[str, Any]:
     stage = AGENT_STAGE[agent]
-    challenges = [] if agent in ("experiment", "data_scout") or tool_step_of(agent) else [
+    challenges = [] if agent in ("experiment", "data_scout", "data_linker") or tool_step_of(agent) else [
         {"id": c.id, "source": c.source, "severity": c.severity, "message": c.message,
          "evidence": c.evidence, "remedy": c.remedy}
         for c in ctx.challenges_for(stage)
