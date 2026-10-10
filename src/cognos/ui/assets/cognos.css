@@ -1,41 +1,325 @@
-/* COGNOS workbench — small additions on top of Mantine. */
+/* ============================================================
+   COGNOS workbench — the "Ledger" design system (shared with IRIS-D)
+   Editorial and print-like: warm paper, ink, one oxblood accent, serif display type,
+   mono numerals, hairline rules instead of boxed cards. Light (paper) and dark (warm black).
+   Python-side tokens (Mantine theme, chart palette) live in ui/theme.py.
+   ============================================================ */
+
 :root {
-  --cognos-page: #f6f6f3;
-  --cognos-gate: var(--mantine-color-violet-5);
+  --bg-base: #faf9f6;
+  --bg-raised: #fffefb;
+  --bg-surface: #f5f3ee;
+  --bg-sunken: #f1efe8;
+
+  --ink: #16140f;
+  --ink-2: #6b6557;
+  --ink-3: #8d8775;
+
+  --accent: #7d2230;
+  --accent-hover: #6a1c29;
+  --accent-ink: #ffffff;
+  --accent-tint: rgba(125, 34, 48, 0.07);
+  --accent-border: rgba(125, 34, 48, 0.30);
+
+  --hair: rgba(22, 20, 15, 0.07);
+  --line: rgba(22, 20, 15, 0.12);
+  --line-strong: rgba(22, 20, 15, 0.30);
+  --rule: var(--ink);
+
+  --shadow-menu: 0 10px 32px rgba(22, 20, 15, 0.14);
+
+  --font: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
+
 [data-mantine-color-scheme="dark"] {
-  --cognos-page: #0d0d0d;
+  --bg-base: #171510;
+  --bg-raised: #201d16;
+  --bg-surface: #1d1a13;
+  --bg-sunken: #121009;
+
+  --ink: #f0ede4;
+  --ink-2: #9a937f;
+  --ink-3: #7d7767;
+
+  --accent: #d98b96;
+  --accent-hover: #e3a3ac;
+  --accent-ink: #171510;
+  --accent-tint: rgba(217, 139, 150, 0.10);
+  --accent-border: rgba(217, 139, 150, 0.34);
+
+  --hair: rgba(240, 237, 228, 0.09);
+  --line: rgba(240, 237, 228, 0.15);
+  --line-strong: rgba(240, 237, 228, 0.34);
+
+  --shadow-menu: 0 10px 32px rgba(0, 0, 0, 0.5);
 }
-body { background: var(--cognos-page); }
-.mantine-AppShell-main { background: var(--cognos-page); }
 
-.cognos-rail .mantine-NavLink-root { border-radius: var(--mantine-radius-md); margin-bottom: 2px; }
-.cognos-rail .mantine-NavLink-description { font-size: 11px; }
-
-.cognos-gate { border-left: 3px solid var(--mantine-color-gray-4); }
-.cognos-gate-open {
-  border-left: 3px solid var(--cognos-gate);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cognos-gate) 25%, transparent);
+/* ── Page ── */
+html, body {
+  background: var(--bg-base);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
-.cognos-rec { border-left: 3px solid var(--mantine-color-indigo-4); }
+:root, [data-mantine-color-scheme] {
+  --mantine-color-body: var(--bg-base);
+  --mantine-color-text: var(--ink);
+  --mantine-color-dimmed: var(--ink-2);
+  --mantine-color-default: var(--bg-raised);
+  --mantine-color-default-border: var(--line);
+  --mantine-color-default-hover: var(--bg-surface);
+  --mantine-color-anchor: var(--accent);
+}
+.mantine-AppShell-main { background: var(--bg-base); }
+.cognos-page { max-width: 1520px; margin: 0 auto; padding: 4px 16px 56px; }
+::selection { background: var(--accent-tint); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-.cognos-md table { font-size: 13px; }
-.cognos-md pre, .cognos-md code { font-size: 12px; }
-.cognos-md h1 { font-size: 1.4rem; }
-.cognos-md h2 { font-size: 1.15rem; margin-top: 1.2em; }
+/* ── Masthead ── */
+.mantine-AppShell-header { background: var(--bg-base); border: 0; }
+.masthead {
+  max-width: 1520px; margin: 0 auto; height: 100%;
+  padding: 0 32px;
+}
+.masthead-row {
+  height: 100%; display: flex; align-items: flex-end; justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--rule);
+  box-shadow: 0 3px 0 var(--bg-base), 0 4px 0 var(--line-strong);   /* the double rule */
+}
+.masthead-brand { display: flex; align-items: baseline; gap: 14px; color: var(--ink); }
+.masthead-brand:hover { text-decoration: none; }
+.masthead-word {
+  font-family: var(--font-display); font-weight: 700; font-size: 27px; letter-spacing: 0.01em;
+  line-height: 1;
+}
+.masthead-eyebrow, .eyebrow {
+  font-family: var(--font); font-size: 10.5px; font-weight: 500; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink-2);
+}
+.masthead-tools { display: flex; align-items: center; gap: 18px; }
+.masthead-link {
+  font-size: 13px; color: var(--ink); padding: 2px 0;
+  border-bottom: 1px solid var(--line); transition: border-color 0.2s var(--ease);
+}
+.masthead-link:hover { border-bottom-color: var(--ink); text-decoration: none; }
+.masthead-meta { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
 
-.mantine-Code-root[data-block] { max-height: 60vh; overflow: auto; white-space: pre-wrap; }
+/* ── Type ── */
+.mantine-Title-root { font-family: var(--font-display); letter-spacing: -0.005em; }
+.page-title { font-family: var(--font-display); font-weight: 600; font-size: 30px; line-height: 1.15; }
+.page-lede { color: var(--ink-2); font-size: 14px; max-width: 760px; margin-top: 4px; }
+.num, .mantine-Table-td .mantine-Code-root { font-family: var(--font-mono); }
+
+/* ── Panels: a rule and a serif title, never a box ── */
+.mantine-Card-root {
+  background: transparent; border: 0; border-radius: 0; overflow: visible;
+  border-top: 1px solid var(--rule);
+  padding: 14px 0 6px;
+}
+.ledger-title { font-family: var(--font-display); font-weight: 600; font-size: 17px; line-height: 1.3; }
+.ledger-desc { color: var(--ink-2); font-size: 12.5px; margin-top: 2px; max-width: 720px; }
+
+/* a quiet tile, for galleries of small results */
+.mantine-Card-root.cognos-tile {
+  border: 1px solid var(--line); border-top: 2px solid var(--rule);
+  background: var(--bg-raised); padding: 14px 16px 12px;
+}
+/* a side note without a rule (run summary, activity) */
+.mantine-Card-root.cognos-plain { border-top: 0; padding-top: 0; }
+
+/* ── KPI strip: hairline-divided figures ── */
+.ledger-kpis {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair);
+}
+.ledger-kpi { padding: 14px 20px 14px 0; margin-right: 20px; border-right: 1px solid var(--line); min-width: 0; }
+.ledger-kpi:last-child { border-right: 0; margin-right: 0; }
+.ledger-kpi-label {
+  font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ledger-kpi-value {
+  font-family: var(--font-display); font-weight: 600; font-size: 27px; line-height: 1.15;
+  margin-top: 4px; font-variant-numeric: tabular-nums lining-nums;
+  overflow-wrap: anywhere;
+}
+.ledger-kpi-hint { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+
+/* ── Tables ── */
+.mantine-Table-table { --table-border-color: var(--hair); --table-hover-color: var(--accent-tint); }
+.mantine-Table-th {
+  font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-2); border-bottom: 1px solid var(--line-strong) !important;
+  padding-top: 6px; padding-bottom: 8px; white-space: nowrap;
+}
+.mantine-Table-td { border-bottom: 1px solid var(--hair); vertical-align: top; }
+.mantine-Table-tr:last-of-type .mantine-Table-td { border-bottom: 0; }
+.mantine-Table-th:first-of-type, .mantine-Table-td:first-of-type { padding-left: 0; }
+
+/* ── Badges: small caps labels, not pills ── */
+.mantine-Badge-root {
+  font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.06em;
+  border-radius: 2px; text-transform: uppercase;
+}
+.mantine-Badge-root[data-variant="outline"] { border-color: var(--line-strong); color: var(--ink-2); }
+.mantine-Badge-root[data-variant="default"] {
+  background: var(--bg-surface); border-color: var(--hair); color: var(--ink);
+}
+
+/* ── Code ── */
+.mantine-Code-root {
+  font-family: var(--font-mono); background: var(--bg-sunken); color: var(--ink);
+  border-radius: 2px; font-size: 12px;
+}
+.mantine-Code-root[data-block] {
+  max-height: 60vh; overflow: auto; white-space: pre-wrap;
+  border: 1px solid var(--hair); padding: 12px 14px; line-height: 1.55;
+}
+
+/* ── Buttons ── */
+.mantine-Button-root { font-weight: 600; letter-spacing: 0.01em; transition: background 0.2s var(--ease), border-color 0.2s var(--ease); }
+.mantine-Button-root[data-variant="default"] { background: transparent; border-color: var(--line-strong); }
+.mantine-Button-root[data-variant="default"]:hover { border-color: var(--ink); background: transparent; }
+
+/* ── Tabs: underline, ink when active ── */
+.mantine-Tabs-list::before { border-color: var(--line); }
+.mantine-Tabs-tab {
+  font-size: 13px; color: var(--ink-2); padding: 9px 2px; margin-right: 22px;
+  border-radius: 0; background: transparent !important;
+}
+.mantine-Tabs-tab:hover { color: var(--ink); border-color: var(--line-strong); }
+.mantine-Tabs-tab[data-active] { color: var(--ink); font-weight: 600; border-color: var(--ink); }
+
+/* ── Segmented control: bordered strip, ink fill when active ── */
+.mantine-SegmentedControl-root {
+  background: transparent; border: 1px solid var(--line-strong); border-radius: 3px; padding: 2px;
+}
+.mantine-SegmentedControl-indicator { background: var(--ink); box-shadow: none; border-radius: 2px; }
+.mantine-SegmentedControl-label { font-size: 12.5px; color: var(--ink-2); }
+.mantine-SegmentedControl-label[data-active], .mantine-SegmentedControl-label[data-active]:hover { color: var(--bg-base); }
+
+/* ── Inputs ── */
+.mantine-Input-input, .mantine-Textarea-input, .mantine-Select-input, .mantine-MultiSelect-input,
+.mantine-PillsInput-input {
+  background: var(--bg-raised); border-color: var(--line-strong); border-radius: 3px;
+}
+.mantine-Input-input:focus, .mantine-Input-input:focus-within, .mantine-PillsInput-input:focus-within {
+  border-color: var(--accent);
+}
+.mantine-InputWrapper-label { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.mantine-InputWrapper-description { color: var(--ink-2); }
+.mantine-Popover-dropdown, .mantine-Select-dropdown, .mantine-MultiSelect-dropdown, .mantine-Menu-dropdown {
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: var(--shadow-menu);
+}
+
+/* ── Alerts: a margin note with a rule, not a filled box ── */
+.mantine-Alert-root {
+  background: var(--bg-surface); border: 0; border-left: 2px solid var(--alert-color, var(--ink-3));
+  border-radius: 0; padding: 10px 14px;
+}
+.mantine-Alert-title { font-weight: 600; }
+.mantine-Alert-message, .mantine-Alert-body { color: var(--ink); }
+
+/* ── Drawer / modal ── */
+.mantine-Drawer-content, .mantine-Modal-content { background: var(--bg-base); box-shadow: var(--shadow-menu); }
+.mantine-Drawer-header, .mantine-Modal-header {
+  background: var(--bg-base); border-bottom: 2px solid var(--rule); padding: 18px 24px 12px;
+}
+.mantine-Drawer-title, .mantine-Modal-title { font-family: var(--font-display); font-size: 20px; font-weight: 600; }
+.mantine-Drawer-body, .mantine-Modal-body { padding-top: 20px; }
+
+/* ── Run workspace: the stage index ── */
+.run-hero { border-top: 0; padding-bottom: 16px; }
+.run-hero-name { font-family: var(--font-display); font-weight: 600; font-size: 25px; line-height: 1.15; }
+.run-hero-id { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+.run-hero-next { font-size: 13.5px; line-height: 1.5; margin-top: 12px; }
+.run-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin-top: 12px; font-size: 12.5px; }
+.run-facts dt { color: var(--ink-2); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding-top: 2px; }
+.run-facts dd { margin: 0; font-family: var(--font-mono); font-size: 12px; }
+
+.cognos-rail .mantine-NavLink-root {
+  border-radius: 0; padding: 9px 8px 9px 0; border-bottom: 1px solid var(--hair);
+  background: transparent; align-items: flex-start;
+}
+.cognos-rail .mantine-NavLink-root:hover { background: var(--accent-tint); }
+.cognos-rail .mantine-NavLink-root[data-active] {
+  background: transparent; box-shadow: inset 2px 0 0 var(--accent); padding-left: 10px;
+}
+.cognos-rail .mantine-NavLink-root[data-active] .mantine-NavLink-label { color: var(--ink); }
+.cognos-rail .mantine-NavLink-description { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+.cognos-rail .mantine-NavLink-section { margin-top: 2px; }
+.rail-no { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-right: 8px; }
+
+/* ── The human decision: the one place that is allowed weight ── */
+.mantine-Card-root.cognos-gate {
+  background: var(--bg-surface); border-top: 1px solid var(--line-strong);
+  border-left: 2px solid var(--ink-3); padding: 16px 20px 16px 18px;
+}
+.mantine-Card-root.cognos-gate-open {
+  border-top: 2px solid var(--accent); border-left: 2px solid var(--accent);
+  background: var(--accent-tint);
+}
+/* the agent's recommendation: a quoted passage */
+.mantine-Card-root.cognos-rec {
+  border-top: 0; border-left: 2px solid var(--line-strong); padding: 2px 0 2px 18px;
+}
+.cognos-rec .rec-summary { font-family: var(--font-display); font-size: 16px; line-height: 1.55; }
+
+/* ── Activity feed ── */
+.activity-item { padding: 8px 0; border-bottom: 1px solid var(--hair); display: grid; grid-template-columns: 58px 1fr; gap: 0 8px; }
+.activity-time { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); padding-top: 2px; }
+.activity-text { font-size: 12.5px; line-height: 1.45; color: var(--ink); }
+.activity-item[data-tone="accent"] .activity-text { color: var(--accent); font-weight: 600; }
+.activity-item[data-tone="bad"] .activity-text { color: var(--mantine-color-red-6); }
+.activity-item[data-tone="quiet"] .activity-text { color: var(--ink-2); }
+
+/* ── Markdown (white paper, brief) ── */
+.cognos-md { font-size: 14px; line-height: 1.65; }
+.cognos-md h1, .cognos-md h2, .cognos-md h3 { font-family: var(--font-display); font-weight: 600; }
+.cognos-md h1 { font-size: 1.55rem; border-bottom: 2px solid var(--rule); padding-bottom: 6px; }
+.cognos-md h2 { font-size: 1.2rem; margin-top: 1.5em; border-top: 1px solid var(--line); padding-top: 12px; }
+.cognos-md h3 { font-size: 1.02rem; }
+.cognos-md table { font-size: 13px; border-collapse: collapse; }
+.cognos-md th {
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2);
+  border-bottom: 1px solid var(--line-strong); text-align: left; font-weight: 500;
+}
+.cognos-md td { border-bottom: 1px solid var(--hair); }
+.cognos-md pre, .cognos-md code { font-family: var(--font-mono); font-size: 12px; background: var(--bg-sunken); }
+.cognos-content .mantine-Tabs-panel > .mantine-Paper-root { background: transparent; border: 0; }
+
+/* ── Charts sit on the paper ── */
+.js-plotly-plot .plotly .modebar { background: transparent !important; }
+.js-plotly-plot .plotly .modebar-btn path { fill: var(--ink-3) !important; }
+
+/* ── Small things ── */
+.mantine-Accordion-item { background: transparent; border: 0; border-top: 1px solid var(--hair); border-radius: 0; }
+.mantine-Accordion-control { padding-left: 0; font-size: 12.5px; }
+.mantine-Accordion-content { padding-left: 0; padding-right: 0; }
+.mantine-Skeleton-root::after { background: var(--bg-sunken); }
+.mantine-Notification-root { background: var(--bg-raised); border: 1px solid var(--line); box-shadow: var(--shadow-menu); }
+.mantine-ScrollArea-thumb { background: var(--line-strong); }
+.page-foot {
+  margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--line);
+  display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-3);
+}
 
 @keyframes cognos-spin { to { transform: rotate(360deg); } }
 .spin { animation: cognos-spin 1.2s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } * { transition: none !important; } }
 
 /* Document drop zones in the new-run drawer. */
 .cognos-upload {
-  border: 1px dashed var(--mantine-color-gray-5);
-  border-radius: var(--mantine-radius-md);
-  padding: 10px 12px;
-  cursor: pointer;
-  color: var(--mantine-color-dimmed);
+  border: 1px dashed var(--line-strong); border-radius: 3px; padding: 12px;
+  cursor: pointer; color: var(--ink-2); background: var(--bg-raised);
+  transition: border-color 0.2s var(--ease);
 }
-.cognos-upload:hover { border-color: var(--mantine-color-indigo-5); }
+.cognos-upload:hover { border-color: var(--accent); color: var(--ink); }

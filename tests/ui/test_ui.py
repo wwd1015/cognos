@@ -38,7 +38,7 @@ def completed_run(root):
 def test_app_builds_and_routes(root, completed_run):
     app = ui.create_app(str(root))
     assert _serialize(app.layout)
-    assert "Model development runs" in _serialize(ui.runs_page())
+    assert "Model development" in _serialize(ui.runs_page())
     assert completed_run in _serialize(ui.runs_table())
     assert _serialize(ui.workspace_page(completed_run))
 

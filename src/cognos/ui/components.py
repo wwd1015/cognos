@@ -59,25 +59,27 @@ def run_badge(status: str, size: str = "md") -> dmc.Badge:
                      size=size)
 
 
-def kpi(label: str, value: str, hint: str | None = None) -> dmc.Paper:
-    return dmc.Paper([
-        dmc.Text(label, size="xs", c="dimmed", tt="uppercase", fw=600, lts=0.4),
-        dmc.Text(value, fz=22, fw=650, mt=2, style={"lineHeight": 1.2}),
-        dmc.Text(hint, size="xs", c="dimmed", mt=2) if hint else None,
-    ], withBorder=True, radius="md", p="sm")
+def kpi(label: str, value: str, hint: str | None = None) -> html.Div:
+    """One figure in a KPI strip: a small-caps label over a serif value."""
+    return html.Div([
+        html.Div(label, className="ledger-kpi-label", title=label),
+        html.Div(value, className="ledger-kpi-value", title=str(value)),
+        html.Div(hint, className="ledger-kpi-hint") if hint else None,
+    ], className="ledger-kpi")
 
 
-def kpis(items: list[tuple[str, str, str | None]]) -> dmc.SimpleGrid:
-    return dmc.SimpleGrid([kpi(*i) for i in items], cols={"base": 2, "sm": 3, "lg": len(items)},
-                          spacing="sm")
+def kpis(items: list[tuple[str, str, str | None]]) -> html.Div:
+    """A strip of figures divided by hairlines (no boxes)."""
+    return html.Div([kpi(*i) for i in items], className="ledger-kpis")
 
 
 def section(title: str, *children, right=None, description: str | None = None) -> dmc.Card:
+    """A panel: an ink rule, a serif title, then the content on the page itself."""
     head = dmc.Group([
-        dmc.Stack([dmc.Text(title, fw=650, size="md"),
-                   dmc.Text(description, size="xs", c="dimmed") if description else None], gap=0),
+        html.Div([html.Div(title, className="ledger-title"),
+                  html.Div(description, className="ledger-desc") if description else None]),
         right,
-    ], justify="space-between", align="flex-start", mb="sm")
+    ], justify="space-between", align="flex-start", mb="sm", wrap="nowrap")
     return dmc.Card([head, *children])
 
 
@@ -88,7 +90,7 @@ def table(head: list[str], rows: list[list[Any]], *, striped: bool = True,
         dmc.TableThead(dmc.TableTr([dmc.TableTh(h) for h in head])),
         dmc.TableTbody([dmc.TableTr([dmc.TableTd(c if c is not None else "") for c in row])
                         for row in rows]),
-    ], striped=striped, highlightOnHover=True, withTableBorder=False, verticalSpacing="xs",
+    ], striped=False, highlightOnHover=True, withTableBorder=False, verticalSpacing="xs",
         fz="sm", tabularNums=True)
     if max_height:
         return dmc.ScrollArea(t, mah=max_height, type="auto")
@@ -151,9 +153,9 @@ def recommendation_card(rec: dict | None, *, extra=None, title: str | None = Non
         if rec.get("reused") else None,
     ], gap=6)
     body = [
-        dmc.Group([dmc.ThemeIcon(icon("tabler:sparkles", 16), variant="light", radius="xl"),
-                   dmc.Text(agent, fw=650), meta], gap="xs", mb="xs"),
-        dmc.Text(out.get("summary", ""), size="sm"),
+        dmc.Group([html.Span("Recommendation", className="eyebrow"),
+                   dmc.Text(agent, fw=650, size="sm"), meta], gap="xs", mb=6),
+        html.Div(out.get("summary", ""), className="rec-summary"),
     ]
     if out.get("uncertainties"):
         body.append(dmc.Alert(dmc.List([dmc.ListItem(u) for u in out["uncertainties"]], size="sm"),
@@ -167,7 +169,7 @@ def recommendation_card(rec: dict | None, *, extra=None, title: str | None = Non
                                 color="blue" if r["changed_recommendation"] else "gray"),
                       " ", r["response"]], size="sm")
             for r in out["responses_to_challenges"]], gap=4),
-            title="Responses to challenges", color="violet", variant="light", mt="sm",
+            title="Responses to challenges", color="oxblood", variant="light", mt="sm",
             icon=icon("tabler:message-reply")))
     if extra is not None:
         body.append(html.Div(extra, style={"marginTop": 12}))
@@ -176,5 +178,5 @@ def recommendation_card(rec: dict | None, *, extra=None, title: str | None = Non
 
 def status_icon(status: str) -> Any:
     color, ic, _ = STEP.get(status, ("gray", "tabler:point", status))
-    return dmc.ThemeIcon(icon(ic, 14, className="spin" if status == "running" else None),
-                         color=color, variant="light", radius="xl", size="sm")
+    return dmc.ThemeIcon(icon(ic, 15, className="spin" if status == "running" else None),
+                         color=color, variant="transparent", radius="xl", size="sm")

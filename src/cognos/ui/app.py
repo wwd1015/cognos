@@ -28,6 +28,7 @@ from .components import (
     empty,
     fmt,
     icon,
+    kpis,
     run_badge,
     section,
     status_icon,
@@ -35,30 +36,27 @@ from .components import (
     verdict_badge,
 )
 from .panels import compare_page, stage_panel
-from .theme import MANTINE_THEME
+from .theme import FONT_CSS, MANTINE_THEME
 
 ASSETS = Path(__file__).with_name("assets")
 
 
 # --- layout ----------------------------------------------------------------------------------
 def header() -> dmc.AppShellHeader:
-    return dmc.AppShellHeader(dmc.Group([
-        dmc.Group([
-            dcc.Link(dmc.Group([
-                dmc.ThemeIcon(icon("tabler:topology-star-3", 18), radius="md", size="lg",
-                              variant="gradient", gradient={"from": "indigo", "to": "cyan"}),
-                dmc.Stack([dmc.Text("COGNOS", fw=750, size="lg", lh=1),
-                           dmc.Text("agents recommend · you decide · the engine disposes",
-                                    size="xs", c="dimmed", lh=1.2)], gap=0),
-            ], gap="xs"), href="/", style={"textDecoration": "none", "color": "inherit"}),
-        ]),
-        dmc.Group([
-            dmc.Badge(f"v{__version__}", variant="outline", color="gray"),
-            dcc.Link(dmc.Button("Runs", variant="subtle", leftSection=icon("tabler:list")), href="/"),
-            dmc.Switch(id="theme-switch", onLabel=icon("tabler:moon", 14),
-                       offLabel=icon("tabler:sun", 14), size="md", color="gray"),
-        ], gap="sm"),
-    ], justify="space-between", h="100%", px="md"))
+    """The masthead: a serif wordmark over a double rule, and a few quiet controls."""
+    return dmc.AppShellHeader(html.Div(html.Div([
+        dcc.Link([html.Span("COGNOS", className="masthead-word"),
+                  html.Span("Model development workbench", className="masthead-eyebrow")],
+                 href="/", className="masthead-brand"),
+        html.Div([
+            html.Span("agents recommend · you decide · the engine disposes",
+                      className="masthead-meta"),
+            dcc.Link("All runs", href="/", className="masthead-link"),
+            html.Span(f"v{__version__}", className="masthead-meta"),
+            dmc.Switch(id="theme-switch", onLabel=icon("tabler:moon", 13),
+                       offLabel=icon("tabler:sun", 13), size="sm", color="dark"),
+        ], className="masthead-tools"),
+    ], className="masthead-row"), className="masthead"))
 
 
 def build_layout() -> Any:
@@ -72,7 +70,7 @@ def build_layout() -> Any:
             dmc.AppShell([
                 header(),
                 dmc.AppShellMain(html.Div(id="page", className="cognos-page")),
-            ], header={"height": 60}, padding="md"),
+            ], header={"height": 72}, padding="md"),
         ])
 
 
@@ -152,24 +150,50 @@ def runs_page() -> Any:
                    value=default_prov, allowDeselect=False,
                    description="LLM agents recommend; the deterministic agents run offline."),
         dmc.Alert("The engine computes every number and guards the sealed holdout; agents only "
-                  "recommend, and you decide at the gates.", color="indigo", variant="light",
+                  "recommend, and you decide at the gates.", color="oxblood", variant="light",
                   icon=icon("tabler:shield-lock")),
         dmc.Button("Start run", id="new-create", leftSection=icon("tabler:player-play"), fullWidth=True),
         html.Div(id="new-feedback"),
     ], gap="md"))
     return dmc.Container([
         dmc.Group([
-            dmc.Stack([dmc.Title("Model development runs", order=2),
-                       dmc.Text("A run starts from the sponsor's business intent (a new model, or "
-                                "an update of an existing one) and takes it through nine stages "
-                                "and six review gates.", c="dimmed", size="sm")], gap=2),
-            dmc.Button("New run", id="new-open", leftSection=icon("tabler:plus"), size="md"),
-        ], justify="space-between", mb="lg"),
-        compare_picker(),
-        dmc.Card(html.Div(id="runs-table", children=runs_table()), p=0),
+            html.Div([html.Div("Runs", className="eyebrow"),
+                      html.Div("Model development", className="page-title"),
+                      html.Div("A run starts from the sponsor's business intent (a new model, or "
+                               "an update of an existing one) and takes it through nine stages "
+                               "and six review gates.", className="page-lede")]),
+            dmc.Button("New run", id="new-open", leftSection=icon("tabler:plus")),
+        ], justify="space-between", align="flex-end", mt="lg", mb="xl", wrap="nowrap"),
+        html.Div(id="runs-figures", children=runs_figures()),
+        dmc.Card([
+            dmc.Group([html.Div("All runs", className="ledger-title"), compare_picker()],
+                      justify="space-between", align="center", mb="xs", wrap="nowrap"),
+            html.Div(id="runs-table", children=runs_table()),
+        ], mt="xl"),
+        html.Div([html.Span("Agents recommend, people decide, the engine computes every number."),
+                  html.Span("Internal use")], className="page-foot"),
         drawer,
         dcc.Download(id="template-download"),
     ], size="xl", py="md")
+
+
+def runs_figures() -> Any:
+    """The figures above the run list: how much work is open and whose move it is."""
+    rows = [r for r in service.list_runs() if not r["legacy"]]
+    if not rows:
+        return None
+    awaiting = [r for r in rows if r["status"] == "awaiting"]
+    spend = sum(r["spend_usd"] or 0 for r in rows)
+    return kpis([
+        ("Runs", fmt(len(rows)), None),
+        ("Awaiting review", fmt(len(awaiting)),
+         LABELS.get(awaiting[0]["waiting_on"], "") if awaiting else "nothing waiting"),
+        ("Completed or approved", fmt(sum(r["status"] in ("completed", "approved") for r in rows)),
+         f"{sum(r['status'] == 'approved' for r in rows)} signed off"),
+        ("Blocked or failed", fmt(sum(r["status"] in ("blocked", "failed", "rejected")
+                                      for r in rows)), None),
+        ("Agent spend", f"${spend:,.2f}", "this workspace"),
+    ])
 
 
 def upload_box(id_: str, hint: str, *, multiple: bool) -> Any:
@@ -186,7 +210,7 @@ def upload_names(names: Any) -> Any:
     names = [names] if isinstance(names, str) else list(names or [])
     if not names:
         return None
-    return dmc.Group([dmc.Badge(n, variant="light", color="indigo", size="sm", tt="none",
+    return dmc.Group([dmc.Badge(n, variant="light", color="oxblood", size="sm", tt="none",
                                 leftSection=icon("tabler:file-text", 12)) for n in names],
                      gap=4, mt=4)
 
@@ -211,31 +235,35 @@ def compare_picker() -> Any:
     return dmc.Group([
         dmc.MultiSelect(id="cmp-pick", data=data, maxValues=2, searchable=True, clearable=True,
                         placeholder="Pick two runs to compare", leftSection=icon("tabler:git-compare"),
-                        flex=1, maw=720, comboboxProps={"withinPortal": True}),
-        dmc.Button("Compare", id="cmp-go", variant="light", disabled=True, n_clicks=0),
-    ], mb="md", align="flex-end")
+                        w=420, size="xs", comboboxProps={"withinPortal": True}),
+        dmc.Button("Compare", id="cmp-go", variant="default", size="xs", disabled=True, n_clicks=0),
+    ], gap="xs", wrap="nowrap")
 
 
 def runs_table() -> Any:
     rows = service.list_runs()
     if not rows:
-        return dmc.Center(dmc.Stack([icon("tabler:folder-open", 36, color="gray"),
-                                     dmc.Text("No runs yet — start one with “New run”.", c="dimmed")],
-                                    align="center"), h=180)
+        return html.Div([html.Div("Nothing here yet.", className="ledger-title"),
+                         html.Div("Start a run with “New run”: upload a business intent document, "
+                                  "or try a synthetic demo.", className="ledger-desc")],
+                        style={"padding": "28px 0"})
     body = []
     for r in rows:
-        link = (dcc.Link(r["run_id"], href=f"/run/{r['run_id']}") if not r["legacy"]
-                else dmc.Text(r["run_id"], c="dimmed", size="sm"))
+        link = (dcc.Link(r["project"], href=f"/run/{r['run_id']}",
+                         style={"fontWeight": 600, "color": "var(--ink)"}) if not r["legacy"]
+                else dmc.Text(r["project"], c="dimmed", size="sm"))
         body.append([
-            link, dmc.Text(r["project"], fw=500, size="sm"), run_badge(r["status"], "sm"),
+            link, dmc.Text(r["run_id"], size="xs", ff="monospace", c="dimmed"),
+            run_badge(r["status"], "sm"),
             dmc.Text(LABELS.get(r["waiting_on"], "") if r["waiting_on"] else "", size="sm"),
             dmc.Text(r["mode"] + (" · update" if r.get("kind") == "update" else ""), size="sm"),
-            dmc.Code(r["provider"]),
-            dmc.Text(r["champion"] or "", size="sm", ff="monospace"),
-            dmc.Text(f"${r['spend_usd']:.2f}" if r["spend_usd"] else "—", size="sm"),
-            dmc.Text((r["updated_at"] or "")[:19].replace("T", " "), size="xs", c="dimmed"),
+            dmc.Text(r["provider"], size="xs", ff="monospace"),
+            dmc.Text(r["champion"] or "—", size="xs", ff="monospace"),
+            dmc.Text(f"${r['spend_usd']:.2f}" if r["spend_usd"] else "—", size="xs", ff="monospace"),
+            dmc.Text((r["updated_at"] or "")[:16].replace("T", " "), size="xs", ff="monospace",
+                     c="dimmed"),
         ])
-    return table(["Run", "Project", "Status", "Waiting on", "Mode", "Agents", "Champion", "Spend",
+    return table(["Model", "Run", "Status", "Waiting on", "Mode", "Agents", "Champion", "Spend",
                   "Updated"], body)
 
 
@@ -246,13 +274,13 @@ def workspace_page(run_id: str) -> Any:
         dcc.Store(id="ws-seat", data="developer"),
         dcc.Store(id="ws-key", data=None),
         dmc.Group([
-            dmc.Text("Acting as", size="sm", c="dimmed"),
+            html.Span("Acting as", className="eyebrow"),
             dmc.SegmentedControl(
-                id="seat-switch", value="developer",
+                id="seat-switch", value="developer", size="xs",
                 data=[{"value": k, "label": v.title()} for k, v in SEAT_LABEL.items()
                       if k != "express"],
             ),
-        ], gap="sm", mb="sm"),
+        ], gap="sm", mt="xs", mb="lg"),
         dmc.Grid([
             dmc.GridCol([html.Div(id="ws-head"), html.Div(id="ws-rail", className="cognos-rail")],
                         span={"base": 24, "md": 6}),
@@ -276,28 +304,29 @@ def workspace_page(run_id: str) -> Any:
 def run_header(st) -> Any:
     res = service.results(st.run_id)
     model = res.get("model")
+    facts = [("Mode", st.mode), ("Agents", st.provider)]
+    if model is not None:
+        facts += [("Champion", str(model.metrics.get("champion", ""))),
+                  ("CV", fmt(model.metrics.get("cv_mean")))]
+    if st.spend_usd:
+        facts.append(("Spend", f"${st.spend_usd:.2f}"))
     return dmc.Card([
-        dmc.Group([dmc.Text(st.project, fw=700, size="lg"), run_badge(st.status)],
+        dmc.Group([html.Span("Run", className="eyebrow"), run_badge(st.status, "sm")],
                   justify="space-between"),
-        dmc.Text(st.run_id, size="xs", c="dimmed", ff="monospace"),
-        dmc.Group([dmc.Badge(st.mode, variant="light", color="gray", size="sm"),
-                   dmc.Badge(f"agents: {st.provider}", variant="light", color="indigo", size="sm"),
-                   dmc.Badge(f"${st.spend_usd:.2f}", variant="light", color="gray", size="sm")
-                   if st.spend_usd else None], gap=6, mt="xs"),
-        dmc.Text(f"Champion {model.metrics.get('champion', '')} · CV "
-                 f"{fmt(model.metrics.get('cv_mean'))}", size="sm", mt="xs")
-        if model is not None else None,
-        dmc.Text(next_action(st)["text"], size="sm", mt="xs"),
-        dmc.Alert(st.halted_reason, color="red", variant="light", mt="xs", p="xs")
+        html.Div(st.project, className="run-hero-name"),
+        html.Div(st.run_id, className="run-hero-id"),
+        html.Dl([x for k, v in facts for x in (html.Dt(k), html.Dd(v))], className="run-facts"),
+        html.Div(next_action(st)["text"], className="run-hero-next"),
+        dmc.Alert(st.halted_reason, color="red", variant="light", mt="xs")
         if st.halted_reason and st.status in ("blocked", "rejected", "failed") else None,
         run_actions(st.run_id),
-    ], mb="md", p="md")
+    ], className="run-hero cognos-plain")
 
 
 def run_actions(run_id: str) -> Any:
     prev = service.previous_run(run_id)
     return dmc.Group([
-        dmc.Button("Export", id="export-btn", variant="light", size="compact-sm", n_clicks=0,
+        dmc.Button("Export", id="export-btn", variant="default", size="compact-sm", n_clicks=0,
                    leftSection=icon("tabler:package-export", 14)),
         dcc.Link(dmc.Button("Compare with previous run", variant="subtle", size="compact-sm",
                             leftSection=icon("tabler:git-compare", 14)),
@@ -314,7 +343,7 @@ def rail(st, selected: str) -> Any:
         right = None
         if gstatus == "awaiting":
             who = seat_label(SEAT_OF_GATE.get(gate, ""))
-            right = dmc.Badge(who, color="violet", size="sm", variant="filled")
+            right = dmc.Badge(who, color="oxblood", size="xs", variant="filled")
         elif st.steps[stage].verdict and status in ("done", "blocked"):
             right = verdict_badge(st.steps[stage].verdict, "xs")
         desc = LABELS[gate] + " — " + gstatus.replace("_", " ") if gstatus and gstatus not in (
@@ -324,12 +353,13 @@ def rail(st, selected: str) -> Any:
             desc = "Out of date — " + (why if len(why) <= 70 else why[:69].rstrip() + "…")
         items.append(dmc.NavLink(
             id={"type": "rail", "step": stage},
-            label=dmc.Text(f"{i}. {LABELS[stage]}", size="sm", fw=600 if stage == selected else 500),
+            label=dmc.Text([html.Span(f"{i:02d}", className="rail-no"), LABELS[stage]],
+                           size="sm", fw=600 if stage == selected else 500),
             description=desc, leftSection=status_icon("awaiting" if gstatus == "awaiting" else status),
-            rightSection=right, active=stage == selected, variant="light", color="indigo",
+            rightSection=right, active=stage == selected, variant="subtle", color="oxblood",
             disabled=status == "skipped", n_clicks=0))
-    return dmc.Card([dmc.Text("Stages", size="xs", c="dimmed", fw=600, tt="uppercase", mb=4),
-                     *items], p="xs")
+    return dmc.Card([html.Div("Stages", className="eyebrow", style={"marginBottom": 6}),
+                     *items])
 
 
 def step_badge_text(status: str) -> str:
@@ -340,17 +370,16 @@ def step_badge_text(status: str) -> str:
 
 def activity(run_id: str) -> Any:
     evs = service.run_events(run_id, limit=60)[::-1][:40]
-    colors = {"step_done": "green", "step_failed": "red", "step_blocked": "red",
-              "gate_waiting": "violet", "gate_decision": "indigo", "agent_invalid": "orange",
-              "agent_error": "red", "challenge": "violet", "agent_start": "blue"}
-    items = [dmc.TimelineItem(
-        title=dmc.Text(time.strftime("%H:%M:%S", time.localtime(e["ts"])), size="xs", c="dimmed"),
-        children=dmc.Text(e["message"], size="xs"),
-        bullet=dmc.ThemeIcon(icon("tabler:point-filled", 10), size=16, radius="xl",
-                             color=colors.get(e["type"], "gray"), variant="light")) for e in evs]
-    return dmc.Card([dmc.Text("Activity", size="xs", c="dimmed", fw=600, tt="uppercase", mb="xs"),
-                     dmc.ScrollArea(dmc.Timeline(items, bulletSize=16, lineWidth=2) if items
-                                    else empty("Nothing yet."), h=620, type="auto")], p="sm")
+    tones = {"step_failed": "bad", "step_blocked": "bad", "agent_error": "bad",
+             "gate_waiting": "accent", "gate_decision": "accent", "challenge": "accent",
+             "agent_start": "quiet", "progress": "quiet"}
+    items = [html.Div([
+        html.Div(time.strftime("%H:%M:%S", time.localtime(e["ts"])), className="activity-time"),
+        html.Div(e["message"], className="activity-text"),
+    ], className="activity-item", **{"data-tone": tones.get(e["type"], "plain")}) for e in evs]
+    return dmc.Card([html.Div("Activity", className="eyebrow", style={"marginBottom": 4}),
+                     dmc.ScrollArea(items if items else empty("Nothing yet."), h=640, type="auto",
+                                    scrollbars="y")])
 
 
 def questions_tab(st, seat: str = "developer") -> Any:
@@ -377,7 +406,7 @@ def questions_tab(st, seat: str = "developer") -> Any:
                        dmc.Stack([dmc.Text(g.question, size="sm"), ctrl], gap=4)])
     c_rows = [[dmc.Code(c.id), c.source, LABELS.get(c.target_stage, c.target_stage),
                dmc.Badge(c.status, size="xs", variant="light",
-                         color="violet" if c.status == "open" else "gray"),
+                         color="oxblood" if c.status == "open" else "gray"),
                dmc.Stack([dmc.Text(c.message, size="sm"),
                           dmc.Text(f"↳ {c.response}", size="xs", c="dimmed") if c.response else None],
                          gap=2)] for c in st.challenges]
@@ -440,7 +469,7 @@ def create_app(runs_dir: str | None = None) -> Dash:
     if runs_dir:
         os.environ["COGNOS_RUNS_DIR"] = str(runs_dir)
     app = Dash(__name__, title="COGNOS", suppress_callback_exceptions=True,
-               assets_folder=str(ASSETS), update_title=None)
+               assets_folder=str(ASSETS), update_title=None, external_stylesheets=[FONT_CSS])
     app.layout = build_layout()
     register_callbacks(app)
     return app
@@ -500,7 +529,7 @@ def register_callbacks(app: Dash) -> None:
         except OSError as exc:
             return no_update, [notice("Export failed", str(exc), "red")]
         return dcc.send_file(str(path)), [notice(
-            "Exported", "Documents, results, decisions and the audit log. The data is never included.", "indigo")]
+            "Exported", "Documents, results, decisions and the audit log. The data is never included.", "oxblood")]
 
     @app.callback(Output("runs-table", "children"), Input("poll", "n_intervals"),
                   State("url", "pathname"), prevent_initial_call=True)
@@ -656,7 +685,7 @@ def register_callbacks(app: Dash) -> None:
             service.submit_gate(run_id, gate, action, payload, reason, seat=seat)
         except GateError as exc:
             return [notice("Decision refused", str(exc), "red")], no_update
-        return [notice("Decision recorded", f"{LABELS[gate]}: {action.replace('_', ' ')}", "indigo")], None
+        return [notice("Decision recorded", f"{LABELS[gate]}: {action.replace('_', ' ')}", "oxblood")], None
 
     @app.callback(
         Output("notify", "sendNotifications", allow_duplicate=True),
@@ -698,7 +727,7 @@ def register_callbacks(app: Dash) -> None:
         except GateError as exc:
             return [notice("Not possible", str(exc), "red")], no_update
         return [notice("Recorded", "The stage that raised it will re-run." if not assume else
-                       "Recorded as an assumption.", "indigo")], None
+                       "Recorded as an assumption.", "oxblood")], None
 
     @app.callback(Output("io-modal", "opened"), Output("io-body", "children"),
                   Input({"type": "audit-row", "call": ALL}, "n_clicks"), State("ws-run", "data"),

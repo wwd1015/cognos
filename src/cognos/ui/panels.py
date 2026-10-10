@@ -90,7 +90,7 @@ def _send_back(gate: str, choose_target: bool) -> Any:
                          placeholder="e.g. 'Leverage enters with the wrong sign — prefer a "
                                      "candidate without the collinear ratio.'",
                          autosize=True, minRows=2),
-            dmc.Group([dmc.Button("Send back", id=_act(gate, "send_back"), color="violet",
+            dmc.Group([dmc.Button("Send back", id=_act(gate, "send_back"), color="oxblood",
                                   variant="light", leftSection=icon("tabler:arrow-back-up"))]),
         ], gap="xs")),
     ], value="send")], variant="contained", mt="sm")
@@ -110,7 +110,7 @@ def gate_block(gate: str, state: RunState, res: StageResult | None, body: list |
     mine = seat == owner
     header = dmc.Group([
         dmc.Group([dmc.ThemeIcon(icon("tabler:user-check", 16), variant="light", radius="xl",
-                                 color="violet"),
+                                 color="oxblood"),
                    dmc.Text(f"{LABELS[gate]} — {seat_label(owner)}", fw=650)], gap="xs"),
         step_badge(status),
     ], justify="space-between", mb="xs")
@@ -162,7 +162,7 @@ def gate_block(gate: str, state: RunState, res: StageResult | None, body: list |
 
 
 # --- intake -------------------------------------------------------------------------------
-_BASIS = {"stated": ("document", "indigo"), "answered": ("answered", "teal"),
+_BASIS = {"stated": ("document", "oxblood"), "answered": ("answered", "teal"),
           "profile": ("profile", "blue"), "inferred": ("inferred", "yellow"),
           "missing": ("open", "gray")}
 
@@ -267,7 +267,7 @@ def analysis_card(run_id: str, a: dict, scheme: str) -> Any:
     is_code = a["kind"] == "code"
     by = (dmc.Badge("agent-written code", color="grape", variant="light", size="sm",
                     leftSection=icon("tabler:code", 12)) if is_code else
-          dmc.Badge(a.get("tool") or "tool", color="indigo", variant="light", size="sm",
+          dmc.Badge(a.get("tool") or "tool", color="oxblood", variant="light", size="sm",
                     leftSection=icon("tabler:tool", 12)))
     plugin = (dmc.Badge(f"plugin: {a['origin']}", color="teal", variant="outline", size="sm")
               if not is_code and a.get("origin") not in (None, "cognos") else None)
@@ -315,7 +315,8 @@ def analysis_card(run_id: str, a: dict, scheme: str) -> Any:
         parts.append(dmc.Accordion(folds, variant="separated", mt="xs",
                                    value="code" if is_code else None))
     # (a card keeps its own height: a tall neighbour in the grid must not stretch its chart)
-    return dmc.Card([p for p in parts if p is not None], p="md", style={"alignSelf": "start"})
+    return dmc.Card([p for p in parts if p is not None], className="cognos-tile",
+                    style={"alignSelf": "start"})
 
 
 def tools_section(res: StageResult, state: RunState, scheme: str) -> list:
@@ -455,7 +456,7 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
     p = res.payload or {}
     ds = p.get("data_structure") or {}
     choices = {c["framework"]: c for c in p.get("framework_choices", [])}
-    decision_color = {"primary": "indigo", "candidate": "blue", "challenger": "grape",
+    decision_color = {"primary": "oxblood", "candidate": "blue", "challenger": "grape",
                       "rejected": "gray"}
     fw_rows = []
     for f in p.get("framework_assessment", []):
@@ -529,7 +530,7 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
     adm = p.get("admissible_set") or []
     adm_rows = []
     for c in adm:
-        tags = [dmc.Badge("champion", color="indigo", size="xs")
+        tags = [dmc.Badge("champion", color="oxblood", size="xs")
                 if c["id"] == p.get("champion_id") else None,
                 dmc.Badge("agent pick", color="blue", size="xs", variant="light")
                 if c["id"] == recommended else None,

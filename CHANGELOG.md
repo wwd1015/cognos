@@ -5,6 +5,12 @@ versioning is SemVer.
 
 ## [Unreleased]
 
+### Changed
+- **Workbench redesign.** The workbench adopts the "Ledger" design system used by IRIS-D: paper
+  and warm-black themes, serif display type, mono numerals, one oxblood accent, ruled panels
+  instead of boxed cards, a masthead, figure strips, a numbered stage index and a plain activity
+  feed. Still pure Dash + Mantine; no behaviour changed.
+
 ### Added
 - **Tools at every stage** ([ADR-0013](docs/adr/0013-stage-tools-every-agent-can-use-a-plugin.md)).
   A plugin tool declares the stages it serves and the inputs it needs; every stage's agent can

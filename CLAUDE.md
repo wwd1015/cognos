@@ -176,6 +176,15 @@ UI panels are pure functions of (result, state, scheme, seat) — keep them test
 (`tests/ui`). Never write `component or fallback`: Dash components define `__len__`, so a childless
 component is falsy — use `graph(fig, placeholder)` / explicit `is None` checks. Never pass an
 explicit `None` for a Mantine style prop (`c=None`): it serializes as `null` and the page stops
-rendering in the browser; branch on the component instead. Charts follow the
-reference palette in `ui/theme.py` (single y-axis, legends for ≥ 2 series, status colors only with an
-icon + label).
+rendering in the browser; branch on the component instead.
+
+The look is the **Ledger** design system shared with IRIS-D: warm paper, ink, one oxblood accent,
+serif display type, mono numerals, hairline rules instead of boxed cards. Tokens live in two
+places that must agree: `ui/theme.py` (Mantine theme, colour ramps, chart palette) and
+`ui/assets/cognos.css` (CSS variables and component styling). Build pages from
+`components.section` (a rule and a serif title), `kpis` (a figure strip) and `table`; do not
+reintroduce bordered cards, gradients, shadows on the page, or a second accent colour. Use the
+Mantine colour names (`oxblood`, `green`, `yellow`, `red`, ...), never a hex at a call site.
+Web fonts load from Google Fonts when the network allows and fall back to system faces offline.
+Charts follow the palette in `ui/theme.py` (single y-axis, legends for ≥ 2 series, status
+colors only with an icon + label).
