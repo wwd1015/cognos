@@ -63,10 +63,35 @@ DEMO_PRESETS: dict[str, dict[str, Any]] = {
                               "segment": "large corporate (agency-rated universe)",
                               "interpretability": "required"}),
 }
+# A quarterly loss rate on macro drivers: the series is short and the drivers act through lags
+# and changes, so this is where the development plan shows — a rolling forecast origin, a
+# factor library cut by the screen, forward selection checked against best subset, and a pool
+# of candidates told apart by how they forecast the held-back quarters and the scenarios.
+DEMO_PRESETS["loss_forecast"] = dict(
+    task="timeseries", target="nco_rate", metric="rmse", datetime_col="date",
+    factors={"expected_signs": {"unemployment_rate": "+", "bbb_spread": "+",
+                                "gdp_growth": "-", "hpi": "-", "cre_price_index": "-"}},
+    selection={"methods": ["forward", "best_subset"], "max_factors": 3},
+    evaluation={"rank_by": [{"metric": "rmse", "sample": "validation"},
+                            {"metric": "r2", "sample": "in_sample"}]},
+    stress={"enabled": True, "scenarios": [
+        {"name": "adverse",
+         "shocks": {"unemployment_rate": {"add": 2.0}, "bbb_spread": {"add": 1.0},
+                    "hpi": {"mul": 0.93}}},
+        {"name": "severely_adverse",
+         "shocks": {"unemployment_rate": {"add": 4.5}, "bbb_spread": {"add": 2.5},
+                    "hpi": {"mul": 0.82}}}]},
+    design={"use_case": "loss forecasting (CECL / stress testing)",
+            "horizon": "9-quarter forecast of the quarterly net charge-off rate",
+            "default_definition": "net charge-offs over average loans, annualized, in percent",
+            "segment": "commercial real estate portfolio",
+            "interpretability": "required"})
 # The C&I portfolio again, arriving as three sources of two kinds (two CSV files and a SQLite
 # table): the Data Analyst proposes how they join and the developer confirms it.
 DEMO_PRESETS["linked"] = {**DEMO_PRESETS["cni"], "generator": "cni", "linked": True}
 DEMO_LABELS = {
+    "loss_forecast": "Loss forecasting (quarterly series: factor screen, stepwise selection, "
+                     "candidate pool)",
     "linked": "C&I portfolio from three linked sources (the Data Analyst proposes the join)",
     "commercial": "Commercial PD (vintage panel, out-of-time)",
     "cni": "C&I portfolio (hazard term structure, portfolio sim, stress)",
@@ -126,11 +151,16 @@ def demo_config(preset: str, root: str | Path | None = None, *, n: int | None = 
         "migration": p.get("migration", {}),
         "portfolio": p.get("portfolio", {}),
         "stress": p.get("stress", {}),
+        "evaluation": p.get("evaluation", {}),
+        "factors": p.get("factors", {}),
+        "selection": p.get("selection", {}),
         "metric": {"name": p["metric"]},
         "compliance": {"fair_lending": p.get("fair_lending", False),
-                       "jurisdictions": ["US"] if preset in ("commercial", "cni", "migration")
+                       "jurisdictions": ["US"] if preset in ("commercial", "cni", "migration",
+                                                               "loss_forecast")
                        else ["US", "EU"],
-                       "risk_tier": "high" if preset in ("credit", "commercial", "cni", "migration")
+                       "risk_tier": "high" if preset in ("credit", "commercial", "cni", "migration",
+                                                         "loss_forecast")
                        else "medium"},
         "runs_dir": str(runs_root(root)),
     }
@@ -454,12 +484,16 @@ def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
             except Exception:
                 continue
             champ = None
-            model = d / "stages" / "model" / "result.json"
-            if model.exists():
-                try:
-                    champ = json.loads(model.read_text(encoding="utf-8"))["metrics"].get("champion")
-                except Exception:
-                    champ = None
+            # The champion is chosen on the outcomes analysis of the pool. A run recorded
+            # before candidate pools carries it on the model stage.
+            for stage in ("backtest", "model"):
+                recorded = d / "stages" / stage / "result.json"
+                if champ is None and recorded.exists():
+                    try:
+                        champ = json.loads(recorded.read_text(encoding="utf-8"))["metrics"].get(
+                            "champion")
+                    except Exception:
+                        champ = None
             waiting = [s for s, v in st.steps.items() if v.status == "awaiting"]
             kind = "new"
             try:  # the development mode, as intake recorded it

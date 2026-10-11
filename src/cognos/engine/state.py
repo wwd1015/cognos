@@ -120,7 +120,11 @@ class Overrides(BaseModel):
     design: dict[str, str] = Field(default_factory=dict)
     compliance: dict[str, str] = Field(default_factory=dict)  # intended / out-of-scope use
     slate: list[dict[str, Any]] | None = None
-    champion: str | None = None  # candidate label chosen at gate_champion
+    # The development plan as edited at the design gate: sections of fields laid over the
+    # recommended plan ({"evaluation": {...}, "factors": {...}, "selection": {...}}).
+    plan: dict[str, Any] | None = None
+    pool: list[str] | None = None  # candidate ids carried to outcomes analysis (gate_candidates)
+    champion: str | None = None  # the pool member chosen at gate_champion
 
 
 class RunState(BaseModel):

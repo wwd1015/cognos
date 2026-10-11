@@ -45,10 +45,11 @@ STAGE_BLURB = {
                "considering and the columns that may not be inputs.",
     "ideate": "The engine assesses structure and frameworks; the Design Lead ranks the slate and "
               "raises what only the sponsor can decide.",
-    "model": "The engine searches under a frozen metric; the Modeler picks the champion from the "
-             "admissible set — before the sealed holdout is scored.",
-    "backtest": "The engine scores the champion out of sample; the Outcomes Analyst reads the "
-                "discrimination, calibration and stability.",
+    "model": "The engine follows the development plan: every factor fitted alone, the library "
+             "cut to a shortlist, multi-factor models built by the plan's methods and ranked. The "
+             "Modeler recommends the pool of candidates that goes on; no champion is chosen here.",
+    "backtest": "The engine scores every pool member on the test sample and under each scenario; "
+                "the Outcomes Analyst reads the comparison and recommends the champion.",
     "validate": "The engine's rubric re-derives risk from artifacts; the Independent Validator adds "
                 "an effective challenge — it never sees the modeler's reasoning.",
     "comply": "A non-gating readiness report: evidence organized, human-only steps listed.",
@@ -583,6 +584,7 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
                               description=f"fills design.{g.design_field}" if g.design_field else
                               ("answered" if g.status != "open" else None))
                 for g in open_gaps]
+    plan = p.get("plan") or {}
     gate = gate_block("gate_design", state, res, seat=seat, body=[
         dmc.CheckboxGroup(dmc.Stack([dmc.Checkbox(label=f"{h['id']} · {h['family']} / "
                                                         f"{h['feature_strategy']} ({h['role']})",
@@ -592,6 +594,7 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
                           description="Untick to drop a specification from the slate.",
                           value=[h["id"] for h in p.get("hypotheses", [])]),
         dmc.Stack(q_inputs, gap="xs", mt="sm") if q_inputs else None,
+        plan_form(plan) if plan else None,
     ], primary=[
         dmc.Button("Accept design", id=_act("gate_design", "accept"),
                    leftSection=icon("tabler:check")),
@@ -607,6 +610,7 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
               ("Open questions", fmt(len([g for g in state.gaps if g.status == "open"])), None)]),
         recommendation_card(_rec(res)),
         gate,
+        plan_section(plan) if plan else None,
         section("Framework assessment — alternatives considered",
                 table(["Framework", "Applicable", "Decision", "Reason"], fw_rows)),
         section("Ranked specification slate",
@@ -622,51 +626,257 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
     ]
 
 
+# --- the development plan (shown at design, restated at model) ------------------------------
+_SOURCE_COLOR = {"human": "oxblood", "profile": "blue", "agent": "grape", "engine": "gray"}
+_SOURCE_LABEL = {"human": "developer", "profile": "profile", "agent": "Design Lead",
+                 "engine": "engine"}
+
+
+def _words(v: Any) -> str:
+    return str(v).replace("_", " ")
+
+
+def _plan_rows(plan: dict) -> list[list[Any]]:
+    ev, sel, fc = plan["evaluation"], plan["selection"], plan["factors"]
+    reasons, sources = plan.get("reasons") or {}, plan.get("sources") or {}
+
+    def row(label: str, value: str, field: str) -> list[Any]:
+        src = sources.get(field)
+        return [dmc.Text(label, size="sm", fw=500), dmc.Text(value, size="sm"),
+                dmc.Badge(_SOURCE_LABEL.get(src, src), color=_SOURCE_COLOR.get(src, "gray"),
+                          variant="light", size="xs") if src else "",
+                dmc.Text(reasons.get(field, ""), size="xs")]
+
+    rank = ", then ".join(f"{r['metric']} ({_words(r['sample'])})" for r in ev.get("rank_by") or [])
+    screen = [f"missing ≤ {pct(fc['max_missing'], 0)}" if fc.get("max_missing") is not None else None,
+              f"p ≤ {fmt(fc['max_p_value'], 2)}" if fc.get("max_p_value") is not None else None,
+              "expected sign" if fc.get("enforce_sign") else None,
+              f"best {fc['best_per_source']} per column" if fc.get("best_per_source") else None,
+              f"|corr| ≤ {fmt(fc['max_correlation'], 2)}" if fc.get("max_correlation") is not None
+              else None,
+              f"top {fc['top_n']}" if fc.get("top_n") else None]
+    limits = [f"at most {sel['max_factors']} factors",
+              f"every p ≤ {fmt(sel['max_p_value'], 2)}" if sel.get("max_p_value") is not None else None,
+              "expected signs" if sel.get("enforce_sign") else None,
+              f"|corr| ≤ {fmt(sel['max_correlation'], 2)} between factors"
+              if sel.get("max_correlation") is not None else None,
+              f"always {', '.join(sel['must_include'])}" if sel.get("must_include") else None]
+    return [
+        row("Test sample", _words(ev["test"]) + (f", {pct(ev['test_fraction'], 0)} of the rows"
+                                                  if ev["test"] != "none" else ""), "test"),
+        row("Validation", _words(ev["validation"])
+            + (f", {ev['folds']} block(s)" if ev["validation"] != "none" else "")
+            + (f" of {ev['horizon']} period(s)" if ev.get("horizon") else ""), "validation"),
+        row("Sealed holdout", f"{pct(ev['holdout_fraction'], 0)} of the rows"
+            if ev.get("holdout_fraction") else "none", "holdout_fraction"),
+        row("Ranking", rank, "rank_by"),
+        row("Factor library", ", ".join(_words(t) for t in fc.get("transforms") or []) or "as explored",
+            "factors.transforms" if "factors.transforms" in sources else "transforms"),
+        row("Single-factor screen", "; ".join(x for x in screen if x) or "no rule",
+            next((k for k in sources if k.startswith("factors.") and k != "factors.transforms"),
+                 "factors")),
+        row("Selection methods", " + ".join(_words(m) for m in sel.get("methods") or []), "methods"),
+        row("A step is kept when", f"{_words(sel['criterion'])} improves", "criterion"),
+        row("A model is accepted when", "; ".join(x for x in limits if x), "max_factors"),
+        row("Pool", f"{ev['pool_size']} candidate(s) go to outcomes analysis", "pool_size"),
+    ]
+
+
+def plan_section(plan: dict) -> Any:
+    """The development plan in force: every choice, who set it and why."""
+    return section("Development plan",
+                   table(["Choice", "In force", "Set by", "Reason"], _plan_rows(plan)),
+                   *[dmc.Alert(note, color="yellow", variant="light", mt="xs")
+                     for note in plan.get("ignored") or []],
+                   description="How the data are split, how the factor library is shortened and "
+                               "how single factors become models. Recommended from the shape of "
+                               "the data and the intended use; edit it in the review below.")
+
+
+def plan_form(plan: dict) -> Any:
+    """The plan as form fields. A field left as it is changes nothing; ``gate_payload`` sends
+    only what differs from the plan on the page."""
+    ev, sel, fc = plan["evaluation"], plan["selection"], plan["factors"]
+    opts = plan.get("options") or {}
+
+    def pick(field: str, label: str, value: Any, choices: list[str], **kw) -> Any:
+        return dmc.Select(id=_field("gate_design", f"plan::{field}"), label=label, value=value,
+                          data=[{"value": c, "label": _words(c)} for c in choices],
+                          allowDeselect=False, size="xs", **kw)
+
+    def num(field: str, label: str, value: Any, **kw) -> Any:
+        return dmc.NumberInput(id=_field("gate_design", f"plan::{field}"), label=label,
+                               value=value if value is not None else "", size="xs", **kw)
+
+    rank = list(ev.get("rank_by") or []) + [{}]
+    metrics, samples = opts.get("metric") or [], opts.get("sample") or []
+    return dmc.Accordion([dmc.AccordionItem([
+        dmc.AccordionControl("Edit the development plan"),
+        dmc.AccordionPanel(dmc.Stack([
+            dmc.Text("Samples", size="xs", fw=650, c="dimmed"),
+            dmc.SimpleGrid([
+                pick("evaluation.test", "Test sample", ev["test"], opts.get("test") or []),
+                num("evaluation.test_fraction", "Test share of rows", ev["test_fraction"],
+                    min=0, max=0.6, step=0.05, decimalScale=2),
+                num("evaluation.holdout_fraction", "Sealed holdout share (0 = none)",
+                    ev["holdout_fraction"], min=0, max=0.4, step=0.05, decimalScale=2),
+                pick("evaluation.validation", "Validation", ev["validation"],
+                     opts.get("validation") or []),
+                num("evaluation.folds", "Validation blocks", ev["folds"], min=2, max=20),
+                num("evaluation.horizon", "Periods per block (rolling)", ev.get("horizon"), min=1),
+            ], cols={"base": 2, "md": 3}),
+            dmc.Text("Ranking", size="xs", fw=650, c="dimmed"),
+            dmc.SimpleGrid([
+                pick("rank.0.metric", "Rank by", rank[0].get("metric"), metrics),
+                pick("rank.0.sample", "read on", rank[0].get("sample"), samples),
+                dmc.Select(id=_field("gate_design", "plan::rank.1.metric"), label="then by",
+                           value=rank[1].get("metric"), size="xs", clearable=True,
+                           data=[{"value": m, "label": m} for m in metrics]),
+                pick("rank.1.sample", "read on", rank[1].get("sample") or "in_sample", samples),
+                num("evaluation.pool_size", "Candidates in the pool", ev["pool_size"], min=1,
+                    max=8),
+            ], cols={"base": 2, "md": 5}),
+            dmc.Text("Single-factor screen (applied in this order; empty = off)", size="xs",
+                     fw=650, c="dimmed"),
+            dmc.SimpleGrid([
+                num("factors.max_missing", "Missing at most", fc.get("max_missing"), min=0, max=1,
+                    step=0.05, decimalScale=2),
+                num("factors.max_p_value", "p-value at most", fc.get("max_p_value"), min=0, max=1,
+                    step=0.01, decimalScale=3),
+                num("factors.best_per_source", "Best per column", fc.get("best_per_source"), min=1),
+                num("factors.max_correlation", "Correlation at most", fc.get("max_correlation"),
+                    min=0, max=1, step=0.05, decimalScale=2),
+                num("factors.top_n", "Shortlist size", fc.get("top_n"), min=1),
+                dmc.Select(id=_field("gate_design", "plan::factors.enforce_sign"),
+                           label="Drop a wrong sign", size="xs", allowDeselect=False,
+                           value="yes" if fc.get("enforce_sign") else "no",
+                           data=[{"value": "yes", "label": "yes"}, {"value": "no", "label": "no"}]),
+            ], cols={"base": 2, "md": 6}),
+            dmc.MultiSelect(id=_field("gate_design", "plan::factors.transforms"),
+                            label="Transformations in the library", size="xs",
+                            value=list(fc.get("transforms") or []),
+                            data=[{"value": t, "label": _words(t)}
+                                  for t in (opts.get("transforms") or []) if t != "none"]),
+            dmc.Text("From single factors to models", size="xs", fw=650, c="dimmed"),
+            dmc.SimpleGrid([
+                dmc.MultiSelect(id=_field("gate_design", "plan::selection.methods"),
+                                label="Selection methods (one or several)", size="xs",
+                                value=list(sel.get("methods") or []),
+                                data=[{"value": m, "label": _words(m)}
+                                      for m in opts.get("methods") or []]),
+                pick("selection.criterion", "A step is kept when this improves", sel["criterion"],
+                     opts.get("criterion") or []),
+                num("selection.max_factors", "Factors at most", sel["max_factors"], min=1, max=12),
+                num("selection.max_p_value", "Every p-value at most", sel.get("max_p_value"),
+                    min=0, max=1, step=0.01, decimalScale=3),
+            ], cols={"base": 2, "md": 4}),
+        ], gap="xs")),
+    ], value="plan")], variant="separated", mt="sm")
+
+
+def _sign_badge(sign: str, expected: str | None) -> Any:
+    if sign not in ("+", "-"):
+        return dmc.Text("—", size="sm", c="dimmed")
+    if expected in ("+", "-") and expected != sign:
+        return dmc.Badge(f"{sign}  (expected {expected})", color="red", variant="light", size="sm",
+                         leftSection=icon("tabler:alert-triangle", 12))
+    return dmc.Text(sign, size="sm", ff="monospace")
+
+
 # --- model --------------------------------------------------------------------------------
 def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
-    metric = p.get("metric", "metric")
+    plan = p.get("plan") or {}
+    first = (p.get("rank_by") or [{}])[0]
+    score_label = f"{first.get('metric', 'score')} ({_words(first.get('sample', 'validation'))})"
     ledger = json.loads(service.read_artifact(state.run_id, "stages/model/ledger.json",
                                               None) or "[]")
     rec = _rec(res) or {}
     out = rec.get("output") or {}
-    recommended = out.get("champion")
-    adm = p.get("admissible_set") or []
-    adm_rows = []
-    for c in adm:
-        tags = [dmc.Badge("champion", color="oxblood", size="xs")
-                if c["id"] == p.get("champion_id") else None,
-                dmc.Badge("agent pick", color="blue", size="xs", variant="light")
-                if c["id"] == recommended else None,
-                dmc.Badge("ratchet best", color="gray", size="xs", variant="outline")
-                if c.get("ratchet_champion") else None,
-                dmc.Badge("challenger only", color="grape", size="xs", variant="light")
-                if c["role"] == "challenger" else None]
-        adm_rows.append([dmc.Code(c["id"]), dmc.Text(c["family"], ff="monospace", size="sm"),
-                         c["n_features"], f"{c['cv_mean']:.4f} ± {c['cv_std']:.4f}",
-                         dmc.Group(tags, gap=4)])
+    recommended = set(out.get("pool") or [])
+    pool_ids = list(p.get("pool_ids") or [])
+    leaders = p.get("leaders") or []
+    expected = p.get("expected_signs") or {}
+
+    def tags(c: dict) -> Any:
+        return dmc.Group([
+            dmc.Badge("in the pool", color="oxblood", size="xs") if c["id"] in pool_ids else None,
+            dmc.Badge("Modeler", color="blue", size="xs", variant="light")
+            if c["id"] in recommended else None,
+            dmc.Badge("within 1 SE", color="gray", size="xs", variant="outline")
+            if c.get("within_one_se") else None,
+            dmc.Badge("challenger only", color="grape", size="xs", variant="light")
+            if c.get("role") == "challenger" else None,
+            dmc.Badge(f"{len(c['violations'])} constraint(s) broken", color="red", size="xs",
+                      variant="light", leftSection=icon("tabler:alert-triangle", 12))
+            if c.get("violations") else None], gap=4)
+
+    leader_rows = [[c.get("rank") or "", dmc.Code(c["id"]),
+                    dmc.Text(c["family"], ff="monospace", size="sm"),
+                    dmc.Text(", ".join(c["features"]), size="xs", ff="monospace"),
+                    fmt(c.get("score")), dmc.Text(" + ".join(_words(m) for m in c.get("methods") or []),
+                                                  size="xs"),
+                    tags(c)] for c in leaders]
+    pool_rows = [[dmc.Code(m["id"]), dmc.Text(m["label"], size="sm"),
+                  dmc.Text(", ".join(m["features"]), size="xs", ff="monospace"),
+                  fmt(m.get("score")), fmt(m.get("max_p_value"), 3),
+                  f"{m['diagnostics_passed']}/{m['diagnostics_run']}",
+                  dmc.Text("; ".join(m.get("violations") or []) or "none", size="xs")]
+                 for m in p.get("pool") or []]
     signs = [[dmc.Text(s["feature"], ff="monospace", size="sm"), s["expected"], s["observed"],
               dmc.Badge(s["assessment"].replace("_", " "),
                         color={"consistent": "green", "wrong_sign": "red"}.get(s["assessment"], "gray"),
                         variant="light", size="sm")]
              for s in out.get("sign_checks", [])]
-    diag = p.get("diagnostics") or {}
-    diag_rows = [[t["name"], t["category"],
-                  "skipped" if t.get("passed") is None else ("passed" if t["passed"] else "failed"),
-                  fmt(t.get("pvalue"), 4), dmc.Text(t.get("interpretation", ""), size="xs")]
-                 for t in diag.get("tests", [])]
-    gate = gate_block("gate_champion", state, res, seat=seat, body=[
-        dmc.RadioGroup(dmc.Stack([dmc.Radio(label=f"{c['id']} · {c['label']} — CV {c['cv_mean']:.4f}",
-                                            value=c["id"], disabled=c["role"] == "challenger")
-                                  for c in adm], gap=4),
-                       id=_field("gate_champion", "champion"), label="Champion",
-                       description="Admissible set: within one CV standard error of the best.",
-                       value=p.get("champion_id")),
+    factor_rows = [[dmc.Text(r["name"], ff="monospace", size="sm"),
+                    dmc.Text(_words(r.get("transform", "level"))
+                             + (f", lag {r['lag']}" if r.get("lag") else ""), size="xs"),
+                    _sign_badge(r.get("sign", "n/a"), expected.get(r["name"])
+                                or expected.get(r["source"])),
+                    fmt(r.get("p_value"), 4), fmt(r.get("in_sample")), fmt(r.get("validation")),
+                    dmc.Text(r.get("reason") or "", size="xs")]
+                   for r in p.get("single_factor") or []]
+    screen_rows = [[_words(r["rule"]), fmt(r["setting"]) if not isinstance(r["setting"], list)
+                    else ", ".join(r["setting"]), fmt(r["before"]), fmt(r["after"]),
+                    fmt(r["before"] - r["after"])] for r in p.get("screen") or []]
+    path_blocks = []
+    for path in p.get("paths") or []:
+        steps = [[s["step"], s["action"], dmc.Text(s.get("factor") or "", ff="monospace", size="sm"),
+                  dmc.Text(", ".join(s["factors"]), size="xs", ff="monospace"), fmt(s.get("criterion")),
+                  f"{s['change']:+.4g}" if s.get("change") is not None else "",
+                  f"{s['tried']} tried, {s['rejected_by_constraints']} rejected"]
+                 for s in path.get("steps") or []]
+        path_blocks.append(dmc.Stack([
+            dmc.Group([dmc.Text(_words(path["method"]).capitalize(), fw=650, size="sm"),
+                       dmc.Badge(path["family"], variant="light", color="gray", size="xs"),
+                       dmc.Text(f"criterion: {_words(path['criterion'])}", size="xs", c="dimmed")],
+                      gap="xs"),
+            table(["Step", "Action", "Factor", "Factors in the model", "Criterion", "Change",
+                   "Considered"], steps) if steps else None,
+            dmc.Text(path.get("note") or "", size="xs", c="dimmed"),
+        ], gap=4, mb="sm"))
+    samples = p.get("samples") or {}
+    lib = p.get("library") or {}
+    known = {c["id"] for c in leaders}
+    gate = gate_block("gate_candidates", state, res, seat=seat, body=[
+        dmc.CheckboxGroup(dmc.Stack([
+            dmc.Checkbox(label=f"{c['id']} · {c['label']} — {score_label} {fmt(c.get('score'))}"
+                               + (" · breaks a constraint" if c.get("violations") else ""),
+                         value=c["id"]) for c in leaders], gap=4),
+            id=_field("gate_candidates", "pool"), label="Candidate pool",
+            description="Tick the candidates that go on to outcomes analysis. Each is fitted, "
+                        "tested and compared on the test sample; the champion is chosen there.",
+            value=[i for i in pool_ids if i in known]),
+        dmc.TextInput(id=_field("gate_candidates", "extra"), mt="sm",
+                      label="Add candidates from the ledger (ids, comma separated)",
+                      value=", ".join(i for i in pool_ids if i not in known),
+                      description="Any model the search evaluated can join the pool by its id "
+                                  "(stages/model/ledger.tsv)."),
     ], primary=[
-        dmc.Button("Accept champion", id=_act("gate_champion", "accept"),
+        dmc.Button("Accept the pool", id=_act("gate_candidates", "accept"),
                    leftSection=icon("tabler:check")),
-        dmc.Button("Override with selected", id=_act("gate_champion", "override"), variant="light",
-                   color="orange", leftSection=icon("tabler:switch-horizontal")),
+        dmc.Button("Set the pool to the ticked candidates", id=_act("gate_candidates", "edit"),
+                   variant="light", leftSection=icon("tabler:edit")),
     ])
     bench = []
     for key, label in (("challenger_benchmark", "Ensemble ceiling"), ("structural", "Merton structural"),
@@ -675,30 +885,48 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
         if key == "challenger_benchmark" and b:
             bench.append([label, fmt(b.get("benchmark_score")), "not deployed"])
         elif (b.get("benchmark") or {}):
-            bench.append([label, f"AUC {fmt(b['benchmark'].get('holdout_roc_auc'))}", "not deployed"])
+            bench.append([label, f"AUC {fmt(b['benchmark'].get('test_roc_auc'))} (test sample)",
+                          "not deployed"])
     return [
-        kpis([("Champion", f"{p.get('champion_id', '—')} · {(p.get('champion') or {}).get('family', '—')}",
-               f"chosen by {p.get('champion_source', 'agent')}"),
-              (f"CV {metric}", f"{fmt(p.get('cv_mean'))}", f"± {fmt(p.get('cv_std'))}"),
-              (f"Holdout {metric}", fmt(p.get("holdout_metric")),
-               f"evaluated {p.get('holdout_evaluations', 1)}×"),
-              ("Candidates tried", fmt(p.get("n_candidates_tried")), None)]),
-        recommendation_card(rec, extra=table(["Feature", "Expected", "Observed", "Assessment"], signs)
+        kpis([("Factors", fmt(lib.get("n_factors")), f"from {fmt(lib.get('n_sources'))} column(s)"),
+              ("Shortlisted", fmt(len(p.get("shortlist") or [])), "after the single-factor screen"),
+              ("Models evaluated", fmt(p.get("n_candidates_tried")),
+               " + ".join(_words(m) for m in (plan.get("selection") or {}).get("methods") or [])),
+              ("Pool", fmt(len(pool_ids)), f"set by the {p.get('pool_source', 'engine')}")]),
+        recommendation_card(rec, extra=table(["Factor", "Expected", "Observed", "Assessment"], signs)
                             if signs else None),
         gate,
-        section("Admissible set", table(["Id", "Family", "Features", f"CV {metric}", ""], adm_rows),
-                description="Statistically indistinguishable from the best; the modeler chose "
-                            "without seeing the sealed holdout."),
-        section("Experiment ledger", graph(charts.ledger(ledger, metric, p.get("champion_label"), scheme),
-                                            "No ledger.")),
-        section("Champion effects", graph(charts.coefficients(p.get("coefficients"), p.get("pvalues"),
-                                                              p.get("feature_importances"), scheme),
-                                           "This family exposes no per-feature effects.")),
-        section("PD term structure", graph(charts.term_structure((p.get("hazard") or {})
-                                                                 .get("term_structure"), scheme)))
-        if p.get("hazard") else None,
-        section("Statistical battery", table(["Test", "Category", "Result", "p-value", "Reading"],
-                                             diag_rows, max_height=320)),
+        section("Samples", kpis([
+            ("Development", fmt(samples.get("development")), "models are fitted here"),
+            ("Validation", f"{len(samples.get('validation_blocks') or [])} block(s)",
+             _words((plan.get("evaluation") or {}).get("validation", "—"))),
+            ("Test", fmt(samples.get("test")), "the pool is compared here"),
+            ("Sealed holdout", fmt(samples.get("holdout")) if samples.get("holdout") else "none",
+             "scored once, after the choice")]),
+            *[dmc.Text(n, size="xs", c="dimmed") for n in [samples.get("validation_note"),
+                                                             *(lib.get("notes") or [])] if n],
+            description=p.get("plan_summary")),
+        section("Single-factor screen",
+                table(["Rule", "Setting", "Factors in", "Factors out", "Dropped"], screen_rows),
+                dmc.Text("Shortlist", size="xs", fw=650, c="dimmed", mt="sm"),
+                table(["Factor", "Transformation", "Sign", "p-value", "In sample", "Validation", ""],
+                      factor_rows, max_height=360),
+                description="Every factor fitted alone on the development sample. The rule and "
+                            "the reason for each dropped factor are in "
+                            "stages/model/single_factor.json."),
+        section("Multi-factor selection", *path_blocks,
+                description="Each method's path: what was added or dropped at each step and what "
+                            "it did to the criterion.") if path_blocks else None,
+        section("Leaders", table(["#", "Id", "Family", "Factors", score_label, "Found by", ""],
+                                 leader_rows, max_height=420),
+                description="The top of the ranking, one line per distinct specification."),
+        section("Candidate pool", table(["Id", "Specification", "Factors", score_label, "Largest p",
+                                         "Diagnostics", "Constraints broken"], pool_rows),
+                description="Each member is fitted on the development sample, tested and saved. "
+                            "None is the champion yet."),
+        section("Experiment ledger", graph(charts.ledger(ledger, first.get("metric", "score"),
+                                                         leaders[0]["label"] if leaders else None,
+                                                         scheme), "No ledger.")),
         section("Challenger benchmarks", table(["Benchmark", "Score", "Status"], bench))
         if bench else None,
         section("Findings", findings_table(_findings(res))),
@@ -706,34 +934,120 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
 
 
 # --- backtest -----------------------------------------------------------------------------
-def backtest_panel(res: StageResult, state: RunState, scheme: str, _seat: str = "developer") -> list:
+def _forecast_spec(run_id: str, p: dict) -> dict | None:
+    """Actual and forecast per pool member on the comparison sample, as a chart spec."""
+    if not p.get("forecasts_path") or p.get("outcomes_analysis"):
+        return None
+    try:
+        data = json.loads(service.read_artifact(run_id, p["forecasts_path"], None) or "null")
+    except ValueError:
+        data = None
+    if not data or not data.get("actual"):
+        return None
+    series = [{"name": "actual", "y": data["actual"]}]
+    for cid, values in list(data["forecast"].items())[:7]:
+        series.append({"name": cid + (" (champion)" if cid == p.get("champion_id") else ""),
+                       "y": values})
+    return {"kind": "line", "x": data["x"], "series": series, "x_title": data.get("x_label", ""),
+            "y_title": "actual and forecast"}
+
+
+def backtest_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
     oa = p.get("outcomes_analysis") or {}
+    fa = p.get("forecast_analysis") or {}
     interp = p.get("interpretation") or {}
     port = p.get("portfolio_analysis") or {}
     stress = (p.get("stress_testing") or {}).get("scenarios") or []
+    cands = p.get("candidates") or []
+    metric = p.get("oos_metric_name", "")
+    sample = _words(p.get("evaluation_sample", "test"))
+    champion = p.get("champion_id")
+    keys = [k for k in (metric, "rmse", "mae", "r2", "bias", "gini", "ks",
+                        "expected_calibration_error", "psi")
+            if any(k in ((c.get("outcomes") or {}) | (c.get("metrics") or {})) for c in cands)]
+    keys = list(dict.fromkeys(keys))
+    labels = {"expected_calibration_error": "calibration error", "r2": "R²"}
+    cand_rows = [[dmc.Group([dmc.Code(c["id"]),
+                             dmc.Badge("champion", color="oxblood", size="xs")
+                             if c["id"] == champion else None,
+                             dmc.Badge("analyst pick", color="blue", size="xs", variant="light")
+                             if c["id"] == p.get("recommended_id") and c["id"] != champion
+                             else None], gap=4),
+                  dmc.Text(", ".join(c.get("features") or []), size="xs", ff="monospace"),
+                  fmt(c.get("development_score")),
+                  *[fmt(((c.get("outcomes") or {}) | (c.get("metrics") or {})).get(k)) for k in keys],
+                  dmc.Text("; ".join(c.get("flags") or []) or (c.get("error") or ""), size="xs")]
+                 for c in cands]
+    names = list(dict.fromkeys(s["name"] for c in cands for s in c.get("scenarios") or []))
+    scen_rows = [[dmc.Code(c["id"]), fmt(c.get("scenario_baseline")),
+                  *[next((f"{fmt(s['mean'])}  ({s['delta']:+.4g})" for s in c.get("scenarios") or []
+                          if s["name"] == n), "—") for n in names]]
+                 for c in cands if c.get("scenarios")]
+    gate = gate_block("gate_champion", state, res, seat=seat, body=[
+        dmc.RadioGroup(dmc.Stack([
+            dmc.Radio(label=f"{c['id']} · {c['label']} — {sample} {metric} "
+                            f"{fmt((c.get('metrics') or {}).get(metric))}",
+                      value=c["id"], disabled=c.get("role") == "challenger" or bool(c.get("error")))
+            for c in cands], gap=4),
+            id=_field("gate_champion", "champion"), label="Champion",
+            description="Chosen on how the candidates forecast, not only on how they fitted.",
+            value=champion),
+    ], primary=[
+        dmc.Button("Accept the champion", id=_act("gate_champion", "accept"),
+                   leftSection=icon("tabler:check")),
+        dmc.Button("Choose the selected candidate", id=_act("gate_champion", "override"),
+                   variant="light", color="orange", leftSection=icon("tabler:switch-horizontal")),
+    ])
+    head = [("Champion", str(champion or "—"), f"chosen by the {p.get('champion_source', 'engine')}"),
+            ("Candidates compared", fmt(len(cands)), f"on the {sample} sample")]
+    if oa:
+        head += [("Gini", fmt(oa.get("gini"), 3), "discrimination"),
+                 ("Calibration error", fmt(oa.get("expected_calibration_error"), 3),
+                  "mean |obs − pred|")]
+    else:
+        head += [(f"{sample.capitalize()} {metric}", fmt(p.get("oos_metric")), None),
+                 ("Bias", f"{fa['bias']:+.4g}" if fa.get("bias") is not None else "—",
+                  "mean forecast − mean outcome")]
     return [
-        kpis([("Gini", fmt(oa.get("gini"), 3), "discrimination"),
-              ("KS", fmt(oa.get("ks"), 3), None),
-              ("Calibration error", fmt(oa.get("expected_calibration_error"), 3), "mean |obs − pred|"),
-              ("PSI", fmt(oa.get("psi"), 3), oa.get("psi_label"))] if oa else
-             [(f"OOS {p.get('oos_metric_name', '')}", fmt(p.get("oos_metric")), p.get("evaluation_sample")),
-              ("Scored rows", fmt(p.get("scored_rows")), None)]),
-        recommendation_card(_rec(res), extra=dmc.SimpleGrid([
-            dmc.Stack([dmc.Text(k.title(), size="xs", c="dimmed", fw=600), dmc.Text(v, size="sm")], gap=2)
-            for k, v in interp.items()], cols={"base": 1, "md": 3}) if interp else None),
-        section("Calibration by score band", graph(charts.calibration(oa.get("calibration_table") or [],
-                                                                     scheme), "n/a"),
-                description=f"Evaluation sample: {p.get('evaluation_sample', '—')}"
-                            + (" (IMPACT)" if p.get("used_impact") else " (built-in scorer)")),
-        section("Portfolio loss simulation", kpis([
+        kpis(head),
+        recommendation_card(_rec(res), extra=dmc.Stack([
+            dmc.SimpleGrid([
+                dmc.Stack([dmc.Text(k.title(), size="xs", c="dimmed", fw=600), dmc.Text(v, size="sm")],
+                          gap=2) for k, v in interp.items()], cols={"base": 1, "md": 3})
+            if interp else None], gap="xs")),
+        gate,
+        section("Candidates side by side",
+                table(["Candidate", "Factors", "Development", *[labels.get(k, k) for k in keys], ""],
+                      cand_rows),
+                description=f"Every pool member scored on the {sample} sample, best first on "
+                            f"{metric}. The test sample has been used "
+                            f"{fmt(p.get('test_evaluations'))} time(s) in this run"
+                            + ("; a sealed holdout is scored at validation."
+                               if p.get("sealed_holdout") else
+                               ", and no sealed holdout was reserved: the champion's result here "
+                               "is also what it was chosen on.")),
+        section("Forecasts against outcomes",
+                graph(charts.from_spec(_forecast_spec(state.run_id, p), scheme)),
+                description="Candidates that rank together on the development sample can part "
+                            "ways here.") if _forecast_spec(state.run_id, p) else None,
+        section("Scenarios, candidate by candidate",
+                table(["Candidate", "Baseline", *names], scen_rows),
+                description="Mean forecast under each scenario (change on the baseline).")
+        if scen_rows else None,
+        section("Champion: calibration by score band",
+                graph(charts.calibration(oa.get("calibration_table") or [], scheme), "n/a"),
+                description=f"Evaluation sample: {sample}"
+                            + (" (IMPACT)" if p.get("used_impact") else " (built-in scorer)"))
+        if oa else None,
+        section("Champion: portfolio loss simulation", kpis([
             ("Expected loss", pct(port.get("expected_loss"), 2), "share of EAD"),
             (f"VaR {fmt(port.get('confidence'), 3)}", pct(port.get("var"), 2), None),
             ("Expected shortfall", pct(port.get("es"), 2), None)])) if port else None,
-        section("Stress scenarios", table(["Scenario", "Mean PD", "Δ PD"],
-                                          [[s["name"], pct(s.get("mean_pd"), 2),
-                                            f"{s.get('delta_pd', 0):+.2%}"] for s in stress]))
-        if stress else None,
+        section("Champion: stress scenarios", table(["Scenario", "Mean PD", "Δ PD"],
+                                                    [[s["name"], pct(s.get("mean_pd"), 2),
+                                                      f"{s.get('delta_pd', 0):+.2%}"] for s in stress]))
+        if stress and oa else None,
         section("Findings", findings_table(_findings(res))),
     ]
 

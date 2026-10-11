@@ -17,6 +17,7 @@ ACTIONS: dict[str, set[str]] = {
     "gate_intent": {"accept", "edit", "send_back"},
     "gate_data": {"accept", "edit", "send_back"},
     "gate_design": {"accept", "edit", "send_back"},
+    "gate_candidates": {"accept", "edit", "send_back"},
     "gate_champion": {"accept", "override", "send_back"},
     "gate_validation": {"accept", "send_back", "reject"},
     "gate_signoff": {"approve", "reject", "accept"},
@@ -38,7 +39,8 @@ def why(gate: str, action: str, payload: dict[str, Any] | None, reason: str = ""
     payload = payload or {}
     label = LABELS[gate]
     if action == "send_back":
-        target = payload.get("target") or ("model" if gate == "gate_validation" else STAGE_OF_GATE[gate])
+        target = payload.get("target") or (
+            "model" if gate in ("gate_validation", "gate_champion") else STAGE_OF_GATE[gate])
         message = payload.get("message") or reason
         return f"{label}: sent back to “{LABELS.get(target, target)}”" + (f" — {_clip(message)}" if message else "")
     if gate == "gate_intent":
@@ -58,11 +60,17 @@ def why(gate: str, action: str, payload: dict[str, Any] | None, reason: str = ""
         parts = []
         if payload.get("slate") is not None:
             parts.append(f"slate edited to {len(payload['slate'])} hypothesis(es)")
+        if payload.get("plan"):
+            fields = sorted(f for section in payload["plan"].values() for f in section)
+            parts.append(f"development plan changed ({_clip(', '.join(fields), 80)})")
         if payload.get("answers"):
             parts.append(f"{len(payload['answers'])} design question(s) answered")
         return f"{label}: " + (" and ".join(parts) if parts else action.replace("_", " "))
+    if gate == "gate_candidates" and action == "edit":
+        return (f"{label}: pool set to {_clip(', '.join(payload.get('pool') or []), 80)}"
+                + (f" — {_clip(reason)}" if reason else ""))
     if gate == "gate_champion" and action == "override":
-        return f"{label}: champion overridden to {payload.get('champion')}" + (f" — {_clip(reason)}" if reason else "")
+        return f"{label}: champion set to {payload.get('champion')}" + (f" — {_clip(reason)}" if reason else "")
     return f"{label}: {action.replace('_', ' ')}"
 
 
@@ -72,7 +80,8 @@ def _changed_downstream(gate: str) -> list[str]:
 
 def send_back(state: RunState, gate: str, payload: dict[str, Any], reason: str) -> list[str]:
     target = payload.get("target") or STAGE_OF_GATE[gate]
-    if gate == "gate_validation" and not payload.get("target"):
+    # Outcomes analysis measures; what a reviewer wants reconsidered is the search behind it.
+    if gate in ("gate_validation", "gate_champion") and not payload.get("target"):
         target = "model"
     if target not in SEND_BACK_TARGETS:
         raise GateError(f"cannot send work back to {target!r}; choose one of {SEND_BACK_TARGETS}")
@@ -213,23 +222,47 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
             invalidate += _changed_downstream(gate)
         elif action == "accept" and state.overrides.slate is not None:
             pass  # accepting keeps whatever slate is in force
-        rerun = apply_answers(state, answers)
-        if rerun:
+        patch = payload.get("plan") if action == "edit" else None
+        replan = apply_plan(state, res, patch) if patch else []
+        rerun = apply_answers(state, answers) + replan
+        if rerun:  # the design stage restates the plan in force, and the gate re-opens on it
             return sorted(set(invalidate) | set(rerun)), False
         return invalidate, True
 
-    if gate == "gate_champion":
-        if action == "override":
-            admissible = {c["id"] for c in (res.payload.get("admissible_set") or [])} if res else set()
-            pick = payload.get("champion")
-            if pick not in admissible:
-                raise GateError(f"champion {pick!r} is not in the admissible set {sorted(admissible)}")
+    if gate == "gate_candidates":
+        model = (res.payload if res is not None else None) or {}
+        current = list(model.get("pool_ids") or [])
+        if action == "edit":
+            pool = list(dict.fromkeys(payload.get("pool") or []))
+            if not pool:
+                raise GateError("the pool cannot be empty: outcomes analysis needs a candidate")
+            known = ({a["id"] for a in model.get("leaders") or []} | set(current)
+                     | set(model.get("evaluated_ids") or []))
+            unknown = [i for i in pool if i not in known]
+            if unknown:
+                raise GateError(f"{unknown} were not evaluated in this search; add a candidate "
+                                "by its id from the leaders or the ledger")
+            if sorted(pool) == sorted(current):
+                return [], True  # the pool on the page is the pool asked for
             if not reason.strip():
-                raise GateError("overriding the champion requires a reason")
-            if pick == res.payload.get("champion_id"):
-                return [], True  # overriding to the current champion is an accept
+                raise GateError("changing the pool requires a reason")
+            state.overrides.pool = pool
+            return ["model"], False  # the new members are fitted and tested; the gate re-opens
+        return [], True
+
+    if gate == "gate_champion":
+        backtest = (res.payload if res is not None else None) or {}
+        pool = {c["id"]: c for c in backtest.get("candidates") or []}
+        if action == "override":
+            pick = payload.get("champion")
+            if pick not in pool:
+                raise GateError(f"champion {pick!r} is not in the candidate pool {sorted(pool)}")
+            if not reason.strip():
+                raise GateError("choosing a different champion requires a reason")
+            if pick == backtest.get("champion_id"):
+                return [], True  # choosing the current champion is an accept
             state.overrides.champion = pick
-            return ["model"], False
+            return ["backtest"], False  # its outcomes analysis is written up; the gate re-opens
         return [], True
 
     if gate == "gate_validation":
@@ -256,6 +289,31 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
         return [], True
 
     raise GateError(f"unhandled decision {gate}/{action}")
+
+
+def apply_plan(state: RunState, res: Any, patch: dict[str, Any]) -> list[str]:
+    """Lay the developer's edit over the plan on the page. Refused when the plan could not be
+    run on this data; returns the steps to re-run (none when nothing changed)."""
+    from ..modeling import plan as plan_mod
+
+    current = ((res.payload if res is not None else None) or {}).get("plan")
+    if not current:
+        raise GateError("there is no development plan on this run to edit; re-run the design stage")
+    patch = {s: dict(patch.get(s) or {}) for s in plan_mod.SECTIONS if patch.get(s)}
+    unknown = [f"{s}.{f}" for s, fields in patch.items() for f in fields if f not in current[s]]
+    if unknown:
+        raise GateError(f"unknown plan field(s) {unknown}")
+    trial = plan_mod.merge(current, patch, "human")
+    bad = plan_mod.problems(trial)
+    if bad:
+        raise GateError("the plan cannot be run: " + "; ".join(bad))
+    if all(trial[s] == current[s] for s in plan_mod.SECTIONS):
+        return []
+    merged = {s: dict((state.overrides.plan or {}).get(s) or {}) for s in plan_mod.SECTIONS}
+    for section, fields in patch.items():
+        merged[section].update(fields)
+    state.overrides.plan = {s: v for s, v in merged.items() if v}
+    return ["ideate"]
 
 
 def apply_answers(state: RunState, answers: dict[str, str], *, assume: bool = False) -> list[str]:

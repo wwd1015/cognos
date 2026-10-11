@@ -48,21 +48,32 @@ def findings(records: list[dict[str, Any]]) -> list[Finding]:
     return out
 
 
-def _missing(ctx, tool, extra: dict[str, Any]) -> str:
+def _missing(ctx, tool, extra: dict[str, Any], stage: str = "") -> str:
     """Why this run cannot give ``tool`` what it needs ("" when it can)."""
     if tool.needs_target and not ctx.config.data.target:
         return "the target is not decided yet"
     for need in tool.needs:
         if need in extra:
             continue
-        if need == "holdout" and not (ctx.data_dir / "holdout.parquet").exists():
-            return "this run has no sealed holdout"
+        if need in ("holdout", "test") and _out_of_sample(ctx, stage, need)[0] is None:
+            return "this run holds back no test sample" + (
+                " and no sealed holdout" if need == "holdout" else "")
         if need == "train" and not (ctx.data_dir / "train.parquet").exists():
             return "the development sample has not been split yet"
         if need == "model" and not ((ctx.get("model") and ctx.get("model").payload) or {}).get(
-                "scorer_path"):
-            return "no champion has been fitted yet"
+                "pool"):
+            return "no candidate has been fitted yet"
     return ""
+
+
+def _out_of_sample(ctx, stage: str, need: str) -> tuple[str | None, str]:
+    """Which file an out-of-sample need reads at this stage, and what to call it. The sealed
+    holdout is never handed out before the champion is chosen (ADR-0016)."""
+    has_test = (ctx.data_dir / "test.parquet").exists()
+    sealed = (ctx.data_dir / "holdout.parquet").exists()
+    if need == "holdout" and sealed and stage != "backtest":
+        return "holdout", "sealed_holdout"
+    return ("test", "test") if has_test else (None, "")
 
 
 def _inputs(ctx, stage: str, extra: dict[str, Any]):
@@ -83,10 +94,12 @@ def _inputs(ctx, stage: str, extra: dict[str, Any]):
         if need not in cache:
             if need == "data":
                 cache[need] = ctx.load_dataset()
-            elif need in ("train", "holdout"):
-                cache[need] = ctx.load_df(f"data/{need}.parquet")
+            elif need == "train":
+                cache[need] = ctx.load_df("data/train.parquet")
+            elif need in ("test", "holdout"):
+                cache[need] = ctx.load_df(f"data/{_out_of_sample(ctx, stage, need)[0]}.parquet")
             elif need == "model":
-                cache[need] = ctx.require("model").payload["scorer_path"]
+                cache[need] = ctx.champion()["scorer_path"]
             elif need == "documents":
                 try:
                     cache[need] = json.loads(ctx.resolve("stages/intake/corpus.json").read_text(
@@ -117,6 +130,8 @@ def _inputs(ctx, stage: str, extra: dict[str, Any]):
                 env["score"] = lambda frame, path=value: score_frame(frame, path)
             else:
                 env[need] = value
+                if need == "holdout":
+                    env["holdout_sample"] = _out_of_sample(ctx, stage, need)[1]
         return df, env
 
     return inputs
@@ -143,7 +158,7 @@ def consult(ctx, agent: str, brief: dict[str, Any] | None = None, *, res=None,
     unavailable = reg.unavailable_for(stage)
     tools = []
     for t in reg.tools_for(stage):
-        why = _missing(ctx, t, extra)
+        why = _missing(ctx, t, extra, stage)
         if why:
             unavailable.append({"name": t.name, "description": t.description, "origin": t.origin,
                                 "note": why})

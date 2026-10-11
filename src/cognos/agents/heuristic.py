@@ -340,6 +340,7 @@ def design_lead(sl: dict[str, Any]) -> dict[str, Any]:
         "responses_to_challenges": _ack(sl),
         "frameworks": frameworks,
         "slate": slate,
+        "plan": None,  # the deterministic agent accepts the engine's recommended plan
         "transforms": [],
         "sponsor_questions": [],
     }
@@ -347,33 +348,44 @@ def design_lead(sl: dict[str, Any]) -> dict[str, Any]:
 
 # --- model -------------------------------------------------------------------------------
 def modeler(sl: dict[str, Any]) -> dict[str, Any]:
-    admissible = sl.get("admissible_set", [])
-    interp_required = sl.get("interpretability") == "required"
-    pick = next((c for c in admissible if not (interp_required and c.get("role") == "challenger")),
-                admissible[0])
-    checks, concerns = [], []
-    for s in pick.get("coefficient_signs", []):
-        exp = sign_prior(s["feature"])
-        obs = s["sign"]
-        if exp == "none" or obs in ("0", "n/a"):
-            assessment = "no_prior" if exp == "none" else "not_applicable"
-        else:
-            assessment = "consistent" if exp == obs else "wrong_sign"
-        checks.append({"feature": s["feature"], "expected": exp, "observed": obs,
-                       "assessment": assessment})
-        if assessment == "wrong_sign":
-            concerns.append({"statement": f"'{s['feature']}' has sign {obs}, against the {exp} "
-                                          "prior — check collinearity or segment mixing.",
-                             "evidence": [], "confidence": "medium"})
+    leaders = sl.get("leaders", [])
+    size = int(sl.get("pool_size") or 1)
+    picks = [c for c in leaders if c.get("engine_pick")][:size] or leaders[:1]
+    checks, concerns, seen = [], [], set()
+    for pick in picks:
+        for s in pick.get("coefficient_signs", []):
+            if s["feature"] in seen:
+                continue
+            seen.add(s["feature"])
+            exp = s.get("expected") if s.get("expected") in ("+", "-") else sign_prior(s["feature"])
+            obs = s["sign"]
+            if exp == "none" or obs in ("0", "n/a"):
+                assessment = "no_prior" if exp == "none" else "not_applicable"
+            else:
+                assessment = "consistent" if exp == obs else "wrong_sign"
+            checks.append({"feature": s["feature"], "expected": exp, "observed": obs,
+                           "assessment": assessment})
+            if assessment == "wrong_sign":
+                concerns.append({"statement": f"'{s['feature']}' has sign {obs} in {pick['id']}, "
+                                              f"against the {exp} prior — check collinearity or "
+                                              "segment mixing.",
+                                 "evidence": [], "confidence": "medium"})
+    broken = [p["id"] for p in picks if p.get("violations")]
+    first = (sl.get("rank_by") or [{}])[0]
     return {
-        "summary": (f"Recommend {pick['id']} ({pick['label']}): the ratchet's best "
-                    "parsimony-adjusted candidate that satisfies the interpretability constraint."),
-        "uncertainties": ["Choice made on cross-validation only; the sealed holdout is scored after "
-                          "the choice."],
+        "summary": (f"Carry {len(picks)} candidate(s) to outcomes analysis: "
+                    f"{', '.join(p['id'] for p in picks)}. They lead the plan's ranking and "
+                    + ("pass its constraints." if not broken else
+                       f"{len(broken)} of them break a constraint (no cleaner model ranks as "
+                       "high).")),
+        "uncertainties": ["The pool is ranked on the development sample only; how the members "
+                          "forecast is what the outcomes analysis is for."],
         "responses_to_challenges": _ack(sl),
-        "champion": pick["id"],
-        "rationale": (f"Best cross-validated {sl.get('metric', 'metric')} in the admissible set "
-                      f"({len(admissible)} candidate(s) within one standard error of the best)."),
+        "pool": [p["id"] for p in picks],
+        "rationale": (f"The top {len(picks)} distinct specification(s) by "
+                      f"{first.get('metric', 'the ranking metric')} on the "
+                      f"{str(first.get('sample', 'validation')).replace('_', ' ')} sample, out of "
+                      f"{sl.get('n_candidates_tried', len(leaders))} evaluated."),
         "sign_checks": checks,
         "concerns": concerns,
     }
@@ -385,15 +397,45 @@ def experiment(sl: dict[str, Any]) -> dict[str, Any]:
 
 # --- backtest ----------------------------------------------------------------------------
 def outcomes_analyst(sl: dict[str, Any]) -> dict[str, Any]:
-    f = sl.get("facts", {})
-    gini, ks = f.get("backtest.gini"), f.get("backtest.ks")
-    ece, psi = f.get("backtest.expected_calibration_error"), f.get("backtest.psi")
-    sample = f.get("backtest.evaluation_sample", "holdout")
+    candidates = sl.get("candidates", [])
+    required = sl.get("interpretability") == "required"
+    eligible = [c for c in candidates if not (required and c.get("role") == "challenger")]
+    # The engine orders the pool on the comparison sample, best first. Members within 2% of the
+    # best are within noise of each other: among those the deterministic agent takes the one
+    # that breaks no constraint and has the fewest factors.
+    metric = sl.get("metric", "metric")
+    ranked = eligible or candidates or [{"id": ""}]
+    best = ranked[0]
+    best_v = (best.get("metrics") or {}).get(metric)
+
+    def near(c: dict) -> bool:
+        v = (c.get("metrics") or {}).get(metric)
+        return (v is not None and best_v is not None
+                and abs(v - best_v) <= 0.02 * max(abs(best_v), 1e-12))
+
+    close = [c for c in ranked if c is best or near(c)]
+    pick = min(close, key=lambda c: (bool(c.get("violations")), c.get("n_features") or 0,
+                                     ranked.index(c)))
+    sample = str(sl.get("evaluation_sample", "test")).replace("_", " ")
+    runner_up = next((c for c in ranked if c is not pick), None)
+    if pick is best:
+        why = (f"{pick['id']} has the best {metric} on the {sample} sample among the "
+               f"{len(candidates)} pool member(s)")
+    else:
+        why = (f"{pick['id']} is within 2% of the best {metric} on the {sample} sample "
+               f"({best['id']}) with fewer factors"
+               + (" and no broken constraint" if best.get("violations") else ""))
+    if runner_up is not None:
+        why += f"; {runner_up['id']} is next"
+    oa = pick.get("outcomes") or {}
+    gini, ks = oa.get("gini"), oa.get("ks")
+    ece, psi = oa.get("expected_calibration_error"), oa.get("psi")
     if gini is None:
-        disc = "Outcomes analysis does not apply (continuous target); see the out-of-sample metric."
+        disc = ("Outcomes analysis for a continuous target: read the forecast error and the "
+                "bias of each candidate on the comparison sample.")
     else:
         band = "strong" if gini >= 0.5 else ("adequate" if gini >= 0.3 else "weak")
-        disc = f"Discrimination on the {sample} sample is {band} (Gini {gini}, KS {ks})."
+        disc = f"Discrimination on the {sample} sample is {band} (Gini {gini:.3f}, KS {ks:.3f})."
     cal = ("Calibration within tolerance." if ece is not None and ece <= 0.10 else
            "Calibration gap exceeds 0.10 — recalibrate before use." if ece is not None else
            "Calibration not assessed.")
@@ -402,9 +444,13 @@ def outcomes_analyst(sl: dict[str, Any]) -> dict[str, Any]:
             "Significant population shift (PSI above 0.25)." if psi is not None else
             "Stability not assessed.")
     return {
-        "summary": f"{disc} {cal}",
-        "uncertainties": [],
+        "summary": f"Recommend {pick['id']}: {why}. {disc} {cal}",
+        "uncertainties": ([] if sl.get("sealed_holdout") else
+                          ["The comparison sample is also what the choice rests on; there is no "
+                           "sealed sample to confirm it."]),
         "responses_to_challenges": _ack(sl),
+        "champion": pick["id"],
+        "champion_rationale": why + ".",
         "discrimination": disc,
         "calibration": cal,
         "stability": stab,

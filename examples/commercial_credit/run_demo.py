@@ -53,6 +53,19 @@ MD_ANSWERS = {
 }
 
 
+def _out_of_sample(mp: dict, bt: dict | None = None) -> str:
+    """The champion's out-of-sample numbers, each named for the sample it was read on. The pool
+    is compared on the test sample; a sealed holdout, when the plan keeps one, is scored once at
+    validation, after the choice."""
+    parts = []
+    if bt and bt.get("oos_metric") is not None:
+        parts.append(f"{str(bt.get('evaluation_sample', 'test')).replace('_', ' ')} sample="
+                     f"{bt['oos_metric']:.3f}")
+    if mp.get("holdout_metric") is not None:
+        parts.append(f"sealed holdout={mp['holdout_metric']:.3f}")
+    return " | ".join(parts) or "not yet compared out of sample"
+
+
 def banner(title: str) -> None:
     print("\n" + "=" * 72)
     print(f"  {title}")
@@ -137,11 +150,12 @@ def step3_full_run_with_answers(workdir: Path, csv: str):
             continue
         print(f"    - {stage:9s} {res.verdict.value:6s} {res.summary}")
 
-    mp = orch.ctx.require("model").payload
+    mp = orch.ctx.champion()  # the model stage with the champion in force laid over it
     bt = orch.ctx.require("backtest").payload
     oa = bt.get("outcomes_analysis") or {}
-    print(f"\n  Champion: {mp['champion']['family']} | CV roc_auc={mp['cv_mean']:.3f} "
-          f"| sealed holdout={mp['holdout_metric']:.3f}")
+    print(f"\n  Candidate pool: {', '.join(m['label'] for m in mp['pool'])}")
+    print(f"  Champion ({bt['champion_source']}, chosen on outcomes): {mp['champion']['family']} "
+          f"| CV roc_auc={mp['cv_mean']:.3f} | {_out_of_sample(mp, bt)}")
     if mp.get("challenger_benchmark"):
         cb = mp["challenger_benchmark"]
         print(f"  Challenger benchmark ({cb['kind']}): {cb['benchmark_score']:.3f} vs champion "

@@ -342,3 +342,92 @@ def test_the_record_names_the_person(root, monkeypatch):
     st = service.state(run_id)
     assert "maria" in _serialize(ui.questions_tab(st, "developer"))
     assert "maria" in _serialize(ui.header()) and "maria" in _serialize(ui.run_header(st))
+
+
+def test_the_plan_the_pool_and_the_champion_are_decided_on_forms(root):
+    """ADR-0016: the plan is edited at the design gate, the pool at the candidate gate, and the
+    champion is chosen on the page that compares the candidates' forecasts."""
+    cfg = service.demo_config("loss_forecast", root)
+    cfg.factors.lags = [1, 2]  # a smaller library: the forms are what is under test
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic")
+    service.run_until_idle(run_id)
+    for gate in ("gate_intent", "gate_data"):
+        service.submit_gate(run_id, gate, "accept", reason="ok", background=False)
+        st = service.run_until_idle(run_id)
+
+    # the design gate shows the plan, who set each choice and why, and lets the developer edit it
+    ideate = service.results(run_id)["ideate"]
+    plan = ideate.payload["plan"]
+    panel = _serialize(stage_panel("ideate", ideate, st, "light"))
+    assert "Development plan" in panel and "rolling origin" in panel and "cannot be shuffled" in panel
+    assert "plan::evaluation.validation" in panel and "plan::selection.methods" in panel
+    assert "plan::factors.max_p_value" in panel and "plan::rank.0.metric" in panel
+    assert '"c": null' not in panel
+    untouched = {"plan::evaluation.test": plan["evaluation"]["test"],
+                 "plan::evaluation.folds": float(plan["evaluation"]["folds"]),
+                 "plan::evaluation.holdout_fraction": 0, "plan::factors.enforce_sign": "yes",
+                 "plan::factors.transforms": list(plan["factors"]["transforms"]),
+                 "plan::selection.methods": ["forward", "best_subset"],
+                 "plan::factors.min_strength": "", "plan::selection.max_p_value": 0.1,
+                 "plan::rank.0.metric": "rmse", "plan::rank.0.sample": "validation",
+                 "plan::rank.1.metric": "r2", "plan::rank.1.sample": "in_sample"}
+    assert ui.gate_payload("gate_design", "edit", dict(untouched), run_id)[0] == {}
+    edited = {**untouched, "plan::evaluation.pool_size": 3.0, "plan::selection.methods": ["forward"],
+              "plan::factors.enforce_sign": "no", "plan::factors.top_n": "",
+              "plan::rank.1.metric": None}
+    payload, _ = ui.gate_payload("gate_design", "edit", edited, run_id)
+    assert payload == {"plan": {
+        "evaluation": {"pool_size": 3, "rank_by": [{"metric": "rmse", "sample": "validation"}]},
+        "selection": {"methods": ["forward"]},
+        "factors": {"enforce_sign": False, "top_n": None}}}
+    service.submit_gate(run_id, "gate_design", "edit", payload, "one method, three candidates",
+                        background=False)
+    st = service.run_until_idle(run_id)
+    ideate = service.results(run_id)["ideate"]
+    assert ideate.payload["plan"]["sources"]["pool_size"] == "human"
+    panel = _serialize(stage_panel("ideate", ideate, st, "light"))
+    assert '"developer"' in panel  # the plan says who set what
+    service.submit_gate(run_id, "gate_design", "accept", reason="ok", background=False)
+    st = service.run_until_idle(run_id)
+
+    # the candidate gate: the screen, each method's path, the leaders, and the pool as a form
+    assert ui.auto_step(st) == "model"
+    model = service.results(run_id)["model"]
+    panel = _serialize(stage_panel("model", model, st, "dark"))
+    for text in ("Review the candidate pool", "Single-factor screen", "Multi-factor selection",
+                 "Forward", "Leaders", "Candidate pool", "Accept the pool", "best per source"):
+        assert text in panel, text
+    assert '"type": "Graph"' in panel and "No ledger." not in panel and '"c": null' not in panel
+    ids = model.payload["pool_ids"]
+    assert len(ids) <= 3 and all(i in panel for i in ids)
+    outside = next(a["id"] for a in model.payload["leaders"] if a["id"] not in ids)
+    below = next(i for i in model.payload["evaluated_ids"]
+                 if i not in {a["id"] for a in model.payload["leaders"]})
+    payload, reason = ui.gate_payload("gate_candidates", "edit", {
+        "pool": [ids[0], outside], "extra": f" {below}; ", "reason": "one from the ledger"}, run_id)
+    assert payload == {"pool": [ids[0], outside, below]} and reason == "one from the ledger"
+    service.submit_gate(run_id, "gate_candidates", "edit", payload, reason, background=False)
+    st = service.run_until_idle(run_id)
+    model = service.results(run_id)["model"]
+    assert model.payload["pool_ids"] == [ids[0], outside, below]
+    panel = _serialize(stage_panel("model", model, st, "light"))
+    assert below in panel and "Add candidates from the ledger" in panel
+    service.submit_gate(run_id, "gate_candidates", "accept", reason="ok", background=False)
+    st = service.run_until_idle(run_id)
+
+    # the champion gate sits on the comparison, not on the search
+    assert ui.auto_step(st) == "backtest"
+    backtest = service.results(run_id)["backtest"]
+    panel = _serialize(stage_panel("backtest", backtest, st, "light"))
+    for text in ("Choose the champion", "Candidates side by side", "Forecasts against outcomes",
+                 "Scenarios, candidate by candidate", "severely_adverse", "Accept the champion",
+                 "no sealed holdout was reserved"):
+        assert text in panel, text
+    assert '"type": "Graph"' in panel and '"actual"' in panel and '"c": null' not in panel
+    other = next(c["id"] for c in backtest.payload["candidates"]
+                 if c["id"] != backtest.payload["champion_id"])
+    payload, _ = ui.gate_payload("gate_champion", "override", {"champion": other}, run_id)
+    assert payload == {"champion": other}
+    # another seat reads the page and cannot decide on it
+    locked = _serialize(stage_panel("backtest", backtest, st, "light", seat="reviewer"))
+    assert "Accept the champion" not in locked and "belongs to the model developer" in locked

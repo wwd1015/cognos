@@ -15,6 +15,7 @@ its response — so the white paper records who recommended what and who decided
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from ..analysis import consult
@@ -37,6 +38,100 @@ def _fmt(value: Any, nd: int = 4) -> str:
     return f"{f:.{nd}f}"
 
 
+def _oos_lines(mp: dict, bp: dict, metric_name: str) -> str:
+    """The champion's headline numbers, each named for the sample it was read on."""
+    first = ((mp.get("rank_by") or [{}])[0])
+    sample = str(first.get("sample", "validation")).replace("_", " ")
+    lines = [f"- **Development {first.get('metric', metric_name)} ({sample}):** "
+             f"{_fmt(mp.get('development_score'))}"
+             + (f" ± {_fmt(mp.get('cv_std'))}" if mp.get("cv_std") is not None
+                and first.get("sample") == "validation" else "")]
+    where = str(bp.get("evaluation_sample", "test")).replace("_", " ")
+    lines.append(f"- **{where.capitalize()}-sample {metric_name}:** {_fmt(bp.get('oos_metric'))} "
+                 f"(compared across {len(bp.get('candidates') or [])} candidate(s))")
+    if mp.get("n_holdout"):
+        lines.append(f"- **Sealed-holdout {metric_name}:** {_fmt(mp.get('holdout_metric'))} "
+                     "(scored once, after the choice)")
+    else:
+        lines.append("- **Sealed holdout:** none reserved")
+    return "\n".join(lines) + "\n"
+
+
+def _selection_body(mp: dict, bp: dict, metric_name: str) -> str:
+    """The record of the selection: the plan, the screen, each method's path, the pool and the
+    comparison the champion was chosen on. Mechanical: every number is the engine's."""
+    plan = mp.get("plan") or {}
+    if not plan:
+        return ""
+    ev, sel = plan.get("evaluation") or {}, plan.get("selection") or {}
+    reasons, sources = plan.get("reasons") or {}, plan.get("sources") or {}
+    samples = mp.get("samples") or {}
+    rows = [
+        ["Test sample", f"{str(ev.get('test')).replace('_', ' ')}, "
+                        f"{_fmt(ev.get('test_fraction'), 2)} of the rows",
+         sources.get("test", ""), reasons.get("test", "")],
+        ["Validation", f"{str(ev.get('validation')).replace('_', ' ')}, "
+                       f"{len(samples.get('validation_blocks') or [])} block(s)",
+         sources.get("validation", ""), reasons.get("validation", "")],
+        ["Sealed holdout", (f"{_fmt(ev.get('holdout_fraction'), 2)} of the rows"
+                            if ev.get("holdout_fraction") else "none"),
+         sources.get("holdout_fraction", ""), reasons.get("holdout_fraction", "")],
+        ["Ranking", ", then ".join(f"{r['metric']} ({str(r['sample']).replace('_', ' ')})"
+                                   for r in ev.get("rank_by") or []),
+         sources.get("rank_by", ""), reasons.get("rank_by", "")],
+        ["Selection methods", " + ".join(str(m).replace("_", " ") for m in sel.get("methods") or []),
+         sources.get("methods", ""), reasons.get("methods", "")],
+        ["Step criterion", str(sel.get("criterion")), sources.get("criterion", ""),
+         reasons.get("criterion", "")],
+    ]
+    out = ["## The development plan\n\n" + _table(["choice", "value", "set by", "reason"], rows),
+           f"\n\nRows: {samples.get('development', 'n/a')} development, "
+           f"{samples.get('test', 'n/a')} test, {samples.get('holdout', 'n/a')} sealed holdout"
+           + (f"; {samples['dropped_no_history']} leading period(s) dropped for lack of history"
+              if samples.get("dropped_no_history") else "") + ".\n\n"]
+    lib = mp.get("library") or {}
+    out.append("## Single-factor analysis\n\n"
+               f"The library holds {lib.get('n_factors', 'n/a')} factor(s) from "
+               f"{lib.get('n_sources', 'n/a')} explored column(s) (transformations: "
+               f"{', '.join(lib.get('transforms') or []) or 'none'}). Each was fitted alone on the "
+               "development sample; the rules below were applied in this order.\n\n"
+               + _table(["rule", "setting", "factors in", "factors out"],
+                        [[str(r["rule"]).replace("_", " "), str(r["setting"]) if r["setting"]
+                          is not None else "", str(r["before"]), str(r["after"])]
+                         for r in mp.get("screen") or []])
+               + f"\n\nShortlist ({len(mp.get('shortlist') or [])}): "
+               f"{', '.join(mp.get('shortlist') or []) or 'n/a'}. The full table, with the rule "
+               "and the reason for every dropped factor, is `stages/model/single_factor.json`.\n\n")
+    out.append("## Multi-factor selection\n\n")
+    for path in mp.get("paths") or []:
+        out.append(f"**{str(path['method']).replace('_', ' ').capitalize()}** ({path['family']}; "
+                   f"criterion {path['criterion']}): {path.get('note') or ''}\n\n")
+        if path.get("steps"):
+            out.append(_table(
+                ["step", "action", "factor", "factors in the model", "criterion", "change"],
+                [[str(s["step"]), s["action"], s.get("factor") or "", ", ".join(s["factors"]),
+                  _fmt(s.get("criterion")), _fmt(s.get("change")) if s.get("change") is not None
+                  else ""] for s in path["steps"]]) + "\n\n")
+    out.append("## Candidate pool\n\n"
+               f"{mp.get('n_candidates_tried', 'n/a')} model(s) were evaluated and ranked. The pool "
+               f"carried to outcomes analysis was set by the {mp.get('pool_source', 'engine')}.\n\n")
+    cands = bp.get("candidates") or []
+    if cands:
+        keys = [k for k in ("rmse", "mae", "r2", "bias", "gini", "ks",
+                            "expected_calibration_error", "psi")
+                if any(k in ((c.get("outcomes") or {}) | (c.get("metrics") or {})) for c in cands)]
+        out.append(_table(
+            ["candidate", "specification", "factors", "development", *keys, "champion"],
+            [[c["id"], c["label"], ", ".join(c.get("features") or []),
+              _fmt(c.get("development_score")),
+              *[_fmt(((c.get("outcomes") or {}) | (c.get("metrics") or {})).get(k)) for k in keys],
+              "yes" if c["id"] == bp.get("champion_id") else ""] for c in cands])
+            + f"\n\nCompared on the {str(bp.get('evaluation_sample', 'test')).replace('_', ' ')} "
+            f"sample ({metric_name} first). Champion chosen by the "
+            f"{bp.get('champion_source', 'engine')}: {bp.get('champion_rationale') or ''}\n\n")
+    return "".join(out)
+
+
 def _table(headers: list[str], rows: list[list[str]]) -> str:
     """Render a markdown table; returns an em-dash placeholder when there are no rows."""
     if not rows:
@@ -56,8 +151,8 @@ class DocumentStage(Stage):
 
     def run(self, ctx: RunContext) -> StageResult:
         cfg = ctx.config
-        model_res = ctx.require("model")
-        mp = model_res.payload or {}
+        # The model stage's payload with the champion in force laid over it (pool.view).
+        mp = ctx.champion() if ctx.get("model") is not None else {}
         explore = ctx.get("explore")
         ideate = ctx.get("ideate")
         backtest = ctx.get("backtest")
@@ -79,6 +174,7 @@ class DocumentStage(Stage):
         champion = mp.get("champion", {}) or {}
         family = champion.get("family", "unknown")
         metric_name = mp.get("metric", cfg.metric.name)
+        oos_lines = _oos_lines(mp, bp, metric_name)
         code_links: list[str] = []  # "path#symbol" anchors emitted across the bundle
 
         def emit(concept: OKFConcept) -> None:
@@ -100,8 +196,7 @@ class DocumentStage(Stage):
                 f"- **Target:** {cfg.data.target}\n"
                 f"- **Primary metric:** {metric_name} ({cfg.metric.direction.value})\n"
                 f"- **Champion family:** {family}\n"
-                f"- **CV {metric_name}:** {_fmt(mp.get('cv_mean'))} ± {_fmt(mp.get('cv_std'))}\n"
-                f"- **Frozen-holdout {metric_name}:** {_fmt(mp.get('holdout_metric'))}\n\n"
+                f"{oos_lines}\n"
                 "## Intended use\n\n"
                 f"{cfg.compliance.intended_use or 'See the [model card](./model_card.md).'}\n\n"
                 "Read on: [dataset](./dataset.md) · [methodology](./methodology.md) · "
@@ -178,14 +273,19 @@ class DocumentStage(Stage):
             tags=["method"],
             body=(
                 "# Methodology\n\n"
-                "## Champion search\n\n"
-                "Candidates are explored with a *ratchet* search: each accepted experiment must beat "
-                "the incumbent on leakage-safe cross-validation (all preprocessing fit inside each "
-                "training fold) before it becomes the new incumbent. The final score is read once on a "
-                "sealed *frozen holdout* never touched during search. The deployed model is the single "
-                "interpretable champion. The ratchet loop is implemented in "
-                "{@code:src/cognos/modeling/search.py#ratchet_search}, orchestrated by the modeling "
-                "stage at {@code:src/cognos/stages/model.py}.\n\n"
+                "## From factors to a champion\n\n"
+                "Development follows a plan confirmed at the design gate. The data are cut into a "
+                "development sample, a test sample and, when the data can spare the rows, a sealed "
+                "holdout ({@code:src/cognos/modeling/splits.py#split_samples}). Explored columns are "
+                "widened into a factor library, every factor is fitted alone, and the plan's rules "
+                "cut the library to a shortlist ({@code:src/cognos/modeling/factors.py#screen}). "
+                "Multi-factor models are built from the shortlist by the plan's selection methods "
+                "({@code:src/cognos/modeling/selection.py#run_methods}); every model is scored with "
+                "all preprocessing fitted inside each validation block, and all of them are ranked "
+                "together. The top of the ranking forms a candidate pool, the pool is compared on the "
+                "test sample, and the champion is chosen on that comparison. The deployed model is one "
+                "model. The stage is orchestrated at {@code:src/cognos/stages/model.py}.\n\n"
+                + _selection_body(mp, bp, metric_name) +
                 f"- **Candidates tried:** {mp.get('n_candidates_tried', 'n/a')}\n"
                 f"- **Hypothesis families considered:** {', '.join(ip.get('families', []) or []) or 'n/a'}\n"
                 f"{challenger_line}"
@@ -206,15 +306,18 @@ class DocumentStage(Stage):
         emit(OKFConcept(
             name="model", type="model",
             title="Champion Model", description="Family, hyperparameters, and headline metrics.",
-            resource="models/champion_scorer.joblib",
+            resource=(ctx.rel(Path(mp["scorer_path"])) if mp.get("scorer_path")
+                      else "models/candidates"),
             tags=["model"],
             body=(
                 "# Champion Model\n\n"
                 f"- **Family:** {family}\n"
                 f"- **Description:** {champion.get('description', 'n/a')}\n"
-                f"- **CV {metric_name}:** {_fmt(mp.get('cv_mean'))} ± {_fmt(mp.get('cv_std'))}\n"
-                f"- **Frozen-holdout {metric_name}:** {_fmt(mp.get('holdout_metric'))}\n"
-                f"- **Train / holdout rows:** {mp.get('n_train', 'n/a')} / {mp.get('n_holdout', 'n/a')}\n\n"
+                f"- **Candidate id:** {mp.get('champion_id', 'n/a')} "
+                f"(chosen by {mp.get('champion_source') or 'n/a'})\n"
+                f"{oos_lines}"
+                f"- **Development / test / sealed-holdout rows:** {mp.get('n_train', 'n/a')} / "
+                f"{mp.get('n_test', 'n/a')} / {mp.get('n_holdout', 'n/a')}\n\n"
                 "## Hyperparameters\n\n"
                 + _table(["parameter", "value"], hp_rows) + "\n\n"
                 "## Scoring\n\n"
@@ -452,7 +555,6 @@ class DocumentStage(Stage):
         self, cfg, mp: dict, ep: dict, bp: dict, cp: dict, family: str, metric_name: str,
     ) -> str:
         """Render the 9-section Google Model Card from available payloads + config."""
-        holdout = _fmt(mp.get("holdout_metric"))
         diagnostics = mp.get("diagnostics", {}) or {}
         return (
             "# Model Card\n\n"
@@ -469,11 +571,15 @@ class DocumentStage(Stage):
             f"protected attributes: {', '.join(cfg.data.protected_attributes) or 'none declared'}.\n\n"
             "## 4 Metrics\n\n"
             f"- **Primary metric:** {metric_name} ({cfg.metric.direction.value})\n"
-            f"- **CV {metric_name}:** {_fmt(mp.get('cv_mean'))} ± {_fmt(mp.get('cv_std'))}\n"
-            f"- **Frozen-holdout {metric_name}:** {holdout}\n\n"
+            f"{_oos_lines(mp, bp, metric_name)}\n"
             "## 5 Evaluation Data\n\n"
-            f"A sealed frozen holdout of {mp.get('n_holdout', 'n/a')} rows, never touched during "
-            "model search. See [dataset](./dataset.md).\n\n"
+            f"A test sample of {mp.get('n_test', 'n/a')} rows, on which the candidate pool was "
+            "compared and the champion chosen"
+            + (f", and a sealed holdout of {mp.get('n_holdout')} rows, scored once for the "
+               "champion after the choice. " if mp.get("n_holdout") else
+               ". No sealed holdout was reserved, so the test result is also what the champion "
+               "was chosen on. ")
+            + "See [dataset](./dataset.md).\n\n"
             "## 6 Training Data\n\n"
             f"{mp.get('n_train', 'n/a')} training rows over {len(ep.get('features', []) or [])} "
             f"features drawn from the source dataset ({ep.get('n_rows', 'n/a')} total rows).\n\n"
@@ -528,8 +634,11 @@ class DocumentStage(Stage):
             "## 7 EU declaration of conformity\n\n"
             "To be issued by the deployer upon completion of the conformity assessment.\n\n"
             "## 8 Post-market monitoring plan\n\n"
-            "Monitor input drift and performance against the frozen-holdout "
-            f"{metric_name}={_fmt(mp.get('holdout_metric'))}; re-validate on degradation.\n\n"
+            "Monitor input drift and performance against the "
+            + (f"sealed-holdout {metric_name}={_fmt(mp.get('holdout_metric'))}"
+               if mp.get("holdout_metric") is not None
+               else f"test-sample {metric_name}={_fmt(bp.get('oos_metric'))}")
+            + "; re-validate on degradation.\n\n"
             "## 9 Records, performance metrics and test results\n\n"
             f"{diagnostics.get('n_passed', 0)}/{diagnostics.get('n_run', 0)} statistical tests "
             "passed; see [diagnostics](./diagnostics.md) and [backtest](./backtest.md)."
@@ -700,8 +809,8 @@ class DocumentStage(Stage):
                 parts += [
                     "", "## Existing model against this update\n",
                     f"The existing model is COGNOS run `{prior.get('run_id')}`. Both columns are "
-                    "what each run recorded; the two runs keep separate sealed holdouts, so the "
-                    "holdout figures are not measured on the same sample.\n",
+                    "what each run recorded; the two runs keep separate test samples and sealed "
+                    "holdouts, so those figures are not measured on the same rows.\n",
                     _table(["", "Existing model", "This update"], [
                         ["Champion family", str(prior.get("champion_family") or "n/a"),
                          str(champion.get("family", "n/a"))],
@@ -710,7 +819,9 @@ class DocumentStage(Stage):
                         ["Metric", str(prior.get("metric") or "n/a"), metric_name],
                         [f"CV {metric_name}" if same else "CV metric",
                          _fmt(prior.get("cv_mean")), _fmt(mp.get("cv_mean"))],
-                        [f"Holdout {metric_name}" if same else "Holdout metric",
+                        [f"Test {metric_name}" if same else "Test metric",
+                         _fmt(prior.get("test_metric")), _fmt(mp.get("test_metric"))],
+                        [f"Sealed-holdout {metric_name}" if same else "Sealed-holdout metric",
                          _fmt(prior.get("holdout_metric")), _fmt(mp.get("holdout_metric"))],
                         ["Validation verdict", str(prior.get("validation_verdict") or "n/a"),
                          "see the validation section"],

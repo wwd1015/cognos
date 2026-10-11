@@ -99,8 +99,13 @@ def cv_score(
     is_timeseries: bool = False,
     folds: int = 5,
     random_state: int = 42,
+    splitter=None,
+    groups=None,
 ) -> CVResult:
     """Leakage-safe CV: a *fresh* model (incl. all preprocessing) is fit per training fold only.
+
+    ``splitter`` is the test plan's re-sampling scheme (modeling/splits.py); without one the
+    scheme follows the task, as before. ``groups`` keeps a group on one side of every split.
 
     ``fit_predict(X_train, y_train)`` must return a callable ``predict(X) -> (point, proba)`` where
     ``proba`` is None for regression. All data-dependent preprocessing must happen inside it so that
@@ -109,11 +114,13 @@ def cv_score(
     y = np.asarray(y)
     n = len(y)
     folds = max(2, min(folds, n // 2)) if n >= 4 else 2
-    splitter = _splitter(is_classification, is_timeseries, folds, random_state)
+    if splitter is None:
+        splitter = _splitter(is_classification, is_timeseries, folds, random_state)
     oof = np.full(n, np.nan, dtype=float)
     fold_scores: list[float] = []
 
-    for train_idx, val_idx in splitter.split(X, y if is_classification and not is_timeseries else None):
+    for train_idx, val_idx in splitter.split(
+            X, y if is_classification and not is_timeseries else None, groups):
         X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
         y_tr, y_val = y[train_idx], y[val_idx]
         predict = fit_predict(X_tr, y_tr)

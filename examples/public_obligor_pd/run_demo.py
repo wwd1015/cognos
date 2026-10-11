@@ -63,6 +63,19 @@ SCENARIOS = [
 ]
 
 
+def _out_of_sample(mp: dict, bt: dict | None = None) -> str:
+    """The champion's out-of-sample numbers, each named for the sample it was read on. The pool
+    is compared on the test sample; a sealed holdout, when the plan keeps one, is scored once at
+    validation, after the choice."""
+    parts = []
+    if bt and bt.get("oos_metric") is not None:
+        parts.append(f"{str(bt.get('evaluation_sample', 'test')).replace('_', ' ')} sample="
+                     f"{bt['oos_metric']:.3f}")
+    if mp.get("holdout_metric") is not None:
+        parts.append(f"sealed holdout={mp['holdout_metric']:.3f}")
+    return " | ".join(parts) or "not yet compared out of sample"
+
+
 def banner(title: str) -> None:
     print("\n" + "=" * 72)
     print(f"  {title}")
@@ -117,10 +130,10 @@ def step2_glm_links(workdir: Path, csv: str) -> None:
     orch = Orchestrator(cfg, runs_root=str(workdir / "runs_glm"))
     for s in ("explore", "ideate"):
         orch.run_stage(s)
-    res = orch.run_stage("model")
-    mp = res.payload
-    print(f"  Champion: {mp['champion']['family']} | CV roc_auc={mp['cv_mean']:.3f} "
-          f"| sealed holdout={mp['holdout_metric']:.3f}")
+    orch.run_stage("model")
+    mp = orch.ctx.champion()  # no outcomes analysis in this step: the pool's leading candidate
+    print(f"  Leading candidate: {mp['champion']['family']} | CV roc_auc={mp['cv_mean']:.3f} "
+          f"| pool of {len(mp['pool'])}")
     pvals = {k: v for k, v in (mp["pvalues"] or {}).items() if k != "const"}
     top = sorted(pvals.items(), key=lambda kv: kv[1])[:4]
     print("  Most significant coefficients (statsmodels GLM on the K-1 design):")
@@ -136,12 +149,12 @@ def step3_hazard_term_structure(workdir: Path, csv: str) -> None:
     orch = Orchestrator(cfg, runs_root=str(workdir / "runs_hazard"))
     for s in ("explore", "ideate"):
         orch.run_stage(s)
-    res = orch.run_stage("model")
-    mp = res.payload
+    orch.run_stage("model")
+    mp = orch.ctx.champion()  # no outcomes analysis in this step: the pool's leading candidate
     hz = mp["hazard"]
     ts = hz["term_structure"]
-    print(f"  Champion: {mp['champion']['family']} (horizon={hz['horizon_periods']} quarters) "
-          f"| CV roc_auc={mp['cv_mean']:.3f} | holdout={mp['holdout_metric']:.3f}")
+    print(f"  Leading candidate: {mp['champion']['family']} (horizon={hz['horizon_periods']} "
+          f"quarters) | CV roc_auc={mp['cv_mean']:.3f}")
     print("  PD term structure (portfolio mean):")
     for p, h, c in zip(ts["periods"], ts["mean_hazard"], ts["mean_cumulative_pd"], strict=False):
         print(f"    Q{p}: marginal hazard={h:.3%}   cumulative PD={c:.3%}")
@@ -157,8 +170,8 @@ def step4_structural_hybrid(workdir: Path, csv: str) -> None:
     orch = Orchestrator(cfg, runs_root=str(workdir / "runs_struct"))
     for s in ("explore", "ideate"):
         orch.run_stage(s)
-    res = orch.run_stage("model")
-    mp = res.payload
+    orch.run_stage("model")
+    mp = orch.ctx.champion()  # no outcomes analysis in this step: the pool's leading candidate
     st = mp["structural"]
     dd_coef = (mp["coefficients"] or {}).get("merton_dd")
     print(f"  Solver: mean DD={st['mean_dd']:.2f}, mean structural PD="
@@ -167,9 +180,9 @@ def step4_structural_hybrid(workdir: Path, csv: str) -> None:
           + (f", coefficient={dd_coef:+.3f} (negative = higher DD is safer)" if dd_coef else ""))
     bm = st["benchmark"]
     print(f"  Pure-structural challenger benchmark (deployed={bm['deployed']}): "
-          f"holdout AUC={bm['holdout_roc_auc']:.3f} (Gini={bm['holdout_gini']:.3f})")
-    print(f"  Hybrid champion holdout AUC={mp['holdout_metric']:.3f} — the reduced-form model "
-          "with the structural signal inside")
+          f"test AUC={bm['test_roc_auc']:.3f} (Gini={bm['test_gini']:.3f})")
+    print(f"  Hybrid candidate CV AUC={mp['cv_mean']:.3f} — the reduced-form model with the "
+          "structural signal inside; the pool is compared out of sample at outcomes analysis")
 
 
 def step5_full_pipeline(workdir: Path, csv: str):
@@ -181,13 +194,13 @@ def step5_full_pipeline(workdir: Path, csv: str):
         r = orch.ctx.get(stage)
         print(f"    - {stage:9s} {r.verdict.value:6s} {r.summary}" if r
               else f"    - {stage:9s} (not run)")
-    mp = orch.ctx.require("model").payload
+    mp = orch.ctx.champion()  # the model stage with the champion in force laid over it
     bt = orch.ctx.require("backtest").payload
     oa = bt.get("outcomes_analysis") or {}
     pa = bt.get("portfolio_analysis") or {}
     st = bt.get("stress_testing") or {}
-    print(f"\n  Champion: {mp['champion']['family']} | CV={mp['cv_mean']:.3f} "
-          f"| holdout={mp['holdout_metric']:.3f}")
+    print(f"\n  Champion ({bt['champion_source']}, from a pool of {len(mp['pool'])}): "
+          f"{mp['champion']['family']} | CV={mp['cv_mean']:.3f} | {_out_of_sample(mp, bt)}")
     print(f"  OOT outcomes: Gini={oa.get('gini'):.3f} KS={oa.get('ks'):.3f} "
           f"PSI={oa.get('psi'):.3f} ({oa.get('psi_label')})")
     if pa:

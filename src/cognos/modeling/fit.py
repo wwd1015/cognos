@@ -234,6 +234,8 @@ class FittedModel:
     base_features: list[str] | None = None  # original columns needed to recompute the transforms
     structural: dict | None = None  # StructuralSpec dict; Merton DD recomputed at predict/serve
     migration: dict | None = None  # fitted migration model dict; migration_pd recomputed at serve
+    factors: list | None = None  # library transformations the model uses (modeling/factors)
+    datetime_col: str | None = None
 
     @property
     def model_id(self) -> str:

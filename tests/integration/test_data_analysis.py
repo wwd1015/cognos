@@ -159,7 +159,7 @@ def test_agent_written_code_is_kept_reviewed_validated_and_delivered(make_config
     decision = eng.state.last_decision("gate_data")
     assert decision.payload["reviewed_analyses"] == [
         {"id": "a1", "sha256": a1["code_sha256"]}, {"id": "a3", "sha256": a3["code_sha256"]}]
-    for gate in ("gate_design", "gate_champion"):
+    for gate in ("gate_design", "gate_candidates", "gate_champion"):
         eng.run_until_idle()
         eng.submit_gate(gate, "accept", reason="ok")
     state = eng.run_until_idle()

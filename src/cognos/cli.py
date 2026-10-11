@@ -90,7 +90,8 @@ agents:                   # who makes the recommendations (cognos providers list
   budget_usd: 5.0         # spend cap per run (0 = unlimited)
 
 workflow:
-  gates: [gate_intent, gate_data, gate_design, gate_champion, gate_validation, gate_signoff]
+  gates: [gate_intent, gate_data, gate_design, gate_candidates, gate_champion, gate_validation,
+          gate_signoff]
   auto_challenge_loops: 2 # validator findings routed back automatically, at most N times
 
 metric:
@@ -103,6 +104,41 @@ search:
   random_state: 42
   ensemble: true
   guided: false           # let the modeler agent propose extra experiments (engine keeps winners)
+
+# The development plan (ADR-0016). Anything left at auto is recommended from the shape of the
+# data and the intended use, proposed by the Design Lead and confirmed at the design gate.
+evaluation:               # how the data are split to build, compare and confirm models
+  test: auto              # out_of_time | random | none: the pool is compared on this sample
+  test_fraction: null     # null => search.holdout_fraction
+  holdout_fraction: null  # sealed final sample, scored once for the champion (0 = none)
+  validation: auto        # none | kfold | stratified_kfold | group_kfold | rolling_origin | sliding_window
+  folds: null
+  group_col: null         # group_kfold: rows of one entity stay in one fold
+  horizon: null           # rolling_origin: periods per validation block
+  rank_by: []             # e.g. [{metric: rmse, sample: validation}, {metric: r2, sample: in_sample}]
+  pool_size: 4            # candidates carried to outcomes analysis
+
+factors:                  # the factor library and the single-factor screen (rules run in this order)
+  transforms: [auto]      # none | lag | diff | pct | yoy_diff | yoy_pct | ma | log | sqrt | square
+  lags: [1, 2, 3, 4]
+  max_missing: 0.2
+  max_p_value: 0.10
+  enforce_sign: true
+  expected_signs: {}      # {column: "+" | "-"}
+  best_per_source: 2      # transformations kept per explored column
+  max_correlation: 0.8
+  top_n: 12
+  force_in: []
+  force_out: []
+
+selection:                # from single factors to multi-factor models
+  methods: [auto]         # grid | forward | backward | stepwise | best_subset (one or several)
+  criterion: auto         # validation | in_sample | aic | bic | adj_r2
+  max_factors: 4
+  must_include: []        # factors every model carries
+  max_p_value: null       # every coefficient of an accepted model
+  enforce_sign: true
+  max_correlation: 0.8
 
 structural:               # Merton distance-to-default (needs market observables)
   enabled: false
@@ -676,7 +712,7 @@ def build_parser() -> argparse.ArgumentParser:
     pd = sub.add_parser("demo", help="run end to end on synthetic data")
     pd.add_argument("--task", default="commercial",
                     choices=["regression", "classification", "timeseries", "credit", "commercial",
-                             "cni", "migration"])
+                             "cni", "migration", "loss_forecast", "linked"])
     pd.add_argument("--interactive", action="store_true")
     pd.add_argument("--provider", default="heuristic")
     runs(pd)
@@ -703,7 +739,8 @@ def build_parser() -> argparse.ArgumentParser:
     pg.add_argument("--reason", default="")
     pg.add_argument("--target", default=None, help="send_back: intake | explore | ideate | model")
     pg.add_argument("--message", default=None, help="send_back: what the agent should reconsider")
-    pg.add_argument("--payload", default=None, help="JSON, e.g. '{\"champion\": \"c3\"}'")
+    pg.add_argument("--payload", default=None, help="JSON, e.g. '{\"pool\": [\"c1a2b3c\", \"c4d5e6f\"]}' or "
+                                                  "'{\"champion\": \"c1a2b3c\"}'")
     pg.add_argument("--seat", default=None,
                     choices=["developer", "reviewer", "approver"],
                     help="who is acting; omit to act as the seat that owns the gate")

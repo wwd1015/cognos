@@ -30,10 +30,17 @@ class ScorerBundle:
     base_features: list[str] | None = None  # original columns needed to recompute transforms
     structural: dict | None = None  # StructuralSpec dict; Merton DD recomputed at serve time
     migration: dict | None = None  # fitted migration model dict; migration_pd recomputed at serve
+    factors: list[dict] | None = None  # library transformations the model uses (modeling/factors)
+    datetime_col: str | None = None  # the order a lag or a change is computed in
 
     def _augment(self, df: pd.DataFrame) -> pd.DataFrame:
         """Recompute engineered features (target-hidden) so serving matches training exactly."""
         frame = df
+        if getattr(self, "factors", None):
+            from ..modeling.factors import apply_library
+
+            frame = apply_library(frame, self.factors,
+                                  datetime_col=getattr(self, "datetime_col", None))
         if self.structural:
             from ..modeling.structural import StructuralSpec, augment_frame
 
@@ -59,6 +66,19 @@ class ScorerBundle:
 
     def score_frame(self, df: pd.DataFrame) -> np.ndarray:
         X = self._augment(df)[self.raw_features]
+        if getattr(self, "factors", None):
+            # A lag or a change has no value on the first rows of a frame (no history there):
+            # those rows score as missing instead of failing the whole frame.
+            numeric = X.select_dtypes(include=["number"])
+            ok = np.isfinite(numeric.to_numpy(dtype=float)).all(axis=1)
+            if not ok.all():
+                out = np.full(len(X), np.nan)
+                if ok.any():
+                    out[ok] = self._predict(X[ok])
+                return out
+        return self._predict(X)
+
+    def _predict(self, X: pd.DataFrame) -> np.ndarray:
         if self.is_classification:
             return self.pipeline.predict_proba(X)[:, 1]
         return self.pipeline.predict(X)
@@ -76,6 +96,8 @@ def save_scorer(path: str, fitted) -> str:
         base_features=list(fitted.base_features) if getattr(fitted, "base_features", None) else None,
         structural=getattr(fitted, "structural", None),
         migration=getattr(fitted, "migration", None),
+        factors=getattr(fitted, "factors", None),
+        datetime_col=getattr(fitted, "datetime_col", None),
     )
     joblib.dump(bundle, path)
     return path

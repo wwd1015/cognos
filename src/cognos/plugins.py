@@ -27,9 +27,14 @@ from typing import Any
 from . import datasources
 
 # What a tool may be handed, and the first stage at which each input exists. Nothing before
-# ``backtest`` can receive the sealed holdout or the fitted champion: the modeler chooses blind.
+# ``backtest`` can receive out-of-sample rows or a fitted model: the pool is formed on the
+# development sample alone. ``test`` is the sample the pool is compared on. ``holdout`` is the
+# out-of-sample evidence the stage may see: at ``backtest`` that is the test sample (the sealed
+# holdout stays sealed until the champion is chosen); from ``validate`` on it is the sealed
+# holdout, or the test sample when the plan sealed none (``env["holdout_sample"]`` says which).
+# ``model`` is the champion in force (at ``backtest``, the pool's leading candidate).
 NEEDS = {"data": "explore", "documents": "intake", "results": "intake", "train": "model",
-         "holdout": "backtest", "model": "backtest"}
+         "test": "backtest", "holdout": "backtest", "model": "backtest"}
 TOOL_STAGES = ("intake", "explore", "ideate", "model", "backtest", "validate", "comply",
                "document")
 

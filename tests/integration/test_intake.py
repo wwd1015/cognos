@@ -179,7 +179,7 @@ def baseline(make_config, runs_dir, apply_brief):
 
 def test_model_update_reads_the_prior_model_and_records_the_change(baseline, runs_dir, tmp_path):
     cfg, old = baseline
-    prior_family = old.results()["model"].payload["champion"]["family"]
+    prior_family = old.context().champion()["champion"]["family"]
     request = _intent(tmp_path, {
         **BRIEF, "prior_model": "PD v1, in production since 2024",
         "update_reason": "The annual review found calibration drift.",
@@ -224,8 +224,8 @@ def test_model_update_reads_the_prior_model_and_records_the_change(baseline, run
     ctx = eng.context()
     validator = slices.build(ctx, "validator", {})
     modeler = slices.build(ctx, "modeler", {})
-    assert validator["facts"]["prior.holdout_metric"] == round(
-        old.results()["model"].payload["holdout_metric"], 4)
+    assert validator["facts"]["prior.test_metric"] == round(
+        old.results()["backtest"].payload["oos_metric"], 4)
     assert not [k for k in modeler["facts"] if k.startswith("prior.")]
     assert modeler["project"]["engagement"]["update"]["scope"] == "re_estimate"
     assert "holdout" not in json.dumps(modeler["project"]["engagement"])

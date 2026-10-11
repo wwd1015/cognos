@@ -97,11 +97,18 @@ def vasicek_loss_simulation(pd_: np.ndarray, *, lgd: float = 0.45, ead: np.ndarr
 
 
 def stress_scenarios(eval_df: pd.DataFrame, scorer_path: str, scenarios: list[dict], *,
-                     lgd: float = 0.45, ead: np.ndarray | None = None) -> dict:
+                     lgd: float = 0.45, ead: np.ndarray | None = None,
+                     factors: list[dict] | None = None, datetime_col: str | None = None,
+                     history: pd.DataFrame | None = None) -> dict:
     """Deterministic macro-scenario stress: shock covariates, re-score, report PD/EL deltas.
 
     A scenario is ``{"name": str, "shocks": {column: {"add": x} | {"mul": x} | {"set": x}}}``.
     Unknown columns are reported, never silently ignored into a wrong answer.
+
+    ``factors`` are the library transformations the model may use (modeling/factors.py): a
+    shocked column's lags, changes and logs are recomputed before re-scoring, with ``history``
+    (the rows before the sample) supplying what a lag reaches back to. ``mean`` / ``delta``
+    repeat ``mean_pd`` / ``delta_pd`` for a model whose output is not a PD.
     """
     from ..runtime.score import score_frame
 
@@ -109,7 +116,8 @@ def stress_scenarios(eval_df: pd.DataFrame, scorer_path: str, scenarios: list[di
     total_ead = float(w.sum()) or 1.0
     base_scores = np.asarray(score_frame(eval_df, scorer_path), dtype=float)
     base_pd = float(np.average(base_scores, weights=w))
-    out = {"baseline": {"mean_pd": base_pd, "expected_loss": base_pd * lgd}, "scenarios": []}
+    out = {"baseline": {"mean_pd": base_pd, "mean": base_pd, "expected_loss": base_pd * lgd},
+           "scenarios": []}
 
     for sc in scenarios:
         name = str(sc.get("name", "scenario"))
@@ -127,6 +135,14 @@ def stress_scenarios(eval_df: pd.DataFrame, scorer_path: str, scenarios: list[di
                 shocked[col] = base_col + float(spec["add"])
             elif "mul" in spec:
                 shocked[col] = base_col * float(spec["mul"])
+        if factors:
+            from .factors import apply_library
+
+            n_hist = 0 if history is None else len(history)
+            stacked = (pd.concat([history, shocked], ignore_index=True) if n_hist
+                       else shocked.reset_index(drop=True))
+            stacked = apply_library(stacked, factors, datetime_col=datetime_col, replace=True)
+            shocked = stacked.iloc[n_hist:].reset_index(drop=True)
         scores = np.asarray(score_frame(shocked, scorer_path), dtype=float)
         mean_pd = float(np.average(scores, weights=w))
         entry = {
@@ -134,6 +150,8 @@ def stress_scenarios(eval_df: pd.DataFrame, scorer_path: str, scenarios: list[di
             "shocks": shocks,
             "mean_pd": mean_pd,
             "delta_pd": mean_pd - base_pd,
+            "mean": mean_pd,
+            "delta": mean_pd - base_pd,
             "expected_loss": mean_pd * lgd,
             "delta_expected_loss": (mean_pd - base_pd) * lgd,
             "worst_decile_mean_pd": float(np.mean(np.sort(scores)[-max(1, len(scores) // 10):])),

@@ -68,7 +68,8 @@ def collect(ctx, *, fresh: dict | None = None,
         if up:
             _put(f, "intake.n_change_items", len(up.get("change_items", [])))
         prior = (p.get("prior") or {}).get("run") or {}
-        for k in ("champion_family", "metric", "cv_mean", "cv_std", "holdout_metric", "n_train",
+        for k in ("champion_family", "metric", "cv_mean", "cv_std", "test_metric",
+                  "holdout_metric", "n_train",
                   "validation_verdict"):
             _put(f, f"prior.{k}", prior.get(k))
         if prior:
@@ -105,41 +106,77 @@ def collect(ctx, *, fresh: dict | None = None,
         _put(f, "ideate.families", ide.payload.get("families", []))
         _put(f, "ideate.n_open_questions", len(ide.payload.get("open_questions", [])))
     mo = get("model")
+    bt = get("backtest")
+    va_res = get("validate")
     if mo is not None and mo.payload:
-        p = mo.payload
-        champ = p.get("champion") or {}
+        from .. import pool
+
+        # The pool is the model stage's result. The champion's own numbers are facts only once
+        # outcomes analysis has pointed to it (pool.view): before that nobody may cite them.
+        p = pool.view(getattr(ctx, "run_dir", "."), mo.payload,
+                      bt.payload if bt is not None else None,
+                      va_res.payload if va_res is not None else None,
+                      getattr(getattr(ctx, "overrides", None), "champion", None))
         _put(f, "model.metric", p.get("metric"))
-        _put(f, "model.champion_family", champ.get("family"))
-        _put(f, "model.champion_label", p.get("champion_label"))
-        _put(f, "model.n_champion_features", len(champ.get("features", [])))
-        _put(f, "model.cv_mean", p.get("cv_mean"))
-        _put(f, "model.cv_std", p.get("cv_std"))
+        _put(f, "model.rank_metric", p.get("rank_metric"))
         _put(f, "model.n_candidates_tried", p.get("n_candidates_tried"))
         _put(f, "model.n_train", p.get("n_train"))
-        _put(f, "model.holdout_metric", p.get("holdout_metric"))
+        _put(f, "model.n_test", p.get("n_test"))
         _put(f, "model.n_holdout", p.get("n_holdout"))
-        _put(f, "model.holdout_evaluations", p.get("holdout_evaluations"))
-        for name, v in (p.get("coefficients") or {}).items():
-            _put(f, f"model.coef.{name}", v)
-        for name, v in (p.get("pvalues") or {}).items():
-            _put(f, f"model.p.{name}", v)
-        diag = p.get("diagnostics") or {}
-        _put(f, "model.diagnostics_passed", diag.get("n_passed"))
-        _put(f, "model.diagnostics_run", diag.get("n_run"))
-        for t in diag.get("tests", []) or []:
-            if not t.get("skipped"):
-                _put(f, f"model.test.{t['name']}", "passed" if t.get("passed") else "failed")
+        lib = p.get("library") or {}
+        _put(f, "model.n_factors", lib.get("n_factors"))
+        _put(f, "model.n_shortlisted", len(p.get("shortlist") or []) or None)
+        _put(f, "model.n_pool", len(p.get("pool") or []) or None)
+        _put(f, "model.best_score", p.get("best_score"))
+        for m in p.get("pool") or []:
+            _put(f, f"model.candidate.{m['id']}.score", m.get("score"))
+            _put(f, f"model.candidate.{m['id']}.n_factors", m.get("n_features"))
+            _put(f, f"model.candidate.{m['id']}.max_p_value", m.get("max_p_value"))
+            _put(f, f"model.candidate.{m['id']}.diagnostics_failed",
+                 len(m.get("diagnostics_failed") or []))
         bench = p.get("challenger_benchmark") or {}
         _put(f, "model.challenger_benchmark_score", bench.get("benchmark_score"))
-    bt = get("backtest")
+        if p.get("champion_decided"):
+            champ = p.get("champion") or {}
+            _put(f, "model.champion_id", p.get("champion_id"))
+            _put(f, "model.champion_family", champ.get("family"))
+            _put(f, "model.champion_label", p.get("champion_label"))
+            _put(f, "model.n_champion_features", len(champ.get("features", [])))
+            _put(f, "model.cv_mean", p.get("cv_mean"))
+            _put(f, "model.cv_std", p.get("cv_std"))
+            _put(f, "model.development_score", p.get("development_score"))
+            for name, v in (p.get("coefficients") or {}).items():
+                _put(f, f"model.coef.{name}", v)
+            for name, v in (p.get("pvalues") or {}).items():
+                _put(f, f"model.p.{name}", v)
+            diag = p.get("diagnostics") or {}
+            _put(f, "model.diagnostics_passed", diag.get("n_passed"))
+            _put(f, "model.diagnostics_run", diag.get("n_run"))
+            for t in diag.get("tests", []) or []:
+                if not t.get("skipped"):
+                    _put(f, f"model.test.{t['name']}", "passed" if t.get("passed") else "failed")
     if bt is not None and bt.payload:
         p = bt.payload
         _put(f, "backtest.evaluation_sample", p.get("evaluation_sample"))
+        _put(f, "backtest.n_candidates", len(p.get("candidates") or []) or None)
+        _put(f, "backtest.test_evaluations", p.get("test_evaluations"))
+        for c in p.get("candidates") or []:
+            for name, v in (c.get("metrics") or {}).items():
+                _put(f, f"backtest.candidate.{c['id']}.{name}", v)
+            for name, v in (c.get("outcomes") or {}).items():
+                _put(f, f"backtest.candidate.{c['id']}.{name}", v)
+            for sc in c.get("scenarios") or []:
+                _put(f, f"backtest.candidate.{c['id']}.scenario.{sc['name']}.mean", sc.get("mean"))
+                _put(f, f"backtest.candidate.{c['id']}.scenario.{sc['name']}.delta", sc.get("delta"))
+        _put(f, "backtest.champion_id", p.get("champion_id"))
         _put(f, "backtest.oos_metric", p.get("oos_metric"))
         oa = p.get("outcomes_analysis") or {}
         for k in ("gini", "ks", "auc", "expected_calibration_error", "psi", "psi_label",
                   "observed_default_rate", "mean_predicted_pd"):
             _put(f, f"backtest.{k}", oa.get(k))
+        fa = p.get("forecast_analysis") or {}
+        for k in ("rmse", "mae", "r2", "bias", "mean_actual", "mean_forecast"):
+            _put(f, f"backtest.forecast.{k}", fa.get(k))
         wf = p.get("walk_forward") or {}
         _put(f, "backtest.walk_forward_mean", wf.get("mean"))
         _put(f, "backtest.walk_forward_std", wf.get("std"))
@@ -154,6 +191,9 @@ def collect(ctx, *, fresh: dict | None = None,
         for axis, v in (p.get("rubric") or {}).items():
             _put(f, f"validate.rubric.{axis}", v)
         _put(f, "validate.n_findings", len(va.findings))
+        # The sealed holdout: scored once, for the champion, after the choice.
+        _put(f, "validate.holdout_metric", p.get("holdout_metric"))
+        _put(f, "validate.holdout_evaluations", p.get("holdout_evaluations"))
     co = get("comply")
     if co is not None and co.payload:
         p = co.payload

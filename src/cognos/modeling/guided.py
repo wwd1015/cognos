@@ -85,9 +85,14 @@ def guided_search(
     folds: int = 5,
     random_state: int = 42,
     rounds: int = 6,
+    columns: list[str] | None = None,
 ) -> GuidedResult:
-    """Run up to ``rounds`` agent-proposed experiments; keep any that beat the incumbent."""
-    base_features = list(champion.features)
+    """Run up to ``rounds`` agent-proposed experiments; keep any that beat the incumbent.
+
+    ``columns`` are what a proposal may build on (default: the incumbent's own features). The
+    model stage passes every explored column, so a transform can bring back a driver the
+    single-factor screen dropped for having no *linear* effect."""
+    base_features = list(columns or champion.features)
     best_cand, best_cv, best_transforms = champion, champion_cv, []
     history: list[GuidedRound] = []
 

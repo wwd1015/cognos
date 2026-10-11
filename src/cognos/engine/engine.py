@@ -528,7 +528,10 @@ class Engine:
             if _SEVERITY_ORDER[v] > _SEVERITY_ORDER[worst]:
                 worst = v
         if "model" in results:
-            summ.champion_metric = results["model"].metrics.get("cv_mean")
+            from .. import pool
+
+            summ.champion_metric = pool.from_results(
+                self.run_dir, results, state.overrides.champion).get("development_score")
             summ.champion_metric_name = ((results["model"].payload or {}).get("metric")
                                          or self.config.metric.name)
         summ.final_verdict = worst

@@ -9,13 +9,14 @@ from __future__ import annotations
 
 STAGES = ["intake", "explore", "ideate", "model", "backtest", "validate", "comply", "document",
           "review"]
-GATES = ["gate_intent", "gate_data", "gate_design", "gate_champion", "gate_validation",
-         "gate_signoff"]
+GATES = ["gate_intent", "gate_data", "gate_design", "gate_candidates", "gate_champion",
+         "gate_validation", "gate_signoff"]
 
 STEPS = [
     "intake", "gate_intent",
-    "explore", "gate_data", "ideate", "gate_design", "model", "gate_champion", "backtest",
-    "validate", "gate_validation", "comply", "document", "review", "gate_signoff",
+    "explore", "gate_data", "ideate", "gate_design", "model", "gate_candidates", "backtest",
+    "gate_champion", "validate", "gate_validation", "comply", "document", "review",
+    "gate_signoff",
 ]
 
 DEPS: dict[str, list[str]] = {
@@ -26,9 +27,10 @@ DEPS: dict[str, list[str]] = {
     "ideate": ["gate_data"],
     "gate_design": ["ideate"],
     "model": ["gate_design"],
-    "gate_champion": ["model"],
-    "backtest": ["gate_champion"],
-    "validate": ["backtest"],
+    "gate_candidates": ["model"],
+    "backtest": ["gate_candidates"],
+    "gate_champion": ["backtest"],
+    "validate": ["gate_champion"],
     "gate_validation": ["validate"],
     "comply": ["gate_validation"],
     "document": ["comply"],
@@ -37,7 +39,8 @@ DEPS: dict[str, list[str]] = {
 }
 
 # The stage each gate reviews (its recommendation is what the human accepts or pushes back on).
-GATE_OF_STAGE = {"intake": "gate_intent", "explore": "gate_data", "ideate": "gate_design", "model": "gate_champion",
+GATE_OF_STAGE = {"intake": "gate_intent", "explore": "gate_data", "ideate": "gate_design",
+                 "model": "gate_candidates", "backtest": "gate_champion",
                  "validate": "gate_validation", "review": "gate_signoff"}
 STAGE_OF_GATE = {g: s for s, g in GATE_OF_STAGE.items()}
 
@@ -51,9 +54,10 @@ LABELS = {
     "gate_data": "Review data decisions",
     "ideate": "Design the model",
     "gate_design": "Review the design",
-    "model": "Search & select champion",
-    "gate_champion": "Review the champion",
-    "backtest": "Outcomes analysis",
+    "model": "Search & build the candidate pool",
+    "gate_candidates": "Review the candidate pool",
+    "backtest": "Outcomes analysis of the pool",
+    "gate_champion": "Choose the champion",
     "validate": "Independent validation",
     "gate_validation": "Review validation",
     "comply": "Model-risk readiness",

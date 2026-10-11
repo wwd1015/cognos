@@ -52,18 +52,39 @@ def test_data_analyst_must_decide_every_suspect_and_never_drop_the_target():
     assert any("target" in e for e in errs)
 
 
-def test_modeler_must_pick_from_admissible_set_and_respect_interpretability():
-    sl = {"interpretability": "required", "admissible_set": [
+def test_modeler_pools_from_the_leaders_and_respects_interpretability():
+    sl = {"interpretability": "required", "pool_size": 2, "leaders": [
         {"id": "c1", "family": "logit", "role": "candidate", "features": ["a"]},
-        {"id": "c2", "family": "gradient_boosting", "role": "challenger", "features": ["a"]}]}
-    bad = ModelerOutput.model_validate({"summary": "s", "champion": "c9", "rationale": "r"})
-    assert "not in admissible_set" in checks.modeler(bad, sl)[0]
-    tree = ModelerOutput.model_validate({"summary": "s", "champion": "c2", "rationale": "r"})
-    assert "challenger" in checks.modeler(tree, sl)[0]
-    ok = ModelerOutput.model_validate({"summary": "s", "champion": "c1", "rationale": "r",
-                                       "sign_checks": [{"feature": "a", "expected": "+",
-                                                        "observed": "+", "assessment": "consistent"}]})
-    assert checks.modeler(ok, sl) == []
+        {"id": "c2", "family": "gradient_boosting", "role": "challenger", "features": ["a"]},
+        {"id": "c3", "family": "probit", "role": "candidate", "features": ["b"]}]}
+
+    def pool(*ids, **more):
+        return ModelerOutput.model_validate({"summary": "s", "pool": list(ids), "rationale": "r",
+                                             **more})
+    assert "not in leaders" in checks.modeler(pool("c9"), sl)[0]
+    assert "at least one" in checks.modeler(pool(), sl)[0]
+    assert "challenger" in checks.modeler(pool("c2"), sl)[0]  # a pool of benchmarks only
+    assert "at most 2" in checks.modeler(pool("c1", "c2", "c3"), sl)[0]
+    assert "twice" in checks.modeler(pool("c1", "c1"), sl)[0]
+    signs = [{"feature": "z", "expected": "+", "observed": "+", "assessment": "consistent"}]
+    assert "not a factor of the pool" in checks.modeler(pool("c1", sign_checks=signs), sl)[0]
+    assert checks.modeler(pool("c1", "c2"), sl) == []  # a challenger may ride along
+
+
+def test_outcomes_analyst_names_a_champion_from_the_pool():
+    from cognos.agents.contracts import OutcomesAnalystOutput
+
+    sl = {"interpretability": "required", "candidates": [
+        {"id": "c1", "family": "logit", "role": "candidate"},
+        {"id": "c2", "family": "gradient_boosting", "role": "challenger"}]}
+
+    def pick(cid):
+        return OutcomesAnalystOutput.model_validate({
+            "summary": "s", "champion": cid, "champion_rationale": "r", "discrimination": "d",
+            "calibration": "c", "stability": "s"})
+    assert "not in candidates" in checks.outcomes_analyst(pick("c9"), sl)[0]
+    assert "challenger" in checks.outcomes_analyst(pick("c2"), sl)[0]
+    assert checks.outcomes_analyst(pick("c1"), sl) == []
 
 
 def test_writer_cannot_type_numbers_or_cite_unknown_facts():
@@ -123,17 +144,19 @@ def test_modeler_never_sees_holdout_and_validator_never_sees_modeler_rationale(m
 
 
 def _modeler_slice_data():
-    return {"admissible_set": [{"id": "c1", "family": "logit", "role": "candidate",
-                                "features": ["a"], "coefficient_signs": [], "label": "logit(1f)"}],
-            "interpretability": "required", "metric": "roc_auc"}
+    return {"leaders": [{"id": "c1", "family": "logit", "role": "candidate", "engine_pick": True,
+                         "features": ["a"], "coefficient_signs": [], "violations": [],
+                         "label": "logit(1f)"}],
+            "pool_size": 2, "interpretability": "required",
+            "rank_by": [{"metric": "roc_auc", "sample": "validation"}]}
 
 
 def test_runner_retries_with_errors_then_succeeds(make_config, runs_dir):
     cfg = make_config("classification")
     eng = Engine(cfg, runs_root=runs_dir)
     answers = iter([
-        {"summary": "s", "champion": "c7", "rationale": "r"},
-        {"summary": "s", "champion": "c1", "rationale": "r"},
+        {"summary": "s", "pool": ["c7"], "rationale": "r"},
+        {"summary": "s", "pool": ["c1"], "rationale": "r"},
     ])
     seen_prompts = []
 
@@ -144,7 +167,7 @@ def test_runner_retries_with_errors_then_succeeds(make_config, runs_dir):
     runner = AgentRunner(providers.get("heuristic"), eng.run_dir, backend=backend)
     ctx = eng.context()
     out = runner.recommend(ctx, "modeler", _modeler_slice_data())
-    assert out.champion == "c1"
+    assert out.pool == ["c1"]
     assert "previous answer was rejected" in seen_prompts[1] and "c7" in seen_prompts[1]
     audit = [json.loads(x) for x in (eng.run_dir / "agents" / "audit.jsonl")
              .read_text(encoding="utf-8").splitlines()]
@@ -155,10 +178,10 @@ def test_runner_retries_with_errors_then_succeeds(make_config, runs_dir):
 def test_runner_gives_up_after_retries(make_config, runs_dir):
     eng = Engine(make_config("classification"), runs_root=runs_dir)
     runner = AgentRunner(providers.get("heuristic"), eng.run_dir, max_retries=1,
-                         backend=lambda **_: ({"summary": "s", "champion": "zz", "rationale": "r"}, {}))
+                         backend=lambda **_: ({"summary": "s", "pool": ["zz"], "rationale": "r"}, {}))
     with pytest.raises(AgentRunError) as err:
         runner.recommend(eng.context(), "modeler", _modeler_slice_data())
-    assert "not in admissible_set" in str(err.value)
+    assert "not in leaders" in str(err.value)
 
 
 def test_budget_is_enforced_for_paid_providers(make_config, runs_dir):

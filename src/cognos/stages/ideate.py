@@ -392,6 +392,14 @@ class IdeateStage(Stage):
         if incumbent and incumbent["fittable"]:
             default_slate = self._incumbent_first(default_slate, incumbent)
 
+        # --- the development plan the data and the intent call for (ADR-0016) -------
+        from ..modeling import plan as plan_mod
+
+        dataset = ctx.load_dataset()
+        shape = plan_mod.shape_of(dataset, cfg)
+        columns = list(dataset.columns)
+        engine_plan = plan_mod.recommend(cfg, shape, families=families, columns=columns)
+
         # --- the Design Lead's recommendation (engine-checked) ---------------------
         res = StageResult(stage=self.name, verdict=Verdict.PASS)
         res.payload = {"data_structure": structure, "open_questions": questions,
@@ -420,8 +428,27 @@ class IdeateStage(Stage):
             "safe_np_funcs": sorted(SAFE_NP_FUNCS),
             "search_budget": cfg.search.max_candidates,
             "interpretability": cfg.design.interpretability,
+            "plan": {k: engine_plan[k] for k in ("evaluation", "selection", "shape", "options",
+                                                 "reasons", "sources")},
             **({"incumbent": incumbent} if incumbent else {}),
         }, fresh={"ideate": res}, check=check_transforms)
+
+        # --- engine disposes: the plan (profile > Design Lead; the developer's edit wins) ---
+        plan_proposed = None
+        if out.plan is not None:
+            ev0 = engine_plan["evaluation"]
+            plan_proposed = {
+                "evaluation": {
+                    "test": out.plan.test, "validation": out.plan.validation,
+                    "test_fraction": (0.0 if out.plan.test == "none" else
+                                      ev0["test_fraction"] or cfg.search.holdout_fraction),
+                    "holdout_fraction": ((ev0["holdout_fraction"] or ev0["test_fraction"]
+                                          or cfg.search.holdout_fraction)
+                                         if out.plan.sealed_holdout else 0.0)},
+                "selection": {"methods": list(dict.fromkeys(out.plan.methods)),
+                              "criterion": out.plan.criterion},
+                "rationale": out.plan.rationale,
+            }
 
         # --- engine disposes: the slate (a human edit at gate_design wins) --------------
         if ctx.overrides.slate:
@@ -444,6 +471,8 @@ class IdeateStage(Stage):
         slate_families = list(dict.fromkeys(h["family"] for h in hypotheses))
         families = ([f for f in families if f in slate_families]
                     + [f for f in slate_families if f not in families])
+        plan = plan_mod.resolve(cfg, shape, families=families, columns=columns,
+                                proposed=plan_proposed, human=ctx.overrides.plan)
         proposed_transforms = [{"name": t.name, "expr": t.expr, "rationale": t.rationale}
                                for t in out.transforms]
         framework_choices = [f.model_dump() for f in out.frameworks]
@@ -463,6 +492,7 @@ class IdeateStage(Stage):
             notes += (f" Model update ({str(incumbent['scope']).replace('_', ' ')}): existing "
                       f"family {incumbent['family'] or 'not identified'}; "
                       f"{len(incumbent['features_in_data'])} of its inputs found in this data.")
+        notes += f" Plan: {plan_mod.summary(plan)}."
         notes += f" Design Lead: {out.summary}"
 
         payload = {
@@ -479,6 +509,9 @@ class IdeateStage(Stage):
             "design": cfg.design.model_dump(),
             "hypotheses": hypotheses,
             "proposed_transforms": proposed_transforms,  # agent-authored, engine-validated
+            "plan": plan,  # the development plan in force (model stage resolves it the same way)
+            "plan_proposed": plan_proposed,  # the Design Lead's changes to the engine's plan
+            "plan_summary": plan_mod.summary(plan),
             "notes": notes,
         }
         if incumbent:
@@ -489,6 +522,9 @@ class IdeateStage(Stage):
                                       framework_choices)
         res.add_artifact(ctx.save_text("stages/ideate/design_brief.md", brief, kind="markdown"))
 
+        for note in plan.get("ignored") or []:
+            res.add_finding(Finding(id="plan-ignored", severity=Severity.LOW, category="plan",
+                                    message=note))
         if questions:
             res.add_finding(Finding(
                 id="design-open-questions", severity=Severity.LOW, category="design",

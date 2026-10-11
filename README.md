@@ -49,20 +49,20 @@ gates, a challenger loop, and an audit trail — on top of COGNOS's econometric 
 ## The workflow
 
 ```
- intake ─▶ explore ─▶ ideate ─▶ model ─▶ backtest ─▶ validate ─▶ comply ─▶ document ─▶ review
-    │         │          │         │                    │ ⛔                              │ ⛔
- gate_intent gate_data gate_design gate_champion  gate_validation                 gate_signoff
- (you)       (you)      (you)       (you)           (you)                           (you)
+ intake ─▶ explore ─▶ ideate ─▶ model ──────▶ backtest ───▶ validate ─▶ comply ─▶ document ─▶ review
+    │         │          │         │              │            │ ⛔                            │ ⛔
+ gate_intent gate_data gate_design gate_candidates gate_champion gate_validation        gate_signoff
+ (you)       (you)      (you)       (you)           (you)         (you)                  (you)
 ```
 
 | Stage | The engine computes | The agent recommends | You decide at the gate |
 |---|---|---|---|
 | `intake` | reads the intent document and the prior model's artifacts, parses the template, inventories and hashes every document | **Intake Analyst** — the engagement brief (every "stated" position quoted from the documents), whether the goal is clear, interview questions; for an update, the change items and scope | answer the interview; confirm the intent |
 | `explore` | fetches the data and keeps a snapshot; profile, missingness, leakage suspects; runs every analysis the agent requests (tools, plugin tools, restricted Python) | **Data Analyst** — the dependent variable, the features to consider, analysis requests and code, keep/exclude each suspect, sponsor questions | the target; which columns are inputs; the analyst's code |
-| `ideate` | data structure, framework applicability, fittable families | **Design Lead** — framework roles, ranked slate, feature transforms (engine-validated), sponsor questions | the slate; answers to design questions |
-| `model` | budgeted leakage-safe search, the **admissible set** (one-SE rule), refit, inference, battery, sealed-holdout score | **Modeler** — the champion from the admissible set (blind to the holdout), economic sign checks; opt-in guided experiments | accept / override the champion |
-| `backtest` | IMPACT scoring, Gini/KS, calibration, PSI, portfolio sim, stress | **Outcomes Analyst** — reads discrimination, calibration, stability | — |
-| `validate` ⛔ | the effective-challenge rubric; **BLOCKs on confirmed leakage** | **Independent Validator** — findings routed back to the stage that must change (never sees the modeler's reasoning) | accept the risk / send back / reject |
+| `ideate` | data structure, framework applicability, fittable families, and a **development plan** recommended from the shape of the data and the intent, with a reason per choice | **Design Lead** — framework roles, ranked slate, changes to the plan, feature transforms (engine-validated), sponsor questions | the slate; the plan (split, validation, ranking, screen rules, selection methods); answers to design questions |
+| `model` | the plan's samples; the **factor library**; every factor fitted alone and the library cut by the screen; multi-factor models by forward / backward / stepwise / best subset / grid; one ranked ledger; every pool member fitted, tested and saved | **Modeler** — the **pool** of candidates that goes on (no champion yet), economic sign checks; opt-in guided experiments | accept the pool, or add and remove members |
+| `backtest` | every pool member scored on the test sample: forecast error and bias or Gini/KS, calibration, PSI; every scenario for every member; then IMPACT scoring, portfolio sim and stress for the champion | **Outcomes Analyst** — the **champion**, on how the candidates forecast, and its discrimination, calibration, stability | accept the champion, or choose another pool member |
+| `validate` ⛔ | the effective-challenge rubric; the sealed holdout scored once, for the champion; **BLOCKs on confirmed leakage** | **Independent Validator** — findings routed back to the stage that must change (never sees the modeler's reasoning) | accept the risk / send back / reject |
 | `comply` | SR 11-7 / NIST AI RMF readiness report (non-gating) | **Model-Risk Analyst** — readiness and priority human actions | — |
 | `document` | OKF bundle, Model Card, EU Annex IV, decision log | **Technical Writer** — narrative with `{{fact:…}}` placeholders the engine renders | — |
 | `review` ⛔ | AST-verified docs↔code anchors; **BLOCKs on stale references** | — | sign off / reject |
@@ -197,7 +197,9 @@ cognos status --run <run_id>                 # steps, questions, challenges
 cognos compare <run_a> <run_b>               # what was decided differently, and what it changed
 cognos export <run_id>                       # one zip: documents, results, decisions, audit (never the data)
 cognos delete-run <run_id> [<run_id> ...]    # remove runs for good; shows what is lost and asks first
-cognos gate gate_champion --run <run_id> --action override --payload '{"champion": "c3"}' --reason "..."
+cognos gate gate_design --run <run_id> --action edit --payload '{"plan": {"selection": {"methods": ["forward", "best_subset"]}}}'
+cognos gate gate_candidates --run <run_id> --action edit --payload '{"pool": ["c1a2b3c", "c4d5e6f"]}' --reason "..."
+cognos gate gate_champion --run <run_id> --action override --payload '{"champion": "c4d5e6f"}' --reason "..."
 cognos gate gate_validation --run <run_id> --action send_back --target model --message "..."
 cognos answer --run <run_id> --gap design-use_case --text "origination underwriting"
 ```
@@ -232,7 +234,7 @@ update = service.create_run(cfg, engagement={          # a model update of that 
 the existing model's artifacts, a button to download the template, interactive or autonomous, agent
 backend), and a run workspace with the stage rail, each stage's engine evidence (the engagement
 brief and the interview form, profile, framework assessment, slate, experiment
-ledger, admissible set, coefficient and calibration charts, rubric, findings, the rendered white
+ledger, the single-factor screen, each selection path, the candidate pool side by side, forecast and calibration charts, rubric, findings, the rendered white
 paper) beside its agent's recommendation, the gate form, live activity, questions & challenges, and
 an agent audit where every call's prompt, context slice and raw output can be inspected. Light and
 dark themes; all state is on disk, so a refresh or restart loses nothing.
@@ -252,7 +254,7 @@ are chosen. Use a real network share, not a syncing folder
 ## What makes it trustworthy
 
 - **Agents recommend; the engine disposes.** Every agent answer is validated against a contract and
-  engine checks (unknown fact ids, a champion outside the admissible set, a non-fittable family, an
+  engine checks (unknown fact ids, a pool or a champion outside the candidates on the page, a non-fittable family, an
   excluded target, a typed metric value…) and retried with the errors; failures are visible, never
   silent.
 - **No assumed intent.** The Intake Analyst may only call a sponsor position "stated" with a quote

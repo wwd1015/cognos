@@ -57,7 +57,7 @@ def test_stage_by_stage(make_config, runs_dir):
     # backtest depends on model; runs individually now that model exists
     r = orch.run_stage("backtest")
     assert r.verdict != Verdict.ERROR
-    assert orch.ctx.require("model").payload["champion"]["family"]
+    assert orch.ctx.champion()["champion"]["family"]
 
 
 def test_run_stage_missing_dependency_errors(make_config, runs_dir):

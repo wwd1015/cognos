@@ -333,9 +333,16 @@ def summarize_run(run_dir: Path) -> dict[str, Any]:
         except (FileNotFoundError, ValueError):
             return {}
 
+    from . import pool
+
     state = load("state.json")
-    model = load("stages/model/result.json")
-    payload = model.get("payload") or {}
+    # The earlier run's model stage with its champion in force laid over it (pool.view). A run
+    # recorded before candidate pools carries the champion on the model stage itself.
+    recorded = load("stages/model/result.json").get("payload") or {}
+    payload = pool.view(run_dir, recorded,
+                        load("stages/backtest/result.json").get("payload"),
+                        load("stages/validate/result.json").get("payload"),
+                        (state.get("overrides") or {}).get("champion"))
     champion = payload.get("champion") or {}
     package = state.get("package") or {}
     return {
@@ -348,6 +355,7 @@ def summarize_run(run_dir: Path) -> dict[str, Any]:
         "metric": payload.get("metric"),
         "cv_mean": payload.get("cv_mean"),
         "cv_std": payload.get("cv_std"),
+        "test_metric": payload.get("test_metric"),
         "holdout_metric": payload.get("holdout_metric"),
         "n_train": payload.get("n_train"),
         "validation_verdict": load("stages/validate/result.json").get("verdict"),

@@ -391,6 +391,68 @@ def make_rating_migration_dataset(n_obligors: int = 450, start_year: int = 1981,
     return pd.DataFrame(rows)
 
 
+def make_loss_forecast_dataset(n: int = 120, seed: int = 11) -> pd.DataFrame:
+    """A quarterly loss-forecasting series: a portfolio net charge-off rate and macro drivers.
+
+    One row per quarter. The charge-off rate does not follow the *level* of any column on the
+    same date. It follows the change in unemployment over the past year, two quarters back; the
+    credit spread one quarter back; and house-price growth over the past year, one quarter back.
+    So a model has to be built the way loss models are: widen each driver into lags and changes,
+    fit every one alone, shorten the list, then add factors one at a time. ``vix``,
+    ``cpi_inflation`` and ``treasury_10y`` carry no signal; ``gdp_growth`` and
+    ``cre_price_index`` move with the true drivers and so look useful alone without adding
+    anything beside them.
+    """
+    rng = np.random.default_rng(seed)
+    burn = 12
+    total = n + burn
+    # A few recessions: unemployment climbs, spreads jump, house prices fall.
+    recession = np.zeros(total)
+    for frac, length in ((0.18, 4), (0.45, 6), (0.83, 3)):
+        start = burn + int(n * frac)
+        recession[start:start + length] = 1.0
+
+    unemp, d_unemp = np.zeros(total), np.zeros(total)
+    unemp[0] = 5.5
+    spread, growth = np.full(total, 1.8), np.full(total, 0.008)
+    for t in range(1, total):
+        d_unemp[t] = (0.45 * d_unemp[t - 1] + 0.05 * (5.5 - unemp[t - 1]) + 0.42 * recession[t]
+                      + rng.normal(0, 0.13))
+        unemp[t] = max(2.5, unemp[t - 1] + d_unemp[t])
+        spread[t] = (1.8 + 0.72 * (spread[t - 1] - 1.8) + 0.55 * recession[t]
+                     + rng.normal(0, 0.22))
+        growth[t] = (0.008 + 0.6 * (growth[t - 1] - 0.008) - 0.011 * recession[t]
+                     + rng.normal(0, 0.006))
+    spread = np.clip(spread, 0.6, None)
+    hpi = 100 * np.exp(np.cumsum(growth))
+    cre = 100 * np.exp(np.cumsum(0.006 + 0.5 * (growth - 0.008) + rng.normal(0, 0.012, total)))
+    gdp = 2.4 - 1.8 * d_unemp + rng.normal(0, 0.6, total)  # moves with the labour market, same quarter
+    treasury = np.clip(4.0 + np.cumsum(rng.normal(0, 0.16, total)) * 0.5, 0.5, None)
+    vix = np.full(total, 18.0)
+    for t in range(1, total):
+        vix[t] = max(9.0, 18 + 0.5 * (vix[t - 1] - 18) + rng.normal(0, 4.0))
+    cpi = 2.5 + rng.normal(0, 0.6, total)
+
+    def back(x: np.ndarray, k: int) -> np.ndarray:
+        out = np.full(len(x), np.nan)
+        out[k:] = x[:-k]
+        return out
+
+    unemp_yoy = unemp - back(unemp, 4)
+    hpi_yoy = hpi / back(hpi, 4) - 1.0
+    nco = (0.55 + 0.32 * back(unemp_yoy, 2) + 0.40 * (back(spread, 1) - 1.8)
+           - 2.6 * back(hpi_yoy, 1) + rng.normal(0, 0.06, total))
+    nco = np.clip(nco, 0.03, None)
+    dates = pd.date_range("1994-03-31", periods=total, freq="QE")
+    df = pd.DataFrame({
+        "date": dates, "unemployment_rate": unemp, "gdp_growth": gdp, "hpi": hpi,
+        "cre_price_index": cre, "bbb_spread": spread, "treasury_10y": treasury, "vix": vix,
+        "cpi_inflation": cpi, "nco_rate": nco,
+    }).iloc[burn:].reset_index(drop=True)
+    df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+    return df.round(5)
+
+
 GENERATORS = {
     "regression": make_regression_dataset,
     "classification": make_classification_dataset,
@@ -399,4 +461,5 @@ GENERATORS = {
     "commercial": make_commercial_credit_dataset,
     "cni": make_cni_portfolio_dataset,
     "migration": make_rating_migration_dataset,
+    "loss_forecast": make_loss_forecast_dataset,
 }

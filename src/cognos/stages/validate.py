@@ -46,7 +46,7 @@ class ValidateStage(Stage):
     description = "Independent effective-challenge validation (SR 11-7): adversarially judge the champion."
 
     def run(self, ctx: RunContext) -> StageResult:
-        model = ctx.require("model").payload
+        model = ctx.champion()  # the model stage's payload with the champion in force
         backtest = ctx.require("backtest").payload
         explore = ctx.get("explore")
         explore_payload = explore.payload if explore is not None else {}
@@ -92,19 +92,42 @@ class ValidateStage(Stage):
                 ))
             overfit_score = min(overfit_score, 1.0 - pbo)
 
-        cv_mean = model.get("cv_mean")
-        holdout = model.get("holdout_metric")
-        if cv_mean is not None and holdout is not None and not _is_nan(cv_mean) and not _is_nan(holdout):
-            cv_mean, holdout = float(cv_mean), float(holdout)
-            denom = abs(cv_mean) if abs(cv_mean) > 1e-9 else 1.0
-            gap = abs(cv_mean - holdout) / denom
+        # The sealed holdout is scored here, once per champion, after the choice was made: the
+        # only number in the run that nobody chose on. Without one, the test sample is all there
+        # is, and the champion was picked with it in view.
+        metric = model.get("metric")
+        holdout, holdout_scored = self._score_holdout(ctx, model)
+        reference = ((model.get("scores") or {}).get("validation") or {}).get(metric)
+        reference_name = "validation"
+        if reference is None:
+            reference = ((model.get("scores") or {}).get("in_sample") or {}).get(metric)
+            reference_name = "in-sample"
+        outside = holdout if holdout is not None else backtest.get("oos_metric")
+        outside_name = "sealed-holdout" if holdout is not None else "test-sample"
+        if (reference is not None and outside is not None and not _is_nan(reference)
+                and not _is_nan(outside)):
+            reference, outside = float(reference), float(outside)
+            denom = abs(reference) if abs(reference) > 1e-9 else 1.0
+            gap = abs(reference - outside) / denom
             if gap > CV_HOLDOUT_GAP:
+                # A rolling forecast origin scores one block ahead of a refitted model; the
+                # out-of-time sample is forecast from one fixed origin over its whole length.
+                # The two are not the same exercise, so the gap is a caution, not a failure.
+                rolling = ((model.get("plan") or {}).get("evaluation") or {}).get(
+                    "validation") in ("rolling_origin", "sliding_window")
                 res.add_finding(Finding(
-                    id="cv-holdout-gap", severity=Severity.HIGH, category="overfitting",
-                    message=f"CV mean ({cv_mean:.4f}) and sealed-holdout metric ({holdout:.4f}) differ by "
-                            f"{gap:.0%} (> {CV_HOLDOUT_GAP:.0%}): cross-validation likely over-optimistic.",
-                    confidence=0.8,
-                    suggestion="Investigate fold construction / feature selection inside CV for leakage.",
+                    id="cv-holdout-gap", severity=Severity.MEDIUM if rolling else Severity.HIGH,
+                    category="overfitting",
+                    message=f"The {reference_name} {metric} ({reference:.4f}) and the "
+                            f"{outside_name} {metric} ({outside:.4f}) differ by {gap:.0%} "
+                            f"(> {CV_HOLDOUT_GAP:.0%}): "
+                            + ("the validation blocks are forecast one block ahead from a "
+                               "refitted model, the out-of-time sample from one fixed origin, so "
+                               "some gap is expected; read how fast the error grows."
+                               if rolling else
+                               "the development estimate is likely over-optimistic."),
+                    confidence=0.6 if rolling else 0.8,
+                    suggestion="Investigate fold construction / factor selection inside validation for leakage.",
                 ))
                 overfit_score = min(overfit_score, max(0.0, 1.0 - gap))
         rubric["overfitting"] = overfit_score
@@ -184,17 +207,29 @@ class ValidateStage(Stage):
             sig_score = min(sig_score, 0.5)
         rubric["significance"] = sig_score
 
-        # --- (6) SANITY: sealed holdout must exist -------------------------------
+        # --- (6) SANITY: is there a number nobody chose on? ------------------------
         n_holdout = int(model.get("n_holdout", 0) or 0)
-        if n_holdout <= 0:
+        n_test = int(model.get("n_test", 0) or 0)
+        n_compared = len(backtest.get("candidates") or [])
+        if n_holdout <= 0 and n_test <= 0:
             res.add_finding(Finding(
                 id="no-holdout", severity=Severity.MEDIUM, category="sanity",
-                message="No sealed holdout was reserved: the champion has never been evaluated on data "
-                        "it could not see during selection.",
+                message="No test sample and no sealed holdout were reserved: the champion has never "
+                        "been evaluated on data it could not see during selection.",
                 confidence=0.85,
-                suggestion="Reserve a frozen holdout and report the champion's untouched out-of-sample metric.",
+                suggestion="Reserve a test sample and, where the data allow, a sealed holdout in the plan.",
             ))
             rubric["overfitting"] = min(rubric["overfitting"], 0.7)
+        elif n_holdout <= 0:
+            res.add_finding(Finding(
+                id="no-holdout", severity=Severity.LOW, category="sanity",
+                message=f"No sealed holdout was reserved: the champion was chosen from "
+                        f"{n_compared} candidate(s) compared on the test sample, so its test "
+                        "result is also what it was chosen on.",
+                confidence=0.85,
+                suggestion="Read the test metric as indicative; confirm on fresh out-of-time data, "
+                           "or seal a holdout in the plan when the data can spare the rows.",
+            ))
 
         # --- rubric aggregation --------------------------------------------------
         overall_score = sum(rubric.values()) / len(rubric) if rubric else 1.0
@@ -222,14 +257,14 @@ class ValidateStage(Stage):
             verdict = Verdict.PASS
         res.verdict = verdict
 
-        # --- sealed-holdout reuse (re-selection after seeing it) -------------------
-        n_eval = int(model.get("holdout_evaluations") or 1)
+        # --- sealed-holdout reuse (a second champion scored on it) -------------------
+        n_eval = len(holdout_scored)
         if n_eval > 1:
             res.add_finding(Finding(
                 id="holdout-reuse", severity=Severity.LOW, category="overfitting",
-                message=f"The sealed holdout has been evaluated {n_eval} times in this run (re-runs, "
-                        "send-backs or a champion override); a choice made after seeing it is no "
-                        "longer a single-shot estimate.",
+                message=f"The sealed holdout has been scored for {n_eval} different champions in "
+                        "this run; a choice revised after seeing it is no longer a single-shot "
+                        "estimate.",
                 confidence=0.9,
                 suggestion="Report the holdout metric as indicative; confirm on fresh out-of-time data.",
             ))
@@ -266,6 +301,9 @@ class ValidateStage(Stage):
         ip = ideate.payload if ideate is not None else {}
         res.verdict = verdict
         res.payload = {"rubric": rubric, "overall_score": overall_score, "decision": verdict.value,
+                       "champion_id": model.get("champion_id"),
+                       "holdout_metric": holdout, "holdout_metric_name": metric,
+                       "holdout_scored": holdout_scored, "holdout_evaluations": n_eval,
                        "analysis_code": [{k: c[k] for k in ("id", "sha256", "ran", "reproduced",
                                                             "note")} for c in code_review]}
         diagnostics = model.get("diagnostics") or {}
@@ -284,7 +322,11 @@ class ValidateStage(Stage):
             "data_structure": ip.get("data_structure"),
             "framework_choices": ip.get("framework_choices"),
             "n_candidates_tried": model.get("n_candidates_tried"),
-            "admissible_set_size": len(model.get("admissible_set") or []),
+            "pool_size": len(model.get("pool") or []),
+            "candidates_compared_on_test": n_compared,
+            "test_evaluations": backtest.get("test_evaluations"),
+            "sealed_holdout": n_holdout > 0,
+            "plan": {k: (model.get("plan") or {}).get(k) for k in ("evaluation", "selection")},
             "champion_source": model.get("champion_source"),
             "challenger_benchmark": model.get("challenger_benchmark"),
             "failed_diagnostics": diagnostics.get("failed_tests", []),
@@ -317,6 +359,9 @@ class ValidateStage(Stage):
             "decision": verdict.value,
             "blockers": blockers,
             "n_findings": len(res.findings),
+            "champion_id": model.get("champion_id"),
+            "holdout_metric": holdout, "holdout_metric_name": metric,
+            "holdout_scored": holdout_scored, "holdout_evaluations": n_eval,
         }
         payload["routed_findings"] = routed
         payload["analysis_code"] = [{k: c[k] for k in ("id", "sha256", "ran", "reproduced", "note")}
@@ -332,9 +377,39 @@ class ValidateStage(Stage):
             "overall_score": round(overall_score, 4),
             "decision": verdict.value,
             "n_blockers": len(blockers),
+            "holdout_metric": holdout,
         }
         res.summary = (
             f"Independent validation: {verdict.value} (rubric {overall_score:.2f}); "
             f"{len(res.findings)} finding(s), {len(blockers)} blocker(s)."
         )
         return res
+
+    @staticmethod
+    def _score_holdout(ctx: RunContext, model: dict) -> tuple[float | None, list[str]]:
+        """Score the champion on the sealed holdout. Returns the metric (None when the plan
+        sealed nothing) and the champions scored on it so far in this run, this one included:
+        every different champion the holdout has been opened for is on record."""
+        from ..datautil import coerce_target
+        from ..modeling.metrics import score
+        from ..runtime.score import score_frame
+
+        prev = ctx.get("validate")
+        scored = list(((prev.payload or {}).get("holdout_scored") or []) if prev else [])
+        path = ctx.run_dir / "data/holdout.parquet"
+        cfg = ctx.config
+        if not path.exists() or not model.get("scorer_path"):
+            return None, scored
+        holdout = ctx.load_df("data/holdout.parquet")
+        if not len(holdout) or cfg.data.target not in holdout.columns:
+            return None, scored
+        y = coerce_target(holdout, cfg)
+        scores = score_frame(holdout, model["scorer_path"])
+        metric = model["metric"]
+        value = (score(metric, y, (scores >= 0.5).astype(int), y_proba=scores)
+                 if model.get("is_classification") else score(metric, y, scores))
+        cid = str(model.get("champion_id"))
+        if cid not in scored:
+            scored.append(cid)
+        return float(value), scored
+

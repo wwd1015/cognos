@@ -37,14 +37,14 @@ def test_guided_search_keeps_verified_transform(tmp_path, runs_dir, replay_dir):
     cfg = _quad_config(tmp_path, replay_dir({"experiment": [proposal, {"stop": True}]}))
     orch = Orchestrator(cfg, runs_root=runs_dir)
     orch.run()
-    mp = orch.ctx.require("model").payload
+    mp = orch.ctx.champion()  # no outcomes analysis in this run: the pool's first member
 
     # The engine independently verified the LLM-proposed transform improves the metric, then kept it.
     assert mp["guided"]["improved"] is True
     assert any(t["name"] == "x1_sq" for t in mp["transforms"])
     assert "x1_sq" in mp["champion"]["features"]
-    # The guided candidate entered the admissible set and the (heuristic) modeler picked it.
-    assert mp["champion_id"] == "g1"
+    # The guided candidate leads the ranking and the (heuristic) modeler put it in the pool.
+    assert mp["pool"][0]["id"] == mp["champion_id"] and mp["pool"][0]["methods"] == ["guided"]
     # Every agent call is audited with its raw input/output (ADR-0003).
     audit = (orch.ctx.agents_dir / "audit.jsonl").read_text(encoding="utf-8")
     assert '"agent": "experiment"' in audit
@@ -59,7 +59,7 @@ def test_guided_off_with_heuristic_agents(make_config, runs_dir):
     # Default config has guided=False and heuristic agents => no guided phase, no transforms.
     cfg = make_config("regression")
     ctx, _ = run_pipeline(cfg, runs_root=runs_dir)
-    mp = ctx.require("model").payload
+    mp = ctx.champion()
     assert mp["guided"] is None
     assert mp["transforms"] == []
 
@@ -81,6 +81,6 @@ def test_guided_rejects_unsafe_proposal(tmp_path, runs_dir, replay_dir):
     })
     orch = Orchestrator(cfg, runs_root=runs_dir)
     orch.run()
-    mp = orch.ctx.require("model").payload
+    mp = orch.ctx.champion()
     assert mp["guided"]["rounds"] >= 1
     assert all(t["name"] != "leak" for t in mp["transforms"])  # unsafe transform never kept

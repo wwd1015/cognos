@@ -270,6 +270,18 @@ def design_lead(out: DesignLeadOutput, sl: dict[str, Any]) -> list[str]:
             errs.append(f"framework {f.framework!r} is not applicable to this data and cannot be primary")
     fittable = set(sl.get("fittable_families", []))
     seen: set[tuple[str, str]] = set()
+    if out.plan is not None:
+        opts = (sl.get("plan") or {}).get("options") or {}
+        if opts.get("test") and out.plan.test not in opts["test"]:
+            errs.append(f"plan.test {out.plan.test!r} does not fit this data; choose from "
+                        f"{opts['test']}")
+        if opts.get("validation") and out.plan.validation not in opts["validation"]:
+            errs.append(f"plan.validation {out.plan.validation!r} does not fit this data; "
+                        f"choose from {opts['validation']}")
+        if not out.plan.methods:
+            errs.append("plan.methods must name at least one selection method")
+        if out.plan.criterion == "validation" and out.plan.validation == "none":
+            errs.append("plan.criterion reads the validation sample, but plan.validation is none")
     if not out.slate:
         errs.append("slate must contain at least one specification")
     for item in out.slate:
@@ -289,18 +301,26 @@ def design_lead(out: DesignLeadOutput, sl: dict[str, Any]) -> list[str]:
 
 def modeler(out: ModelerOutput, sl: dict[str, Any]) -> list[str]:
     errs: list[str] = []
-    admissible = {c["id"]: c for c in sl.get("admissible_set", [])}
-    pick = admissible.get(out.champion)
-    if pick is None:
-        return [f"champion {out.champion!r} is not in admissible_set; choose one of "
-                f"{sorted(admissible)}"]
-    if sl.get("interpretability") == "required" and pick.get("role") == "challenger":
-        errs.append(f"interpretability is required: {out.champion} ({pick['family']}) is a "
-                    "challenger benchmark and cannot be the champion")
-    feats = set(pick.get("features", []))
+    leaders = {c["id"]: c for c in sl.get("leaders", [])}
+    if not out.pool:
+        return ["pool must name at least one candidate from leaders"]
+    unknown = [i for i in out.pool if i not in leaders]
+    if unknown:
+        return [f"pool names {unknown}, not in leaders; choose from {sorted(leaders)}"]
+    if len(set(out.pool)) != len(out.pool):
+        errs.append("pool names a candidate twice")
+    size = int(sl.get("pool_size") or len(leaders))
+    if len(out.pool) > size:
+        errs.append(f"pool has {len(out.pool)} candidates; the plan carries at most {size}")
+    picks = [leaders[i] for i in out.pool]
+    if sl.get("interpretability") == "required" and all(p.get("role") == "challenger"
+                                                        for p in picks):
+        errs.append("interpretability is required: the pool needs at least one candidate that "
+                    "is not a challenger benchmark")
+    feats = {f for p in picks for f in p.get("features", [])}
     for s in out.sign_checks:
         if s.feature not in feats:
-            errs.append(f"sign_checks names {s.feature!r}, which is not a feature of {out.champion}")
+            errs.append(f"sign_checks names {s.feature!r}, which is not a factor of the pool")
     return errs
 
 
@@ -310,6 +330,17 @@ def experiment(out: ExperimentProposal, sl: dict[str, Any]) -> list[str]:
     allowed = set(sl.get("allowed_families", []))
     if out.family not in allowed:
         return [f"family {out.family!r} is not allowed; choose from {sorted(allowed)} or stop"]
+    return []
+
+
+def outcomes_analyst(out, sl: dict[str, Any]) -> list[str]:
+    pool = {c["id"]: c for c in sl.get("candidates", [])}
+    pick = pool.get(out.champion)
+    if pick is None:
+        return [f"champion {out.champion!r} is not in candidates; choose one of {sorted(pool)}"]
+    if sl.get("interpretability") == "required" and pick.get("role") == "challenger":
+        return [f"interpretability is required: {out.champion} ({pick.get('family')}) is a "
+                "challenger benchmark and cannot be the champion"]
     return []
 
 
@@ -377,6 +408,7 @@ CHECKS: dict[str, Check] = {
     "data_linker": data_linker,
     "design_lead": design_lead,
     "modeler": modeler,
+    "outcomes_analyst": outcomes_analyst,
     "experiment": experiment,
     "validator": validator,
     "writer": writer,

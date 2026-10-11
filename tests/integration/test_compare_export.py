@@ -37,7 +37,7 @@ def test_a_revised_decision_is_named_on_every_step_it_makes_stale(make_config, r
     feature = eng.results()["explore"].payload["features"][0]
     eng.submit_gate("gate_data", "edit", {"exclude_columns": [feature]}, reason="not at origination")
     state = eng.state
-    for step in ("ideate", "gate_design", "model", "gate_champion"):
+    for step in ("ideate", "gate_design", "model", "gate_candidates", "backtest", "gate_champion"):
         why = state.steps[step].rerun_reason
         assert state.status_of(step) == "stale" and why == state.steps[step].message
         assert "Review data decisions" in why and "1 column(s)" in why and feature in why, why
@@ -56,16 +56,16 @@ def test_a_revised_decision_is_named_on_every_step_it_makes_stale(make_config, r
 
     changes = service.step_changes(eng.run_id, "model", runs_dir)
     assert changes is not None and changes["stage"] == "model"
-    assert {r["key"] for r in changes["metrics"]} >= {"cv_mean", "holdout_metric"}
-    assert all(r["direction"] == "higher" for r in changes["metrics"] if r["key"] == "cv_mean")  # roc_auc
+    assert {r["key"] for r in changes["metrics"]} >= {"best_score", "n_pool"}
+    assert all(r["direction"] == "higher" for r in changes["metrics"] if r["key"] == "best_score")  # roc_auc
     # explore never re-ran, so it has nothing to compare
     assert service.step_changes(eng.run_id, "explore", runs_dir) is None
 
 
 def test_every_way_of_going_stale_says_why(make_config, runs_dir):
     eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
-    _accept_all(eng, until="gate_champion")
-    eng.submit_gate("gate_champion", "send_back", {"message": "Try a simpler model first."})
+    _accept_all(eng, until="gate_candidates")
+    eng.submit_gate("gate_candidates", "send_back", {"message": "Try a simpler model first."})
     assert "sent back" in eng.state.steps["model"].rerun_reason
     assert "Try a simpler model first." in eng.state.steps["model"].rerun_reason
 
@@ -75,8 +75,12 @@ def test_every_way_of_going_stale_says_why(make_config, runs_dir):
     ("gate_data", "edit", {"exclude_columns": []}, "", "exclusions changed to 0 column(s)"),
     ("gate_design", "edit", {"slate": [{"family": "logit"}], "answers": {"q1": "x"}}, "",
      "slate edited to 1 hypothesis(es) and 1 design question(s) answered"),
-    ("gate_champion", "override", {"champion": "c3"}, "simpler", "champion overridden to c3 — simpler"),
-    ("gate_validation", "send_back", {"message": "calibration drifts"}, "", "sent back to “Search & select champion” — calibration"),
+    ("gate_design", "edit", {"plan": {"evaluation": {"validation": "kfold", "folds": 4}}}, "",
+     "development plan changed (folds, validation)"),
+    ("gate_candidates", "edit", {"pool": ["c1", "c4"]}, "one per driver", "pool set to c1, c4 — one per driver"),
+    ("gate_champion", "override", {"champion": "c3"}, "simpler", "champion set to c3 — simpler"),
+    ("gate_champion", "send_back", {"message": "none is usable"}, "", "sent back to “Search & build the candidate pool” — none"),
+    ("gate_validation", "send_back", {"message": "calibration drifts"}, "", "sent back to “Search & build the candidate pool” — calibration"),
 ])
 def test_why_restates_the_decision(gate, action, payload, reason, expect):
     assert expect in gates.why(gate, action, payload, reason)
@@ -155,7 +159,7 @@ def test_two_runs_that_decided_differently(make_config, runs_dir, capsys, apply_
     excl = next(o for o in c["overrides"] if o["what"] == "Excluded columns")
     assert excl["b"] == [feature] and excl["a"] == []
     assert c["config"] == []  # the same profile: only the decision differs
-    assert any(r["key"] == "cv_mean" for r in c["metrics"])
+    assert any(r["key"] == "best_score" for r in c["metrics"])
     assert service.previous_run(second.run_id, runs_dir) == first.run_id
     assert service.previous_run(first.run_id, runs_dir) is None
 
@@ -184,7 +188,7 @@ def test_an_unfinished_or_re_running_run_is_flagged(make_config, runs_dir):
 def test_export_is_readable_complete_and_never_contains_the_data(make_config, runs_dir, tmp_path, capsys):
     eng = Engine(make_config("classification"), runs_root=runs_dir)
     eng.run_until_idle()
-    assert (eng.run_dir / "data" / "holdout.parquet").exists()  # the thing that must not leave
+    assert (eng.run_dir / "data" / "test.parquet").exists()  # the thing that must not leave
 
     path = service.export_run(eng.run_id, root=runs_dir)
     assert path.name == f"{eng.run_id}.zip" and path.parent.name == "_exports"
@@ -196,7 +200,7 @@ def test_export_is_readable_complete_and_never_contains_the_data(make_config, ru
     assert {"state.json", "config.yaml", "docs/model_card.md", "docs/decisions.md", "stages/model/result.json",
             "stages/validate/result.json", "agents/audit.jsonl", "EXPORT.json"} <= set(names)
     assert not [n for n in names if n.startswith("agents/") and n != "agents/audit.jsonl"]  # opt-in only
-    assert state["run_id"] == eng.run_id and len(state["decisions"]) == 6
+    assert state["run_id"] == eng.run_id and len(state["decisions"]) == 7
 
     # the manifest lists every other file with a hash that matches what is in the zip
     import hashlib

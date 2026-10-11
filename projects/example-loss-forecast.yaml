@@ -1,0 +1,79 @@
+# example-loss-forecast.yaml — a quarterly loss-forecasting model (ADR-0016).
+#
+# One row per quarter: a portfolio net charge-off rate and macro drivers. The drivers act
+# through lags and changes, and the series is short, so this profile shows the development
+# plan at work: an out-of-time test sample, a rolling forecast origin, a factor library cut
+# by the single-factor screen, forward selection checked against best subset, and a pool of
+# candidates compared on how they forecast the held-back quarters and each scenario.
+#
+# Everything under `evaluation`, `factors` and `selection` is optional. Left out, the engine
+# recommends it from the shape of the data and the intent, the Design Lead may change it, and
+# the developer confirms or edits it at the design gate. What is written here is fixed by the
+# profile ("set by: profile" on the page).
+#
+# Data: `cognos demo --task loss_forecast --runs-dir runs` writes the same series to
+# <runs-dir>/_demo_data/loss_forecast.csv, or generate it with
+#     python -c "from cognos import synth; synth.make_loss_forecast_dataset().to_csv('loss.csv', index=False)"
+
+name: example_loss_forecast
+description: "Quarterly net charge-off rate on macro drivers — loss forecasting."
+task: timeseries
+mode: interactive           # pause at every gate: the plan, the pool and the champion are yours
+
+data:
+  path: loss.csv
+  format: csv
+  target: nco_rate
+  datetime_col: date        # one row per period => time operations and a rolling origin
+
+metric:
+  name: rmse                # the run's metric: the pool is compared on it on the test sample
+
+design:
+  use_case: loss forecasting (CECL / stress testing)
+  horizon: 9-quarter forecast of the quarterly net charge-off rate
+  default_definition: net charge-offs over average loans, annualized, in percent
+  segment: commercial real estate portfolio
+  interpretability: required
+
+evaluation:
+  # test: out_of_time       # recommended for a series; the latest fifth of the quarters
+  # validation: rolling_origin
+  # holdout_fraction: 0     # recommended: too few quarters to seal a third sample
+  rank_by:                  # most important first
+    - {metric: rmse, sample: validation}
+    - {metric: r2, sample: in_sample}
+  pool_size: 4
+
+factors:
+  # transforms: [lag, diff, yoy_diff, yoy_pct, ma]   # recommended for a series
+  lags: [1, 2, 3, 4]
+  expected_signs:           # a factor with the wrong sign alone is dropped; so is a model with one
+    unemployment_rate: "+"
+    bbb_spread: "+"
+    gdp_growth: "-"
+    hpi: "-"
+    cre_price_index: "-"
+  max_p_value: 0.10         # single-factor significance
+  best_per_source: 2        # the two best transformations of each driver
+  max_correlation: 0.8
+  top_n: 12
+
+selection:
+  methods: [forward, best_subset]
+  # criterion: validation   # recommended: a step must lower the rolling-origin RMSE
+  max_factors: 3
+  # max_p_value: 0.10       # recommended for a series: every coefficient significant
+
+stress:
+  enabled: true
+  scenarios:
+    - name: adverse
+      shocks: {unemployment_rate: {add: 2.0}, bbb_spread: {add: 1.0}, hpi: {mul: 0.93}}
+    - name: severely_adverse
+      shocks: {unemployment_rate: {add: 4.5}, bbb_spread: {add: 2.5}, hpi: {mul: 0.82}}
+
+compliance:
+  regimes: [SR11-7, NIST-AI-RMF]
+  risk_tier: high
+  jurisdictions: [US]

@@ -183,6 +183,18 @@ class RunContext:
     def has(self, stage: str) -> bool:
         return self.get(stage) is not None
 
+    def champion(self) -> dict[str, Any]:
+        """The model stage's payload with the champion in force laid over it (pool.view): what
+        every stage after the choice reads in place of ``require("model").payload``."""
+        from . import pool
+
+        def payload(stage: str) -> dict[str, Any] | None:
+            res = self.get(stage)
+            return (res.payload if res is not None else None) or None
+
+        return pool.view(self.run_dir, self.require("model").payload, payload("backtest"),
+                         payload("validate"), self.overrides.champion)
+
     def completed_stages(self) -> list[str]:
         return [s for s in self.config.stages.enabled if self.has(s)]
 

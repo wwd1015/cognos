@@ -224,9 +224,29 @@ class SponsorQuestion(Contract):
     why_it_matters: str
 
 
+class PlanChoice(Contract):
+    """The development plan: every value is one of the options in context.plan.options."""
+
+    test: Literal["out_of_time", "random", "none"] = Field(
+        description="How the test sample is held back; the candidate pool is compared on it")
+    validation: Literal["none", "kfold", "stratified_kfold", "group_kfold", "rolling_origin",
+                        "sliding_window"] = Field(
+        description="How the development sample is re-sampled to score a model on rows it was "
+                    "not fitted on")
+    sealed_holdout: bool = Field(
+        description="Keep a final sample nobody chooses on (scored once, for the champion)")
+    methods: list[Literal["grid", "forward", "backward", "stepwise", "best_subset"]] = Field(
+        description="How single factors become multi-factor models; one or several")
+    criterion: Literal["validation", "in_sample", "aic", "bic", "adj_r2"] = Field(
+        description="What a selection step has to improve")
+    rationale: str = Field(description="Why this plan fits the data and the intended use")
+
+
 class DesignLeadOutput(AgentOutput):
     frameworks: list[FrameworkChoice]
     slate: list[SlateItem]
+    plan: PlanChoice | None = Field(
+        default=None, description="Your development plan; omit to accept context.plan as it is")
     transforms: list[TransformProposal] = Field(default_factory=list)
     sponsor_questions: list[SponsorQuestion] = Field(default_factory=list)
 
@@ -240,8 +260,10 @@ class SignCheck(Contract):
 
 
 class ModelerOutput(AgentOutput):
-    champion: str = Field(description="The label of one candidate in context.admissible_set")
-    rationale: str
+    pool: list[str] = Field(description="Ids from context.leaders: the candidates that go on "
+                                        "to outcomes analysis, at most context.pool_size")
+    rationale: str = Field(description="Why these, and what makes them different from each "
+                                       "other")
     sign_checks: list[SignCheck] = Field(default_factory=list)
     concerns: list[Claim] = Field(default_factory=list)
 
@@ -269,6 +291,10 @@ class AgentFinding(Contract):
 
 
 class OutcomesAnalystOutput(AgentOutput):
+    champion: str = Field(description="The id of one candidate in context.candidates: the "
+                                      "model you recommend on the outcomes evidence")
+    champion_rationale: str = Field(
+        description="Why this one and not the others, on what context.candidates shows")
     discrimination: str
     calibration: str
     stability: str

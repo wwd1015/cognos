@@ -170,13 +170,14 @@ def test_hybrid_feature_replaces_the_raw_rating(migration_run):
     mig = p["migration"]
     assert mig["estimate"]["n_obs"] > 0
     assert mig["benchmark"]["deployed"] is False
-    assert 0.5 < mig["benchmark"]["holdout_roc_auc"] <= 1.0
+    assert 0.5 < mig["benchmark"]["test_roc_auc"] <= 1.0
+    assert all("migration_pd" in m["features"] for m in p["pool"])  # carried by every model
 
 
 def test_loss_forecast_reported_on_oot_book(migration_run):
     mig = migration_run.ctx.require("model").payload["migration"]
     fc = mig["loss_forecast"]
-    assert fc["book"] == "out_of_time_holdout"
+    assert fc["book"] == "out_of_time_test"
     assert 0.0 < fc["pooled"]["expected_loss_rate"] < 0.25
     assert fc["conditional"]["recession"]["expected_loss_rate"] > \
         fc["conditional"]["expansion"]["expected_loss_rate"]
@@ -192,7 +193,7 @@ def test_ideate_marks_migration_candidate_and_model_stage_fits_train_only(migrat
 
 
 def test_scorer_recomputes_migration_pd_from_rating(migration_run):
-    p = migration_run.ctx.require("model").payload
+    p = migration_run.ctx.champion()
     bundle = load_scorer(p["scorer_path"])
     assert bundle.migration is not None
     assert "rating" in (bundle.base_features or [])

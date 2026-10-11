@@ -51,7 +51,7 @@ class ComplyStage(Stage):
     def run(self, ctx: RunContext) -> StageResult:
         cfg = ctx.config
         comp = cfg.compliance
-        model = ctx.require("model").payload
+        model = ctx.champion()  # the model stage's payload with the champion in force
         res = StageResult(stage=self.name, verdict=Verdict.PASS)
 
         champion = model.get("champion", {}) or {}
@@ -292,12 +292,15 @@ class ComplyStage(Stage):
         reason_codes: dict[str, str],
         res: StageResult,
     ) -> dict:
-        """Four-fifths disparate-impact test per protected attribute on the holdout frame."""
+        """Four-fifths disparate-impact test per protected attribute, on rows the champion was
+        not fitted on: the sealed holdout when the plan kept one (it has been opened by
+        validation by now), else the test sample."""
         cfg = ctx.config
         comp = cfg.compliance
         threshold = comp.disparate_impact_threshold
         attrs = list(cfg.data.protected_attributes)
-        holdout_rel = "data/holdout.parquet"
+        holdout_rel = next((rel for rel in ("data/holdout.parquet", "data/test.parquet")
+                            if (ctx.run_dir / rel).exists()), "data/holdout.parquet")
 
         if not attrs or scorer_path is None or not (ctx.run_dir / holdout_rel).exists():
             res.add_finding(Finding(

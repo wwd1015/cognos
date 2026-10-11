@@ -42,9 +42,14 @@ def test_explore_payload(reg_run):
 
 def test_model_payload_and_scorer(reg_run):
     ctx, _ = reg_run
-    p = ctx.require("model").payload
+    stage = ctx.require("model").payload
+    assert "champion" not in stage and stage["pool"]  # the search ends on a pool
+    assert stage["shortlist"] and stage["screen"] and stage["paths"]
+    p = ctx.champion()  # the pool member the outcomes analysis pointed to
     assert p["champion"]["family"] in ("ols", "ridge", "lasso", "elasticnet")
-    assert p["cv_mean"] > 0 and p["holdout_metric"] is not None
+    assert p["champion_id"] == ctx.require("backtest").payload["champion_id"]
+    assert p["cv_mean"] > 0 and p["test_metric"] is not None
+    assert p["holdout_metric"] is None and p["n_holdout"] == 0  # 240 rows: no third sample
     assert "diagnostics" in p and p["diagnostics"]["n_run"] > 0
     from pathlib import Path
     assert Path(p["scorer_path"]).exists()

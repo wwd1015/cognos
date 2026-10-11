@@ -401,9 +401,15 @@ def run_header(st) -> Any:
     facts = [("Mode", st.mode), ("Agents", st.provider)]
     if st.created_by:
         facts.append(("Started by", st.created_by))
+    backtest = res.get("backtest")
     if model is not None:
-        facts += [("Champion", str(model.metrics.get("champion", ""))),
-                  ("CV", fmt(model.metrics.get("cv_mean")))]
+        facts.append(("Pool", f"{fmt(model.metrics.get('n_pool'))} candidate(s)"))
+    if backtest is not None and (backtest.payload or {}).get("champion_id"):
+        # The champion exists once outcomes analysis has compared the pool.
+        facts += [("Champion", f"{backtest.payload['champion_id']} · "
+                               f"{backtest.metrics.get('champion', '')}"),
+                  (str(backtest.payload.get("evaluation_sample", "test")).replace("_", " "),
+                   fmt(backtest.metrics.get("oos_metric")))]
     if st.spend_usd:
         facts.append(("Spend", f"${st.spend_usd:.2f}"))
     return dmc.Card([
@@ -981,9 +987,50 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
         if action == "edit" and keep is not None and set(keep) != {h["id"] for h in hyps}:
             payload["slate"] = [{k: h[k] for k in ("family", "feature_strategy", "role", "priority",
                                                    "rationale")} for h in hyps if h["id"] in keep]
+        plan = (service.results(run_id).get("ideate").payload or {}).get("plan")
+        if action == "edit" and plan:
+            patch = plan_patch(plan, fields)
+            if patch:
+                payload["plan"] = patch
+    if gate == "gate_candidates" and action == "edit":
+        extra = [x.strip() for x in str(fields.get("extra") or "").replace(";", ",").split(",")]
+        payload["pool"] = list(dict.fromkeys([*(fields.get("pool") or []), *(x for x in extra if x)]))
     if gate == "gate_champion" and action == "override":
         payload["champion"] = fields.get("champion")
     return payload, reason
+
+
+def plan_patch(plan: dict, fields: dict) -> dict:
+    """What the plan form changed: only the fields that differ from the plan on the page."""
+    def blank(v: Any) -> bool:
+        return v is None or v == ""
+
+    patch: dict = {}
+    for key, value in fields.items():
+        if not key.startswith("plan::") or key.startswith("plan::rank."):
+            continue
+        section_name, _, name = key[len("plan::"):].partition(".")
+        if section_name not in plan or name not in plan[section_name]:
+            continue
+        current = plan[section_name][name]
+        value = None if blank(value) else value
+        if isinstance(current, bool):
+            value = value == "yes" if value in ("yes", "no") else bool(value)
+        if isinstance(current, list) and value is None:
+            continue  # an untouched multi-select
+        if isinstance(current, int) and not isinstance(current, bool) and isinstance(value, float):
+            value = int(value)
+        if value != current and not (blank(value) and blank(current)):
+            patch.setdefault(section_name, {})[name] = value
+    rank = []
+    for i in (0, 1):
+        metric = fields.get(f"plan::rank.{i}.metric")
+        if not blank(metric):
+            rank.append({"metric": metric,
+                         "sample": fields.get(f"plan::rank.{i}.sample") or "validation"})
+    if rank and rank != list(plan["evaluation"].get("rank_by") or []):
+        patch.setdefault("evaluation", {})["rank_by"] = rank
+    return patch
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8050, runs_dir: str | None = None,

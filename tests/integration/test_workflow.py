@@ -74,36 +74,111 @@ def test_double_submit_is_rejected_cleanly(make_config, runs_dir, confirm_intent
 
 def test_send_back_routes_a_challenge_and_the_agent_answers(make_config, runs_dir):
     eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
-    _accept_all(eng, until="gate_champion")
-    eng.submit_gate("gate_champion", "send_back",
+    _accept_all(eng, until="gate_candidates")
+    eng.submit_gate("gate_candidates", "send_back",
                     {"message": "Prefer fewer features; check the leverage sign."},
                     reason="parsimony")
     state = eng.state
-    assert state.status_of("model") == "stale" and state.status_of("gate_champion") == "stale"
+    assert state.status_of("model") == "stale" and state.status_of("gate_candidates") == "stale"
     state = eng.run_until_idle()
     ch = state.challenges[0]
     assert ch.source == "human" and ch.target_stage == "model"
     assert ch.status == "answered" and ch.response
-    assert state.status_of("gate_champion") == "awaiting"  # re-opened for the human
+    assert state.status_of("gate_candidates") == "awaiting"  # re-opened for the human
 
 
-def test_champion_override_refits_without_researching(make_config, runs_dir):
+def test_a_send_back_at_the_champion_gate_goes_to_the_search(make_config, runs_dir):
     eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
     _accept_all(eng, until="gate_champion")
+    eng.submit_gate("gate_champion", "send_back", {"message": "None of these is usable."})
+    state = eng.run_until_idle()
+    assert state.challenges[0].target_stage == "model"
+    assert state.status_of("gate_candidates") == "awaiting"
+
+
+def test_the_champion_is_chosen_on_the_outcomes_of_the_pool(make_config, runs_dir):
+    eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
+    state = _accept_all(eng, until="gate_candidates")
     model = eng.results()["model"].payload
-    others = [c["id"] for c in model["admissible_set"] if c["id"] != model["champion_id"]]
-    if not others:
-        pytest.skip("admissible set has a single candidate for this seed")
+    assert "champion" not in model and len(model["pool"]) >= 2  # the search ends on a pool
+    assert state.status_of("backtest") == "pending"  # nothing is compared before the pool stands
+    _accept_all(eng, until="gate_champion")
+    backtest = eng.results()["backtest"].payload
+    assert [c["id"] for c in backtest["candidates"]] and backtest["champion_source"] == "engine"
+    assert {c["id"] for c in backtest["candidates"]} == set(model["pool_ids"])
+    assert backtest["test_evaluations"] == len(model["pool"])  # every look at the test sample
+    others = [c["id"] for c in backtest["candidates"] if c["id"] != backtest["champion_id"]]
     with pytest.raises(GateError, match="reason"):
         eng.submit_gate("gate_champion", "override", {"champion": others[0]})
-    with pytest.raises(GateError, match="admissible"):
+    with pytest.raises(GateError, match="candidate pool"):
         eng.submit_gate("gate_champion", "override", {"champion": "c999"}, reason="x")
     eng.submit_gate("gate_champion", "override", {"champion": others[0]}, reason="simpler")
-    eng.run_until_idle()
+    state = eng.run_until_idle()
+    backtest = eng.results()["backtest"].payload
+    assert backtest["champion_id"] == others[0] and backtest["champion_source"] == "human"
+    assert backtest["recommended_id"] != others[0]  # what the analyst recommended stays on record
+    assert backtest["recommendation"].get("reused") is True  # the analyst was not re-asked
+    assert state.steps["model"].runs == 1  # no new search, no refit
+    assert state.status_of("gate_champion") == "awaiting"
+    assert eng.context().champion()["champion_id"] == others[0]
+    _accept_all(eng, until="gate_validation")
+    assert eng.results()["validate"].payload["champion_id"] == others[0]
+
+
+def test_the_developer_adds_and_removes_pool_members(make_config, runs_dir):
+    eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
+    _accept_all(eng, until="gate_candidates")
     model = eng.results()["model"].payload
-    assert model["champion_id"] == others[0] and model["champion_source"] == "human"
-    assert model["holdout_evaluations"] == 2
-    assert model["recommendation"].get("reused") is True  # the modeler was not re-asked
+    outside = [a["id"] for a in model["leaders"] if a["id"] not in model["pool_ids"]]
+    assert outside, "the leaders hold more than the pool"
+    pool = [model["pool_ids"][0], outside[0]]
+    with pytest.raises(GateError, match="reason"):
+        eng.submit_gate("gate_candidates", "edit", {"pool": pool})
+    with pytest.raises(GateError, match="not evaluated"):
+        eng.submit_gate("gate_candidates", "edit", {"pool": ["c999"]}, reason="x")
+    with pytest.raises(GateError, match="cannot be empty"):
+        eng.submit_gate("gate_candidates", "edit", {"pool": []}, reason="x")
+    eng.submit_gate("gate_candidates", "edit", {"pool": pool}, reason="compare a simpler one")
+    state = eng.run_until_idle()
+    after = eng.results()["model"].payload
+    assert after["pool_ids"] == pool and after["pool_source"] == "human"
+    assert after["search_fingerprint"] == model["search_fingerprint"]  # no new search
+    assert after["recommendation"].get("reused") is True  # the modeler was not re-asked
+    assert state.status_of("gate_candidates") == "awaiting"
+    assert "pool set to" in state.steps["model"].rerun_reason
+    for member in after["pool"]:  # every member is fitted, tested and saved on its own
+        assert (eng.run_dir / member["detail_path"]).exists()
+        assert member["diagnostics_run"] > 0
+    _accept_all(eng, until="gate_champion")
+    assert {c["id"] for c in eng.results()["backtest"].payload["candidates"]} == set(pool)
+
+
+def test_the_plan_is_recommended_from_the_data_and_edited_at_the_design_gate(make_config, runs_dir):
+    eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
+    _accept_all(eng, until="gate_design")
+    plan = eng.results()["ideate"].payload["plan"]
+    assert plan["evaluation"]["validation"] == "stratified_kfold"
+    assert plan["sources"]["validation"] == "engine" and plan["reasons"]["validation"]
+    with pytest.raises(GateError, match="does not fit this data"):
+        eng.submit_gate("gate_design", "edit",
+                        {"plan": {"evaluation": {"validation": "rolling_origin"}}})
+    with pytest.raises(GateError, match="unknown plan field"):
+        eng.submit_gate("gate_design", "edit", {"plan": {"evaluation": {"nope": 1}}})
+    edit = {"evaluation": {"rank_by": [{"metric": "log_loss", "sample": "validation"}],
+                           "pool_size": 2},
+            "selection": {"methods": ["forward", "best_subset"], "max_factors": 2},
+            "factors": {"max_p_value": 0.05}}
+    eng.submit_gate("gate_design", "edit", {"plan": edit}, reason="rank on likelihood")
+    state = eng.run_until_idle()
+    assert state.status_of("gate_design") == "awaiting"  # re-opens on the plan in force
+    plan = eng.results()["ideate"].payload["plan"]
+    assert plan["sources"]["rank_by"] == "human" and plan["selection"]["max_factors"] == 2
+    assert "development plan changed" in state.steps["ideate"].rerun_reason
+    _accept_all(eng, until="gate_candidates")
+    model = eng.results()["model"].payload
+    assert model["rank_metric"] == "log_loss" and len(model["pool"]) <= 2
+    assert {p["method"] for p in model["paths"]} >= {"forward", "best_subset"}
+    assert all(m["n_features"] <= 2 for m in model["pool"])
 
 
 def test_edit_after_downstream_ran_marks_descendants_stale(make_config, runs_dir):
@@ -114,7 +189,7 @@ def test_edit_after_downstream_ran_marks_descendants_stale(make_config, runs_dir
     feature = eng.results()["explore"].payload["features"][0]
     eng.submit_gate("gate_data", "edit", {"exclude_columns": [feature]}, reason="not at origination")
     state = eng.state
-    for s in ("ideate", "gate_design", "model", "gate_champion"):
+    for s in ("ideate", "gate_design", "model", "gate_candidates", "backtest", "gate_champion"):
         assert state.status_of(s) == "stale", s
     assert state.status_of("explore") == "done"
     eng.run_until_idle()
@@ -160,7 +235,7 @@ def test_leakage_block_send_back_then_completes(leak_config, runs_dir, apply_bri
     state = _accept_all(eng)
     assert state.status == "approved"
     assert eng.results()["validate"].verdict != Verdict.BLOCK
-    assert "leaky" not in eng.results()["model"].payload["champion"]["features"]
+    assert "leaky" not in eng.context().champion()["champion"]["features"]
 
 
 def test_leakage_blocks_autonomous_run(leak_config, runs_dir):
@@ -210,7 +285,8 @@ def test_validator_findings_loop_back_automatically(make_config, runs_dir, repla
 
 
 def test_invalid_agent_fails_step_visibly_and_retry_recovers(make_config, runs_dir, replay_dir):
-    bad = {"summary": "x", "discrimination": "x", "calibration": "x", "stability": "x",
+    bad = {"summary": "x", "champion": "", "champion_rationale": "x", "discrimination": "x",
+           "calibration": "x", "stability": "x",
            "findings": [{"id": "f", "severity": "low", "category": "c", "message": "m",
                          "evidence": ["backtest.not_a_fact"]}]}
     d = replay_dir({"outcomes_analyst": bad})
@@ -219,7 +295,7 @@ def test_invalid_agent_fails_step_visibly_and_retry_recovers(make_config, runs_d
     state = eng.run_until_idle()
     assert state.status == "failed" and state.status_of("backtest") == "failed"
     assert "backtest.not_a_fact" in state.steps["backtest"].message
-    good = dict(bad, findings=[])
+    good = dict(bad, findings=[], champion=eng.results()["model"].payload["pool_ids"][0])
     (eng.run_dir.parent.parent / "recorded" / "outcomes_analyst.json").write_text(
         json.dumps(good), encoding="utf-8")
     eng.retry("backtest")

@@ -146,10 +146,35 @@ accepted.
 _Avoid_: calling `comply` a gate; it is a non-gating report.
 
 **Review gate**:
-A human decision point after a stage: `gate_intent`, `gate_data`, `gate_design`, `gate_champion`
-(the model developer), `gate_validation` (the independent reviewer), `gate_signoff` (the approver).
+A human decision point after a stage: `gate_intent`, `gate_data`, `gate_design`,
+`gate_candidates`, `gate_champion` (the model developer), `gate_validation` (the independent reviewer), `gate_signoff` (the approver).
 Interactive runs pause there. Autonomous runs accept them as **express preparation** and record
 that; express is not a signature. Review gates decide; they never BLOCK.
+
+**Development plan**:
+How the data are split, how the factor library is shortened and how single factors become
+models, for one run. Recommended from the shape of the data and the intent, with a reason per
+choice; confirmed or edited at the design gate.
+_Avoid_: "search settings"; the plan is a decision with a name on it, not configuration.
+
+**Development / test / holdout sample**:
+*Development* is what models are fitted on, and what validation re-samples. *Test* is what the
+candidate pool is compared on, so it is used to choose. The sealed *holdout* is scored once,
+for the champion, after the choice.
+_Avoid_: calling the test sample a holdout, or "out of sample" without saying which sample.
+
+**Factor**:
+A column a model can use: an explored column as it is, or a transformation of one (a lag, a
+change, a growth rate, a logarithm). The **factor library** is all of them; the **shortlist** is
+what the single-factor screen leaves.
+
+**Candidate pool**:
+The models the search carries to outcomes analysis. The model stage ends on the pool.
+_Avoid_: "admissible set" (the earlier one-standard-error set a champion was picked from).
+
+**Champion**:
+The pool member in force: the developer's choice at the champion gate, else the Outcomes
+Analyst's recommendation. It exists only once outcomes analysis has compared the pool.
 
 **Seat**:
 Who may act on a gate. `developer`, `reviewer`, `approver`. The engine refuses a seat acting on

@@ -228,6 +228,81 @@ class SearchConfig(BaseModel):
     guided_rounds: int = 6  # number of LLM-proposed experiments after the deterministic ratchet
 
 
+class RankRule(BaseModel):
+    """One line of the ranking: a metric from the frozen registry and the sample it is read on."""
+
+    metric: str = "auto"  # auto => metric.name
+    sample: Literal["validation", "in_sample", "test"] = "validation"
+
+
+class EvaluationConfig(BaseModel):
+    """The test plan: how the data are divided to build, compare and confirm models
+    (modeling/splits.py). A field left at ``auto`` is recommended from the data and the intent,
+    proposed by the Design Lead and confirmed at the design gate (ADR-0016).
+
+    Three samples at most: *development* (fit, and re-sampled for ``validation``), *test* (the
+    candidate pool is compared on it, so it is used to choose) and a sealed *holdout* (scored
+    once, for the champion, after the choice).
+    """
+
+    test: Literal["auto", "out_of_time", "random", "none"] = "auto"
+    test_fraction: float | None = None  # None => search.holdout_fraction
+    holdout_fraction: float | None = None  # sealed final sample; None => recommended, 0 = none
+    validation: Literal["auto", "none", "kfold", "stratified_kfold", "group_kfold",
+                        "rolling_origin", "sliding_window"] = "auto"
+    folds: int | None = None  # None => search.cv_folds
+    group_col: str | None = None  # group_kfold: rows of one group stay in one fold
+    horizon: int | None = None  # rolling_origin / sliding_window: periods per validation block
+    window: int | None = None  # sliding_window: training periods kept
+    # How candidates are ranked, most important first. Empty => the run's metric on the
+    # validation sample (in sample when there is no validation).
+    rank_by: list[RankRule] = Field(default_factory=list)
+    pool_size: int = 4  # candidates carried to outcomes analysis
+
+
+class FactorConfig(BaseModel):
+    """The factor library and the single-factor screen (modeling/factors.py).
+
+    ``transforms`` widens the explored columns into a library (one row per period: lags,
+    differences, growth rates, moving averages; otherwise logs of skewed amounts). Every factor
+    is fitted alone, and the rules below, applied in the order written, cut the library to a
+    shortlist. A rule set to ``None`` is off.
+    """
+
+    transforms: list[str] = Field(default_factory=lambda: ["auto"])
+    # auto | none | lag | diff | pct | yoy_diff | yoy_pct | ma | log | sqrt | square
+    lags: list[int] = Field(default_factory=lambda: [1, 2, 3, 4])
+    windows: list[int] = Field(default_factory=lambda: [4])  # moving-average lengths
+    period: int | None = None  # periods per year (yoy); None => read from the date spacing
+    max_missing: float | None = 0.2
+    max_p_value: float | None = 0.10  # single-factor coefficient
+    enforce_sign: bool = True  # drop a factor whose sign contradicts the expected one
+    expected_signs: dict[str, Literal["+", "-"]] = Field(default_factory=dict)  # by column
+    min_strength: float | None = None  # the ranking metric a factor must reach on its own
+    best_per_source: int | None = 2  # transformations kept per explored column
+    max_correlation: float | None = 0.8  # of a correlated pair the weaker one goes
+    top_n: int | None = 12
+    force_in: list[str] = Field(default_factory=list)
+    force_out: list[str] = Field(default_factory=list)
+
+
+class SelectionConfig(BaseModel):
+    """How single factors become multi-factor models (modeling/selection.py). One method or
+    several; every model any of them evaluates lands in one ledger and is ranked together."""
+
+    methods: list[Literal["auto", "grid", "forward", "backward", "stepwise",
+                          "best_subset"]] = Field(default_factory=lambda: ["auto"])
+    # What a step has to improve: the ranking metric on the validation sample or in sample,
+    # or an information criterion (aic / bic / adj_r2, families with statsmodels inference).
+    criterion: Literal["auto", "validation", "in_sample", "aic", "bic", "adj_r2"] = "auto"
+    max_factors: int = 4
+    must_include: list[str] = Field(default_factory=list)  # factors every model carries
+    max_p_value: float | None = None  # every coefficient of an accepted model
+    enforce_sign: bool = True
+    max_correlation: float | None = 0.8  # between two factors of one model
+    max_models: int = 400  # budget per method and family
+
+
 class AnalysisConfig(BaseModel):
     """Exploratory analysis the Data Analyst may request (analysis/). Each round the agent asks
     for tool runs (built in or from a plugin) or writes Python; the engine executes them."""
@@ -352,8 +427,8 @@ class WorkflowConfig(BaseModel):
     """Human gates and the automatic challenge loop (engine/graph.py)."""
 
     gates: list[str] = Field(default_factory=lambda: [
-        "gate_intent", "gate_data", "gate_design", "gate_champion", "gate_validation",
-        "gate_signoff"])
+        "gate_intent", "gate_data", "gate_design", "gate_candidates", "gate_champion",
+        "gate_validation", "gate_signoff"])
     auto_challenge_loops: int = 2  # validator high findings routed back automatically, at most N times
 
 
@@ -392,6 +467,9 @@ class CognosConfig(BaseModel):
     design: DesignConfig = Field(default_factory=DesignConfig)
     metric: MetricConfig = Field(default_factory=MetricConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
+    factors: FactorConfig = Field(default_factory=FactorConfig)
+    selection: SelectionConfig = Field(default_factory=SelectionConfig)
     structural: StructuralConfig = Field(default_factory=StructuralConfig)
     migration: MigrationConfig = Field(default_factory=MigrationConfig)
     compliance: ComplianceConfig = Field(default_factory=ComplianceConfig)

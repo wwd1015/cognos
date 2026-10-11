@@ -30,6 +30,7 @@ SEAT_OF_GATE = {
     "gate_intent": "developer",
     "gate_data": "developer",
     "gate_design": "developer",
+    "gate_candidates": "developer",
     "gate_champion": "developer",
     "gate_validation": "reviewer",
     "gate_signoff": "approver",
@@ -47,7 +48,7 @@ SEAT_LABEL = {
 MAP = (
     ("Intent", ("intake", "gate_intent"), "developer"),
     ("Data & design", ("explore", "gate_data", "ideate", "gate_design"), "developer"),
-    ("Model", ("model", "gate_champion", "backtest"), "developer"),
+    ("Model", ("model", "gate_candidates", "backtest", "gate_champion"), "developer"),
     ("Challenge", ("validate", "gate_validation"), "reviewer"),
     ("Decision", ("comply", "document", "review", "gate_signoff"), "approver"),
 )
@@ -103,9 +104,11 @@ def preparation_of(state: RunState) -> str:
 
 def material(config: Any, state: RunState, results: dict[str, Any]) -> dict[str, Any]:
     """What an approval binds to. Facts the engine already recorded, nothing judged."""
-    model = results.get("model")
-    payload = (model.payload if model is not None else None) or {}
-    metrics = model.metrics if model is not None else {}
+    def payload_of(stage: str) -> dict[str, Any]:
+        res = results.get(stage)
+        return (res.payload if res is not None else None) or {}
+
+    model, backtest, validate = payload_of("model"), payload_of("backtest"), payload_of("validate")
 
     def verdict(stage: str) -> str | None:
         res = results.get(stage)
@@ -115,9 +118,11 @@ def material(config: Any, state: RunState, results: dict[str, Any]) -> dict[str,
         "design": effective_design(config, state),
         "exclude_columns": sorted(state.overrides.exclude_columns),
         "slate": state.overrides.slate,
-        "champion_id": payload.get("champion_id"),
-        "holdout_metric": metrics.get("holdout_metric"),
-        "cv_mean": metrics.get("cv_mean"),
+        "plan": state.overrides.plan,
+        "pool": list(model.get("pool_ids") or []),
+        "champion_id": backtest.get("champion_id"),
+        "test_metric": backtest.get("oos_metric"),
+        "holdout_metric": validate.get("holdout_metric"),
         "validation_verdict": verdict("validate"),
         "review_verdict": verdict("review"),
     }

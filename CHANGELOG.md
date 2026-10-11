@@ -11,7 +11,36 @@ versioning is SemVer.
   instead of boxed cards, a masthead, figure strips, a numbered stage index and a plain activity
   feed. Still pure Dash + Mantine; no behaviour changed.
 
+### Changed
+- **The model stage ends on a candidate pool; the champion is chosen on outcomes**
+  ([ADR-0016](docs/adr/0016-development-plan-candidate-pool-champion-on-outcomes.md)). New gate
+  `gate_candidates` after `model`; `gate_champion` now follows `backtest`. The Modeler
+  recommends the pool (`pool`, not `champion`), the Outcomes Analyst recommends the champion.
+  Later stages read the champion through `ctx.champion()`. What used to be the sealed holdout
+  is now the *test* sample (`data/test.parquet`), because the pool is compared on it; a sealed
+  holdout is a third sample the plan keeps when the data can spare it, scored at validation.
+  The model stage's payload and metrics changed (`pool`, `leaders`, `best_score`;
+  `champion`, `cv_mean` and `holdout_metric` moved to `ctx.champion()`, `backtest` and
+  `validate`). Candidate ids are hashes of the specification.
+- Recorded agent answers from before this change do not replay: the `live_commercial` example
+  needs re-recording, and its replay test is skipped until then.
+
 ### Added
+- **Development plan** (ADR-0016): the split, the validation scheme, the ranking, the factor
+  screen and the selection methods are recommended from the shape of the data and the intent
+  (`modeling/plan.py`), proposed by the Design Lead and confirmed or edited at the design gate.
+  New profile sections `evaluation`, `factors` and `selection`.
+- **Factor library and single-factor screen** (`modeling/factors.py`): lags, changes, growth
+  rates, moving averages and logarithms; every factor fitted alone; ordered, user-set rules
+  with the reason for every dropped factor (`stages/model/single_factor.json`).
+- **Selection methods** (`modeling/selection.py`): forward, backward, stepwise, best subset and
+  the grid, one or several, with a step criterion and constraints; every path recorded
+  (`stages/model/selection_paths.json`).
+- **Validation schemes** (`modeling/splits.py`): k-fold, stratified, grouped by entity, rolling
+  forecast origin, sliding window.
+- **Outcomes analysis of the pool**: every candidate on the test sample and under every
+  scenario, side by side, with a forecast chart; scenario forecasts for continuous targets.
+- **Demo `loss_forecast`**: a quarterly loss-rate series (`cognos demo --task loss_forecast`).
 - **Linked sources** ([ADR-0014](docs/adr/0014-linked-sources-the-join-is-proposed-and-confirmed.md)).
   `data.sources` lists several inputs of any kind (a Snowflake table and a CSV, ...). The engine
   measures how they connect, the Data Analyst proposes the base table and the joins

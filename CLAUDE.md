@@ -18,9 +18,11 @@ trustworthy. v1.0 architecture: **agents recommend, humans decide, the engine di
    under the run dir; `StageResult.payload` carries only small structured data. A stage in a fresh
    process must reconstruct everything from disk (`state.json` + `stages/*/result.json`).
 5. **The frozen substrate stays frozen.** The sealed holdout (`data/holdout.parquet`) and metric
-   definitions (`modeling/metrics.py`) are never agent-editable. The modeler chooses the champion
-   from the admissible set *before* the holdout is scored and never sees holdout facts; every holdout
-   evaluation is counted (`holdout_evaluations`).
+   definitions (`modeling/metrics.py`) are never agent-editable. The champion is chosen *before*
+   the holdout is scored: neither the model stage nor outcomes analysis reads it, no agent that
+   chooses sees a holdout fact, and validation scores it once per champion (`holdout_scored`).
+   The test sample (`data/test.parquet`) is what the pool is compared on, so it is used to
+   choose: every evaluation on it is counted (`test_evaluations`), never passed off as untouched.
 6. **Independent challenge.** `validate`, `comply`, and `review` re-derive risk from artifacts. The
    validator's slice never contains the modeler's rationale (`agents/slices.py` scopes).
 7. **Gates BLOCK only on high-confidence harm.** Verdict gates: `validate` (confirmed target
@@ -34,16 +36,18 @@ trustworthy. v1.0 architecture: **agents recommend, humans decide, the engine di
 
 ## The workflow (engine/graph.py)
 ```
-intake → gate_intent → explore → gate_data → ideate → gate_design → model → gate_champion
-       → backtest → validate → gate_validation → comply → document → review → gate_signoff
+intake → gate_intent → explore → gate_data → ideate → gate_design → model → gate_candidates
+       → backtest → gate_champion → validate → gate_validation → comply → document → review
+       → gate_signoff
 ```
 `RunState` (`runs/<id>/state.json`) holds step statuses, gate decisions, challenges, gaps (sponsor
 questions) and overrides. Human decisions change the *effective* config through overrides (design
-answers → `ctx.config.design`; exclusions → `ctx.profile()`; slate → model families; champion →
-`overrides.champion`) — the profile YAML is never edited. A changed decision marks the downstream
+answers → `ctx.config.design`; exclusions → `ctx.profile()`; slate → model families; plan →
+`overrides.plan`; pool → `overrides.pool`; champion → `overrides.champion`) — the profile YAML is
+never edited. A changed decision marks the downstream
 steps `stale`; a step invalidated while running stays stale when it finishes.
 
-Seats (`engine/process.py`): developer on intent, data, design and champion; reviewer on validation;
+Seats (`engine/process.py`): developer on intent, data, design, candidates and champion; reviewer on validation;
 approver on sign-off. The engine refuses a seat on another seat's gate. Use, horizon, default
 definition and segment cannot be assumed, and `approve` refuses while any of them is open.
 `approve` writes `packages/vN.json` once (a digest of recorded facts). A later invalidation
@@ -59,6 +63,33 @@ Comparisons (`compare.py`: run vs run, re-run vs previous) are mechanical reads 
 no judgment, nothing stored, and "better" only where the metric has a direction (`_HIGHER` / `_LOWER`,
 or the run's own metric direction). Exports (`export.py`) never include `data/`, `models/` or binary
 caches — the sealed holdout stays sealed; a new artifact type that should travel must be a text format.
+
+## Plan, pool and champion (ADR-0016)
+- **The model stage ends on a pool, never a champion.** `model` follows the development plan
+  (samples → factor library → single-factor screen → selection methods → ranked ledger) and
+  finalizes every pool member. `backtest` compares the pool on the test sample and the
+  Outcomes Analyst recommends the champion. Do not put a champion back on the model payload.
+- **Read the champion through `ctx.champion()`** (`pool.view`): the model payload with the
+  champion in force laid over it. A stage after `backtest` never reads
+  `ctx.require("model").payload` for champion fields. Results-only readers use
+  `pool.from_results`.
+- **One plan, one resolver.** `modeling/plan.py::resolve` is the only place the layers meet
+  (developer > profile > Design Lead > engine). `recommend` must give a reason for every
+  choice and stay a function of the data's shape and the intent; do not hard-code a split.
+  A new option goes in `plan.options` so the gate and the agent check can refuse what the
+  data cannot run.
+- **Target-hidden factors.** A library transformation (`modeling/factors.py`) is a function of
+  one feature column and the rows before it, never of the target. That is why the library is
+  built before the split and can be recomputed on any sample.
+- **One evaluator.** Every selection method goes through `selection.Evaluator`, so a
+  specification is fitted once and all models share one ledger. Candidate ids come from
+  `selection.candidate_id` (a hash of the specification): never a position in a list.
+- **Every rule and every step is on record.** The screen stamps each dropped factor with its
+  rule and reason; a path records each step, what it did to the criterion and how many
+  additions the constraints refused. A new rule or method must do the same.
+- **Count every look.** Scoring on the test sample increments `test_evaluations`; scoring the
+  sealed holdout appends to `holdout_scored`. Nothing reads `data/holdout.parquet` before
+  `validate` (tools included: `analysis/consult.py::_out_of_sample`).
 
 ## Development modes and intake (ADR-0011)
 `engagement.kind` is `new` (from a business intent document) or `update` (from the existing
@@ -148,7 +179,7 @@ A stage is a `Stage` subclass with `name`, `requires`, `is_gate`, and `run(ctx) 
 reads prior outputs via `ctx.require(<stage>).payload` (explore's via `ctx.profile()`), writes
 artifacts under `runs/<id>/stages/<name>/`, and obtains judgment only via
 `ctx.recommend(agent, data, fresh={stage: provisional_result}, check=...)` (after
-`ctx.consult_tools`, see Stage tools), recording it with
+`ctx.consult_tools`, see Stage tools; the champion's record via `ctx.champion()`), recording it with
 `attach_recommendation(payload, ctx, agent, out)`. Questions for the sponsor go in
 `payload["questions"]` (the engine syncs them to gaps). Register with `@register_stage` and add to
 `stages/__init__._STAGE_MODULES`.
@@ -172,9 +203,20 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 ## Extending COGNOS
 - **New model family** → estimator branch in `modeling/fit.py::_estimator`, grid in
   `modeling/search.py::_hp_grid`, `DEFAULT_FAMILIES` if defaulted, and `stages/ideate.py::_engine_families`
-  so the design lead may propose it. Survival/structural/simulation extension points: ADR-0008.
-- **New metric** → `modeling/metrics.py::score` (+ `MAXIMIZE`); expose it as a fact in `agents/facts.py`
-  if agents should cite it.
+  so the design lead may propose it; add it to `selection.STEP_FAMILIES` only if it has
+  statsmodels inference. Survival/structural/simulation extension points: ADR-0008.
+- **New metric** → `modeling/metrics.py::score` (+ `MAXIMIZE`) and `plan.METRICS` so it can be
+  ranked on; expose it as a fact in `agents/facts.py` if agents should cite it.
+- **New way to split or validate** → `splits.split_samples` / `make_splitter`, the literals in
+  `config.EvaluationConfig` and `contracts.PlanChoice`, `plan.options` (when the data allow
+  it), `plan.recommend` (when to prefer it, with the reason) and `plan.problems`.
+- **New factor transformation** → `factors._base` (target-hidden, and `apply_library` must be
+  able to recompute it), `ALL_OPS`, `SAME_DIRECTION` if it keeps the column's sign.
+- **New screen rule** → `factors.screen` (one `apply` call: it logs counts and reasons),
+  `config.FactorConfig`, the plan dict in `plan.recommend`, the form in `ui/panels.py::plan_form`.
+- **New selection method** → a runner in `selection._RUNNERS` that walks through `_Run.try_`
+  and records `_Run.step`, `METHODS`, the literals in `config.SelectionConfig` and
+  `contracts.PlanChoice`.
 - **New statistical test** → `stages/stat_tests.py` with H0, severity, and a `_safe` wrapper.
 - **New gate action** → `engine/gates.py::ACTIONS` + handler + a UI control in `ui/panels.py`.
 - **New brief field** → `engagement.FIELDS` (label, hint, aliases, required), the `BriefFieldId`
@@ -195,6 +237,8 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 - **New stage** → single-responsibility; wire `requires`, a graph node, and (optionally) an agent.
 - **New stage metric** → if it has a good direction, add it to `compare._HIGHER` / `_LOWER` and give it a
   label in `compare.METRIC_LABELS`; otherwise comparisons report it as a difference without a verdict.
+- **New demo** → a generator in `synth.GENERATORS`, a preset in `service.DEMO_PRESETS` (+
+  `DEMO_LABELS`), the `cognos demo --task` choices.
 
 ## Integrations
 - **IMPACT** is optional. `integrations/impact_adapter.py` prefers the real `EntityPipeline` and falls

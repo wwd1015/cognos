@@ -159,7 +159,8 @@ def step3_full_pipeline(workdir: Path, csv: str):
         print(f"    - {stage:9s} {r.verdict.value:6s} {r.summary}" if r
               else f"    - {stage:9s} (not run)")
 
-    mp = orch.ctx.require("model").payload
+    mp = orch.ctx.champion()  # the model stage with the champion in force laid over it
+    bt = orch.ctx.require("backtest").payload
     mig = mp["migration"]
     est = mig["estimate"]
 
@@ -181,12 +182,12 @@ def step3_full_pipeline(workdir: Path, csv: str):
         print(f"    {s:>4s}: " + "  ".join(f"Y{k + 1}={100 * v:6.3f}%"
                                            for k, v in enumerate(ts[s])))
 
-    print("\n  --- Champion vs. the pure-migration challenger benchmark (sealed OOT holdout) ---")
+    print("\n  --- Champion vs. the pure-migration challenger benchmark (out-of-time test sample) ---")
     bm = mig["benchmark"]
     print(f"    Champion ({mp['champion']['family']}, hybrid: migration_pd + fundamentals): "
-          f"holdout AUC={mp['holdout_metric']:.3f}")
+          f"test AUC={bt['oos_metric']:.3f}")
     print(f"    Pure migration PD (deployed={bm['deployed']}): "
-          f"holdout AUC={bm['holdout_roc_auc']:.3f} (Gini={bm['holdout_gini']:.3f})")
+          f"test AUC={bm['test_roc_auc']:.3f} (Gini={bm['test_gini']:.3f})")
     print("    → the matrix alone rank-orders well; obligor fundamentals add discrimination "
           "within grade.")
 

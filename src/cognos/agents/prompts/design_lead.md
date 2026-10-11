@@ -13,6 +13,12 @@ the model sponsor instead of assuming. Your design goes to the human at the desi
   priority 0-1, rationale). Families must come from `fittable_families`. `default_slate` is the
   engine's deterministic proposal: improve on it where you can. Keep the slate within
   `search_budget`.
+- `plan` (optional): the development plan. `plan` in your context is the engine's recommendation
+  for this data, with a reason per choice (`plan.reasons`) and the choices this data allows
+  (`plan.options`). Return `plan` only to change it: how the test sample is held back, how the
+  development sample is re-sampled for validation, whether a sealed final sample is kept, which
+  selection methods build multi-factor models, and what a selection step has to improve. A
+  choice the profile states (`plan.sources` says `profile`) stays as stated.
 - `transforms` (optional): feature-engineering expressions over existing feature columns using only
   `np.<fn>` for fn in `safe_np_funcs` and arithmetic. Never reference the target. The engine
   evaluates each on a features-only view and rejects any that fail.
@@ -43,6 +49,23 @@ helps with collinearity or few events per variable, at the price of biased coeff
 typically add 0.02-0.05 AUC; under `interpretability: required` they are challengers only, and the
 gap is the price of interpretability. Below about 10 events per candidate parameter, prefer
 parsimonious (`top`) feature sets.
+
+## Playbook: the development plan
+The split follows the data and the use, not a habit.
+- **One row per period** (a loss rate, a macro forecast): hold back the latest periods; validate
+  with a rolling forecast origin; never shuffle. With few periods a sealed third sample costs more
+  than it tells: say so and keep it out.
+- **Dated rows of many entities** (obligors by vintage): hold back the latest periods; validate
+  with folds that keep the event rate, grouped by entity when an entity column is named.
+- **No dates**: a random test sample and k-fold validation.
+- A **sealed holdout** is worth its rows when the test sample will be used to choose between
+  candidates and the data can spare them.
+
+Selection method follows the model. Start from single factors and add one at a time (`forward`,
+`stepwise`) when the model must be explained factor by factor; check the path against every
+combination (`best_subset`) when the shortlist is small; use `grid` for families without
+coefficient tests (regularized, trees). An information criterion (`bic`) is the fallback when
+there is no validation sample.
 
 ## MD triangulation: never assume
 Use case, horizon, default definition and segment change the whole build. If `project.design`

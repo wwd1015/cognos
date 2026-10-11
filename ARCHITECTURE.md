@@ -96,8 +96,9 @@ The engine (`engine/engine.py`) is deliberately mechanical. It walks the step gr
 routes challenges, syncs gaps, and marks stale work — it never judges.
 
 ```
-intake → gate_intent → explore → gate_data → ideate → gate_design → model → gate_champion
-       → backtest → validate → gate_validation → comply → document → review → gate_signoff
+intake → gate_intent → explore → gate_data → ideate → gate_design → model → gate_candidates
+       → backtest → gate_champion → validate → gate_validation → comply → document → review
+       → gate_signoff
 
 loop:
   ready = steps whose dependencies are done/skipped and that are pending or stale
@@ -262,7 +263,7 @@ Each agent is five pieces (`src/cognos/agents/`):
 | `prompts/<agent>.md` + `_common.md` | the role and its domain playbook; shared rules (numbers from facts, answer every challenge, never assume the design) |
 | `contracts.py` | the typed recommendation (`extra="forbid"`, strict-grammar-friendly JSON types) |
 | `slices.py` | what the agent may see: project brief + stage evidence + `facts` scoped to its independence (the modeler sees no model/backtest facts; the validator never sees the modeler's rationale) + its open challenges |
-| `checks.py` | what the engine re-checks (cited facts exist, every challenge answered, champion ∈ admissible set, fittable families, target never excluded, no typed metrics in prose, …) |
+| `checks.py` | what the engine re-checks (cited facts exist, every challenge answered, pool ⊆ leaders, champion ∈ pool, the plan one the data allow, fittable families, target never excluded, no typed metrics in prose, …) |
 | `heuristic.py` | the deterministic implementation of the same contract — the offline path |
 
 `runner.py` builds the prompt (task + context JSON + challenges + the previous attempt's errors),
@@ -284,9 +285,15 @@ enforces a per-call time limit and a per-run spend budget. Provider resolution:
   (every attempt's prompt, context slice and raw output) with the human decisions in `state.json`
   and the decision log, and are replayable with the `replay` provider.
 - **Agents recommend, humans decide** ([ADR-0010](docs/adr/0010-agents-recommend-humans-decide.md)):
-  six review gates; one pushback mechanism (challenges) for human send-backs and validator findings;
-  sponsor questions as tracked gaps; the modeler chooses from the one-standard-error admissible set
-  before the holdout is scored; only the engine BLOCKs, and a BLOCK is never acceptable.
+  seven review gates; one pushback mechanism (challenges) for human send-backs and validator findings;
+  sponsor questions as tracked gaps; only the engine BLOCKs, and a BLOCK is never acceptable.
+- **A plan, a pool, a champion chosen on outcomes**
+  ([ADR-0016](docs/adr/0016-development-plan-candidate-pool-champion-on-outcomes.md)): how the
+  data are split, how the factor library is cut and how single factors become models is a plan
+  recommended from the data and confirmed at the design gate (`modeling/plan.py`, `splits.py`,
+  `factors.py`, `selection.py`). The model stage ends on a pool of candidates; outcomes analysis
+  compares them on the test sample and under scenarios, and the champion is chosen there. A
+  sealed holdout, when the data can spare one, is scored once at validation, after the choice.
 - **Primary domain is commercial** model development under SR 11-7
   ([ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md)). Fair-lending scans
   are an optional, off-by-default module (`compliance.fair_lending: false`) — out of scope for a

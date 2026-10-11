@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 os.environ.setdefault("COGNOS_PROVIDER", "heuristic")
 
-from cognos import engagement, service, synth  # noqa: E402
+from cognos import engagement, pool, service, synth  # noqa: E402
 
 HERE = Path(__file__).parent
 SAMPLE = HERE / "sample_output"
@@ -96,7 +96,10 @@ def main() -> None:
           f"{brief['n_blocking']} blocking question(s)")
     service.submit_gate(v1, "gate_intent", "accept", root=root, background=False)
     _accept_rest(v1, root)
-    model = service.results(v1, root)["model"].payload
+    # The model stage with the champion in force laid over it (the champion is chosen on the
+    # outcomes analysis of the candidate pool).
+    model = pool.from_results(root / v1, service.results(v1, root),
+                              service.state(v1, root).overrides.champion)
     print(f"[new] run {v1}: {service.state(v1, root).status}, champion {model['champion_label']}")
     shutil.copy(root / v1 / "stages/intake/brief.md", SAMPLE / "new_brief.md")
 

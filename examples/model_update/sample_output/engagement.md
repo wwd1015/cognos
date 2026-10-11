@@ -6,7 +6,7 @@ resource: stages/intake/brief.json
 tags:
 - intent
 - governance
-timestamp: '2026-10-10T02:10:23.517195+00:00'
+timestamp: '2026-10-11T15:25:18.719324+00:00'
 ---
 
 # Business Intent
@@ -44,13 +44,13 @@ Nothing.
 | Document | Role | SHA-256 |
 | --- | --- | --- |
 | update_request.md | intent | 1167bc94e733a593 |
-| score_v1.py | code | ac2300c4e1f0ef0e |
-| prior_run_whitepaper.md | whitepaper | cf8364de03da94cd |
+| score_v1.py | code | aac012eb0e04e7b8 |
+| prior_run_whitepaper.md | whitepaper | d64a6b46f7d14382 |
 
 ## Model change record
 
 - **Scope:** re estimate — The deepest of the 3 requested change(s) is data refresh.
-- **Existing model family:** ridge_logit
+- **Existing model family:** logit
 
 | Requested change | Type | Enters at |
 | --- | --- | --- |
@@ -60,13 +60,14 @@ Nothing.
 
 ## Existing model against this update
 
-The existing model is COGNOS run `20261010T021022Z-6aae664`. Both columns are what each run recorded; the two runs keep separate sealed holdouts, so the holdout figures are not measured on the same sample.
+The existing model is COGNOS run `20261011T152515Z-71ad02b`. Both columns are what each run recorded; the two runs keep separate test samples and sealed holdouts, so those figures are not measured on the same rows.
 
 |  | Existing model | This update |
 | --- | --- | --- |
-| Champion family | ridge_logit | ridge_logit |
-| Features | 6 | 6 |
+| Champion family | logit | logit |
+| Features | 3 | 3 |
 | Metric | roc_auc | roc_auc |
-| CV roc_auc | 0.8182 | 0.8182 |
-| Holdout roc_auc | 0.8531 | 0.8531 |
-| Validation verdict | PASS | see the validation section |
+| CV roc_auc | 0.8122 | 0.8122 |
+| Test roc_auc | 0.8584 | 0.8584 |
+| Sealed-holdout roc_auc | n/a | n/a |
+| Validation verdict | WARN | see the validation section |

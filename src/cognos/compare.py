@@ -20,10 +20,13 @@ from .engine.state import RunState
 _HIGHER = {"gini", "overall_score", "ks"}
 _LOWER = {"cv_std", "psi", "n_blockers", "brier", "ece"}
 # Metrics reported in the project's own metric (direction comes from the model stage).
-_PRIMARY = {"cv_mean", "holdout_metric", "oos_metric"}
+_PRIMARY = {"cv_mean", "holdout_metric", "oos_metric", "best_score"}
 METRIC_LABELS = {
     "cv_mean": "Cross-validated metric (mean)", "cv_std": "Cross-validated metric (std)",
     "holdout_metric": "Sealed holdout metric", "oos_metric": "Out-of-sample metric",
+    "best_score": "Best ranking score (development)", "rank_score": "Best ranking score",
+    "n_factors": "Factors in the library", "n_shortlisted": "Factors shortlisted",
+    "n_pool": "Candidates in the pool", "n_candidates": "Candidates compared",
     "n_candidates_tried": "Candidates tried", "n_transforms": "Transforms kept", "gini": "Gini",
     "psi": "Population stability (PSI)", "overall_score": "Validation rubric score",
     "n_blockers": "Validation blockers",
@@ -117,10 +120,10 @@ def config_changes(a: dict | None, b: dict | None) -> list[dict]:
 
 
 def _champion(results: dict[str, StageResult]) -> str | None:
-    model = results.get("model")
-    if model is None:
+    backtest = results.get("backtest")
+    if backtest is None:  # the champion is chosen on the outcomes analysis of the pool
         return None
-    return (model.payload or {}).get("champion_label") or model.metrics.get("champion")
+    return (backtest.payload or {}).get("champion_label") or backtest.metrics.get("champion")
 
 
 def _metric_name(results: dict[str, StageResult]) -> str | None:
@@ -202,7 +205,7 @@ def step_changes(stage: str, previous: StageResult | None, current: StageResult 
     pa, pb = {stage: previous}, {stage: current}
     rows = metric_rows(pa, pb, [stage])
     champion = None
-    if stage == "model" and _champion(pa) != _champion(pb):
+    if stage == "backtest" and _champion(pa) != _champion(pb):
         champion = {"a": _champion(pa), "b": _champion(pb)}
     return {"stage": stage, "metrics": rows, "champion": champion,
             "verdict": {"a": previous.verdict.value, "b": current.verdict.value},

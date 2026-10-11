@@ -40,9 +40,13 @@ def _cni_cfg(tmp_path, *, market=False, families=None, **extra) -> CognosConfig:
 
 
 def _run_model(cfg, runs_dir):
+    """Run to the model stage. Its payload is returned with the pool's first member laid over
+    it (``ctx.champion()``): these tests read one fitted model, not the choice between them."""
     orch = Orchestrator(cfg, runs_root=runs_dir)
     orch.run_stage("explore")
-    return orch, orch.run_stage("model")
+    res = orch.run_stage("model")
+    res.payload = orch.ctx.champion()
+    return orch, res
 
 
 # --- probit / cloglog --------------------------------------------------------------
@@ -94,7 +98,7 @@ def test_hazard_beats_or_matches_single_period_reading(tmp_path, runs_dir):
     # Not a performance assertion — just that both families evaluate on the same obligor-level CV.
     cfg = _cni_cfg(tmp_path, families=["logit", "hazard_logit"])
     _, res = _run_model(cfg, runs_dir)
-    fams = {r["family"] for r in res.payload.get("diagnostics", {}).get("tests", [])} or None
+    fams = {r.get("category") for r in res.payload.get("diagnostics", {}).get("tests", [])} or None
     assert res.payload["champion"]["family"] in ("logit", "hazard_logit")
     assert res.verdict.value in ("PASS", "WARN"), fams
 
@@ -129,7 +133,7 @@ def test_structural_hybrid_and_serve_time_recompute(tmp_path, runs_dir):
     st = res.payload["structural"]
     assert "merton_dd" in res.payload["champion"]["features"]
     assert st["n_failed"] == 0
-    assert -1 <= st["benchmark"]["holdout_gini"] <= 1
+    assert -1 <= st["benchmark"]["test_gini"] <= 1
     assert st["benchmark"]["deployed"] is False
     # a fresh frame WITHOUT the engineered column scores identically via recompute
     load_scorer.cache_clear()
@@ -157,6 +161,7 @@ def test_vasicek_el_matches_theory_and_tail_grows_with_rho():
 def test_stress_scenarios_move_pd_in_the_right_direction(tmp_path, runs_dir):
     cfg = _cni_cfg(
         tmp_path, families=["logit"],
+        selection={"must_include": ["unemployment_rate"]},  # a shocked driver in every model
         stages={"enabled": ["explore", "model", "backtest"]},
         portfolio={"enabled": True, "lgd": 0.4, "n_sims": 2000},
         stress={"enabled": True, "scenarios": [
@@ -173,6 +178,10 @@ def test_stress_scenarios_move_pd_in_the_right_direction(tmp_path, runs_dir):
     assert pa["expected_loss"] > 0 and pa["var"] >= pa["expected_loss"]
     adverse = next(s for s in st["scenarios"] if s["name"] == "adverse")
     assert adverse["delta_pd"] > 0, "higher unemployment + lower growth must raise mean PD"
+    # every pool member is put through the same scenarios, so they can be told apart on them
+    for cand in res.payload["candidates"]:
+        moved = next(s for s in cand["scenarios"] if s["name"] == "adverse")
+        assert "unemployment_rate" in cand["features"] and moved["delta"] > 0
     bogus = next(s for s in st["scenarios"] if s["name"] == "bogus")
     assert bogus["missing_columns"] == ["not_a_column"]
     assert any(f.id.startswith("stress-missing") for f in res.findings)

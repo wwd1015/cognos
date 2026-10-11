@@ -27,7 +27,7 @@
 ## Update request
 
 - **Scope:** re estimate — The deepest of the 3 requested change(s) is data refresh.
-- **Existing model family:** ridge_logit
+- **Existing model family:** logit
 
 - Refresh the development data through the latest vintage _(data refresh; from explore)_
 - Re-estimate the coefficients on the refreshed sample _(re estimation; from ideate)_

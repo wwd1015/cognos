@@ -88,8 +88,8 @@ def test_approve_seals_a_package_and_a_later_edit_does_not_rewrite_it(make_confi
     eng = Engine(apply_brief(make_config("classification")), runs_root=runs_dir, mode="interactive")
     for _ in range(20):
         state = eng.run_until_idle()
-        waiting = [g for g in ("gate_intent", "gate_data", "gate_design", "gate_champion",
-                               "gate_validation", "gate_signoff")
+        waiting = [g for g in ("gate_intent", "gate_data", "gate_design", "gate_candidates",
+                               "gate_champion", "gate_validation", "gate_signoff")
                    if state.status_of(g) == "awaiting"]
         if not waiting:
             break
@@ -115,8 +115,8 @@ def test_open_brief_cannot_be_signed(make_config, runs_dir):
     eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
     for _ in range(20):
         state = eng.run_until_idle()
-        waiting = [g for g in ("gate_intent", "gate_data", "gate_design", "gate_champion",
-                               "gate_validation", "gate_signoff")
+        waiting = [g for g in ("gate_intent", "gate_data", "gate_design", "gate_candidates",
+                               "gate_champion", "gate_validation", "gate_signoff")
                    if state.status_of(g) == "awaiting"]
         if not waiting:
             break

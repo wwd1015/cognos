@@ -79,8 +79,9 @@
 
 ## Workflow engine (v1.0)
 - Nine-stage lifecycle `intake → explore → ideate → model → backtest → validate → comply →
-  document → review` interleaved with **six human review gates**: `gate_intent`, `gate_data`,
-  `gate_design`, `gate_champion`, `gate_validation`, `gate_signoff` (ADR-0010, ADR-0011).
+  document → review` interleaved with **seven human review gates**: `gate_intent`, `gate_data`,
+  `gate_design`, `gate_candidates`, `gate_champion`, `gate_validation`, `gate_signoff` (ADR-0010,
+  ADR-0011, ADR-0016).
 - **Mechanical engine** (`engine/`): a step graph with dependencies, statuses
   (pending / running / done / awaiting / stale / failed / blocked / skipped), and **stale
   propagation** — a revised decision, an answered question or a challenge marks everything
@@ -88,7 +89,7 @@
 - **Two modes, one engine**: interactive (pause at every enabled review gate) and autonomous (gates
   auto-accept the agent's recommendation, recorded as actor `auto` and seat `express` — preparation,
   not a signature); gates can be disabled per project.
-- **Seats**: intent, data, design and champion belong to the model developer; validation to the independent
+- **Seats**: intent, data, design, candidates and champion belong to the model developer; validation to the independent
   reviewer; sign-off to the approver. The engine refuses a seat on another seat's gate. `approve`
   seals `packages/vN.json` once (a digest of the recorded design, exclusions, slate, champion and
   verdicts). A later invalidation or a re-opened gate supersedes that package; the file stays.
@@ -103,9 +104,43 @@
 - Activity feed (`events.jsonl`), per-run directory with full provenance, greppable verdict tokens,
   machine-readable run summary; per-project YAML profile (`CognosConfig`).
 
+## Development plan, candidate pool, champion on outcomes (v1.5, ADR-0016)
+- **A plan recommended from the data and the intent**, with a reason for every choice and the
+  choices the data allow: the test sample (out of time / random / none), validation (k-fold,
+  stratified, grouped by entity, rolling forecast origin, sliding window), a sealed holdout
+  when the data can spare it, the ranking (any metric of the frozen registry, read in sample,
+  on the validation sample or on the test sample; several lines), and the pool size. The
+  Design Lead may change it; the developer confirms or edits it at the design gate; the
+  profile can state any part (`evaluation`, `factors`, `selection`).
+- **Factor library**: explored columns widened into lags, changes, year-on-year moves, growth
+  rates and moving averages for a series, logarithms of skewed amounts otherwise. Target-hidden,
+  recomputed by the scorer at serve time and under scenarios.
+- **Single-factor analysis and screen**: every factor fitted alone (sign, p-value,
+  autocorrelation-robust for a series, in-sample and validation score), then cut by ordered
+  rules the developer sets: missing, significance, expected sign, strength, best per column,
+  correlation, shortlist size, forced in or out. Every dropped factor keeps its rule and reason.
+- **Multi-factor selection, one method or several**: forward, backward, stepwise, best subset
+  and the grid, with a step criterion (validation or in-sample metric, AIC, BIC, adjusted R²)
+  and constraints (every coefficient significant, expected signs, no two factors too alike, a
+  size limit, factors every model must carry). Each path is recorded step by step; all models
+  land in one ranked ledger.
+- **Candidate pool**: the model stage ends on a pool. The Modeler recommends it, the developer
+  adds or removes members at `gate_candidates` from anything the search evaluated, and each
+  member is fitted, tested and saved.
+- **Champion on outcomes**: every pool member is scored on the test sample (forecast error and
+  bias, or Gini/KS, calibration, PSI) and under every scenario, side by side with a forecast
+  chart. The Outcomes Analyst recommends the champion; the developer accepts or chooses another
+  member at `gate_champion`.
+- **What stays sealed**: the holdout is scored once per champion at validation; every look at
+  the test sample is counted; validation says so when the champion's only out-of-sample
+  number is the one it was chosen on.
+- Demo `loss_forecast`: a quarterly net charge-off rate on macro drivers that act through lags
+  and changes (`cognos demo --task loss_forecast`).
+
 ## Human decisions
-- **Gate actions**: accept, edit (interview answers, exclusions, slate, design answers), override
-  (champion, from the admissible set, reason required), send back (a challenge to intake / explore /
+- **Gate actions**: accept, edit (interview answers, exclusions, slate, the development plan,
+  design answers, the candidate pool), override (champion, from the pool compared at outcomes
+  analysis, reason required), send back (a challenge to intake / explore /
   ideate / model), approve and
   reject (sign-off). Accepting a FAIL requires a reason (recorded risk acceptance).
 - **Overrides** shape the effective config; the profile YAML is never edited.
