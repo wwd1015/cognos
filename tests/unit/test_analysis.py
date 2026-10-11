@@ -164,6 +164,51 @@ def test_builtin_tools_return_numbers_tables_and_valid_charts(frame):
         reg.tools["distribution"].fn(frame, {"column": "nope"}, env)
 
 
+def test_standard_exploration_tools_work_on_untidy_data(frame):
+    reg = plugins.registry()
+    frame = frame.copy()
+    frame.loc[frame.index[:60], "leverage"] = None
+    frame["row_id"] = range(len(frame))
+    frame["flat"] = 1.0
+    leak = frame["default"] * 5 + frame["leverage"].fillna(0) * 0.01
+    frame["leaks"] = leak
+    env = {"target": "default", "task": "classification", "datetime_col": "vintage",
+           "features": [c for c in frame.columns if c not in ("default", "vintage", "row_id")]}
+    found = {}
+    for name, params in (("data_overview", {}), ("outliers", {}), ("predictive_power", {}),
+                         ("woe_bins", {"column": "sector"}),
+                         ("woe_bins", {"column": "leverage", "bins": "5"}), ("stability", {}),
+                         ("collinearity", {}), ("scatter", {"column": "leverage", "against": "leaks"}),
+                         ("missing_vs_target", {})):
+        out = reg.tools[name].fn(frame, params, env)
+        assert out["summary"] and out["table"]["rows"], name
+        assert charts.normalize(out["chart"])["kind"] in charts.KINDS, name
+        found[name] = out
+    seen = found["data_overview"]["summary"]
+    assert (seen["n_constant"], seen["n_identifier_like"], seen["n_columns_with_missing"]) == (1, 1, 1)
+    power = found["predictive_power"]
+    assert power["summary"]["strongest"] == "leaks"  # a feature built from the target tops it
+    assert power["summary"]["n_iv_above_0_5_check_leakage"] >= 1
+    assert "flat" not in [r[0] for r in power["table"]["rows"]]  # a constant ranks nowhere
+    woe = found["woe_bins"]["table"]
+    assert woe["rows"][-1][woe["columns"].index("band")] == "(missing)"  # gaps get their own band
+    assert found["stability"]["summary"]["reference_rows"] + found["stability"]["summary"][
+        "recent_rows"] == len(frame)
+    assert found["missing_vs_target"]["summary"]["largest_gap_column"] == "leverage"
+    # a continuous target is ranked by rank correlation, and the binary-only tool says why not
+    reg_env = {**env, "target": "leverage", "task": "regression",
+               "features": [c for c in env["features"] if c != "leverage"]}
+    assert "strongest_strength" in reg.tools["predictive_power"].fn(frame, {}, reg_env)["summary"]
+    with pytest.raises(ValueError, match="binary target"):
+        reg.tools["woe_bins"].fn(frame, {"column": "sector"}, reg_env)
+    with pytest.raises(ValueError, match="not numeric"):
+        reg.tools["scatter"].fn(frame, {"column": "sector"}, env)
+    with pytest.raises(ValueError, match="no date column"):
+        reg.tools["stability"].fn(frame, {}, {**env, "datetime_col": None})
+    assert reg.tools["missing_vs_target"].fn(frame.dropna(), {}, env)["summary"] == {
+        "n_columns_compared": 0, "min_rows_per_side": 20}
+
+
 def test_chart_specs_are_validated_and_bounded():
     ok = charts.normalize({"kind": "bar", "x": ["a", "b"], "series": [{"name": "n", "y": [1, float("nan")]}]})
     assert ok["series"][0]["y"] == [1, None]
@@ -264,14 +309,22 @@ def _scout(sl: dict, **raw) -> list[str]:
 def test_heuristic_scout_asks_for_the_standard_visuals_and_settles_an_open_target():
     sl = _scout_slice()
     out = heuristic.data_scout(sl)
-    assert _scout(sl, **out) == [] and out["done"]
-    assert [r["tool"] for r in out["requests"]] == [
-        "target_distribution", "time_trend", "target_relationship", "correlation_matrix"]
+    assert _scout(sl, **out) == [] and not out["done"]  # the survey first, then a drill-down
+    survey = [r["tool"] for r in out["requests"]]
+    assert survey == ["data_overview", "target_distribution", "time_trend", "predictive_power",
+                      "correlation_matrix", "outliers", "stability"]
     assert not any(r["code"] for r in out["requests"])  # the offline analyst never writes code
+    again = _scout_slice(task="classification", columns_with_missing=["leverage"],
+                         analyses=[{"id": f"a{i}", "tool": t} for i, t in enumerate(survey, 1)])
+    deeper = heuristic.data_scout(again)
+    assert _scout(again, **deeper) == [] and deeper["done"]
+    assert [r["tool"] for r in deeper["requests"]] == [
+        "target_relationship", "woe_bins", "collinearity", "missing_vs_target"]
+    assert heuristic.data_scout(_scout_slice(
+        analyses=[{"id": "a1", "tool": "target_relationship"}]))["requests"] == []
     open_ = _scout_slice(target="", target_candidates=[{"column": "default", "why": "binary"}])
     first = heuristic.data_scout(open_)
     assert _scout(open_, **first) == [] and first["target_column"] == "default" and not first["done"]
-    assert heuristic.data_scout(_scout_slice(analyses=[{"id": "a1"}]))["requests"] == []
 
 
 def test_engine_rejects_requests_it_cannot_run():

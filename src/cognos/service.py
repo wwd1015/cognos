@@ -43,6 +43,9 @@ DEMO_PRESETS: dict[str, dict[str, Any]] = {
                     {"name": "severely_adverse",
                      "shocks": {"unemployment_rate": {"add": 6.0}, "gdp_growth": {"set": -4.0}}},
                 ]},
+                objective="Rank commercial and industrial middle-market borrowers by their "
+                          "risk of default over the next 12 months, to support origination "
+                          "underwriting, and size the portfolio's loss under stress.",
                 design={"use_case": "origination underwriting", "horizon": "12-month PD",
                         "default_definition": "90+ DPD or nonaccrual within 12 months",
                         "segment": "C&I middle-market", "interpretability": "required"}),
@@ -107,7 +110,8 @@ def demo_config(preset: str, root: str | Path | None = None, *, n: int | None = 
     intent = data_dir / f"{preset}_intent.md"
     design = p.get("design", {})
     intent.write_text(eg.render_template("new", {
-        "objective": f"Demonstrate a COGNOS model development on synthetic data: "
+        "objective": p.get("objective") or
+                     f"Demonstrate a COGNOS model development on synthetic data: "
                      f"{DEMO_LABELS.get(preset, preset)}.",
         **{k: design.get(k, "") for k in eg.CORE},
         "interpretability": design.get("interpretability", ""),
@@ -295,10 +299,12 @@ def submit_gate(run_id: str, gate: str, action: str, payload: dict | None = None
 
 
 def answer_gap(run_id: str, gap_id: str, answer: str, *, assume: bool = False,
-               root: str | Path | None = None, background: bool = True,
-               seat: str | None = None, by: str | None = None) -> RunState:
+               limitation: bool = False, root: str | Path | None = None,
+               background: bool = True, seat: str | None = None,
+               by: str | None = None) -> RunState:
     eng = engine(run_id, root)
-    state = eng.answer_gap(gap_id, answer, assume=assume, seat=seat, by=by)
+    state = eng.answer_gap(gap_id, answer, assume=assume, limitation=limitation, seat=seat,
+                           by=by)
     if background:
         eng.start()
     return state

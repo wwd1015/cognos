@@ -21,7 +21,8 @@ the agents, the human decisions, and the engine's checks first-class.
    object — a Challenge routed to a stage's agent, which must answer it. Validator findings loop back
    automatically at most `workflow.auto_challenge_loops` times; the rest reach the human.
 4. **Open questions are tracked gaps.** Design questions the sponsor has not answered are records the
-   human answers (filling the design brief and re-running the stage) or accepts as assumptions.
+   human answers (filling the design brief and re-running the stage) or accepts as assumptions
+   (later also: flags as model limitations; validation challenges both).
 5. **The engine is a DAG runner with staleness.** A changed decision marks everything downstream
    stale; the engine re-runs it. State lives on disk (`state.json`), so any process, the CLI, or a
    browser refresh resumes exactly.

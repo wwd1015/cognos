@@ -236,6 +236,30 @@ class ValidateStage(Stage):
             if verdict == Verdict.PASS:
                 verdict = Verdict.WARN
 
+        # --- questions left unanswered: an assumption must be sensitised, a limitation mitigated
+        for a in ctx.sponsor_answers():
+            if a["status"] not in ("assumed", "limitation"):
+                continue
+            note = f" Recorded note: {a['answer']}" if a["answer"] else ""
+            if a["status"] == "assumed":
+                res.add_finding(Finding(
+                    id=f"assumption-{a['id']}", severity=Severity.MEDIUM, category="assumption",
+                    message=f"The model rests on an assumption the sponsor has not confirmed: "
+                            f"“{a['question']}”{note}",
+                    confidence=0.9,
+                    suggestion="Show how much the result moves if the assumption is wrong (a "
+                               "sensitivity run), or get the sponsor's answer."))
+            else:
+                res.add_finding(Finding(
+                    id=f"limitation-{a['id']}", severity=Severity.MEDIUM, category="limitation",
+                    message=f"A limitation of the model was recorded in place of an answer: "
+                            f"“{a['question']}”{note}",
+                    confidence=0.9,
+                    suggestion="Say how the limitation is mitigated or monitored, and restrict "
+                               "the intended use where it cannot be."))
+            if verdict == Verdict.PASS:
+                verdict = Verdict.WARN
+
         # --- agent-written analysis code: re-run every script and compare what it finds -------
         from ..analysis import run as analysis
 

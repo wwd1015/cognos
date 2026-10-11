@@ -23,6 +23,8 @@ rejects your answer. Counts written as words ("two candidates") are fine.
 - Results: qualify every claim ("on the out-of-time sample"); state the challenger gap as the price
   of interpretability.
 - Limitations: events per variable, right-censoring, regime coverage, open sponsor questions.
+  Keep assumptions and limitations apart: list every entry of `assumptions` (what the model
+  rests on without the sponsor's confirmation) and every entry of `recorded_limitations`.
 - Use and monitoring: metrics, thresholds, cadence, recalibration trigger; the human decisions
   recorded at the gates (`decisions`) and how challenges were resolved (`challenge_log`).
 

@@ -35,8 +35,17 @@ def test_core_design_cannot_be_assumed():
     with pytest.raises(GateError, match="cannot be accepted as an assumption"):
         apply_answers(state, {"design-use_case": ""}, assume=True)
     assert state.gap("design-use_case").status == "open"
-    apply_answers(state, {"data-x": ""}, assume=True)
+    assert apply_answers(state, {"data-x": ""}, assume=True) == ["validate"]
     assert state.gap("data-x").status == "assumed"
+    # a limitation is the third way to close a question; the core four take an answer only
+    state.gaps.append(Gap(id="data-y", question="Is the collateral revalued?", category="data"))
+    with pytest.raises(GateError, match="or a limitation"):
+        apply_answers(state, {"design-use_case": "n/a"}, limitation=True)
+    assert apply_answers(state, {"data-y": "Not known at origination."}, limitation=True) == [
+        "validate"]
+    gap = state.gap("data-y")
+    assert (gap.status, gap.answer) == ("limitation", "Not known at origination.")
+    assert state.overrides.design == {}  # neither fills the design brief
 
 
 def test_express_preparation_is_not_a_human_signature():

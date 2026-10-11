@@ -451,7 +451,7 @@ def _cmd_answer(args) -> int:
 
     try:
         service.answer_gap(args.run, args.gap, args.text or "", assume=args.assume,
-                           root=args.runs_dir, background=False)
+                           limitation=args.limitation, root=args.runs_dir, background=False)
     except GateError as exc:
         print(f"refused: {exc}")
         return 1
@@ -714,7 +714,10 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("--run", required=True)
     pa.add_argument("--gap", required=True)
     pa.add_argument("--text", default="")
-    pa.add_argument("--assume", action="store_true")
+    pa.add_argument("--assume", action="store_true",
+                    help="record it as an assumption instead of answering")
+    pa.add_argument("--limitation", action="store_true",
+                    help="record it as a model limitation instead of answering")
     runs(pa)
     pa.set_defaults(func=_cmd_answer)
 

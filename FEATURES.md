@@ -47,6 +47,12 @@
   them and returns summaries (`analysis.rounds`, `analysis.max_requests`).
 - **Built-in tools**: distribution, target distribution, target relationship (banded event rate),
   correlation matrix, missingness, time trend. Each returns numbers, a table and a chart.
+- **Standard exploration battery** (`analysis/eda.py`), for real data as well as the demos:
+  `data_overview` (one row per column: type, gaps, distinct values, range, what looks odd),
+  `outliers` (rows beyond the IQR fences), `predictive_power` (information value and Gini for a
+  binary target, |Spearman| or variance share otherwise), `woe_bins`, `stability` (PSI, early
+  vs late periods), `collinearity` (VIF), `scatter`, `missing_vs_target`. The offline Data
+  Analyst runs a survey round, then a drill-down into the strongest features.
 - **Plugins**: `register(registry)` modules adding tools and data sources, by entry point,
   profile list or `COGNOS_PLUGINS`; `cognos plugins` lists them and any load problems. Example in
   `examples/plugins/`.
@@ -73,6 +79,8 @@
   gate, whose decision records the scripts accepted; re-run at validation (a script that does not
   reproduce, or was altered, is a finding) and handed to the Independent Validator; printed in
   the white paper; included in the export. `analysis.allow_code: false` disables it.
+- **Source on every analysis**: each card is labelled built-in tool, plugin tool (with the
+  plugin's name) or agent-written script, and the section counts each.
 - **Visual workbench**: an analysis gallery (chart, key numbers, table, code) per request, the
   dependent-variable card, feature candidates, and data-source provenance; start a run from an
   uploaded data file or a Snowflake table with no profile.
@@ -110,8 +118,12 @@
   reject (sign-off). Accepting a FAIL requires a reason (recorded risk acceptance).
 - **Overrides** shape the effective config; the profile YAML is never edited.
 - **Tracked questions (gaps)**: every unanswered design point and agent question for the sponsor;
-  answer (re-runs the raising stage) or, for a data question, accept as an assumption. Use,
-  horizon, default definition and segment are sponsor decisions and cannot be assumed.
+  answer (re-runs the raising stage), accept as an **assumption**, or flag as a model
+  **limitation** (`cognos answer --assume` / `--limitation`). The last two re-run nothing but
+  validation, which raises a finding for each: show how sensitive the result is to an
+  assumption; say how a limitation is mitigated. `docs/limitations.md` lists the two apart.
+  An open question never stops a stage. Use, horizon, default definition and segment are
+  sponsor decisions: they can only be answered, and sign-off refuses while one is open.
 - **Decision log**: every agent recommendation (with its backend), human decision and challenge, in
   the OKF bundle (`docs/decisions.md`).
 
@@ -152,10 +164,12 @@
 - **Run workspace**: one stage rail (status, verdict, and the seat a waiting gate belongs to), each
   stage's engine evidence beside its agent's recommendation (uncertainties, responses to
   challenges), the gate form for the seat that owns it, live activity; a seat switch in the page
-  (model developer, independent reviewer, approver). Tabs for questions and challenges (the model
-  developer answers; the four sponsor facts cannot be assumed), the decision log, a record computed
-  on read of who did what, and the agent audit (inspect any call's output, context slice, prompt
-  and system prompt).
+  (model developer, independent reviewer, approver). Three views sit above the stage rail:
+  **Stages** (each stage page carries the questions it raised, marked required or optional,
+  and the challenges sent to it; the rail counts a stage's open questions), **Run record**
+  (run-wide: a timeline computed on read of who did what, every question, challenge and
+  decision) and **Agent calls** (inspect any call's output, context slice, prompt and system
+  prompt).
 - **Charts** on the validated reference palette: experiment ledger (kept vs discarded, champion
   ringed), coefficients by significance, calibration by score band, validation rubric, PD term
   structure; admissible set, sign checks, statistical battery, framework assessment, slate, SR 11-7 /

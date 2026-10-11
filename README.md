@@ -200,7 +200,12 @@ cognos delete-run <run_id> [<run_id> ...]    # remove runs for good; shows what 
 cognos gate gate_champion --run <run_id> --action override --payload '{"champion": "c3"}' --reason "..."
 cognos gate gate_validation --run <run_id> --action send_back --target model --message "..."
 cognos answer --run <run_id> --gap design-use_case --text "origination underwriting"
+cognos answer --run <run_id> --gap data-1a2b3c --assume --text "taken as known at origination"
+cognos answer --run <run_id> --gap data-4d5e6f --limitation --text "no revaluation history"
 ```
+
+A question that is not answered is recorded as an assumption or as a limitation. Neither stops
+the run; validation challenges each one and the white paper lists them apart.
 
 The documents can also be named in the profile (`engagement:` block). They are copied into the run
 (`runs/<id>/inputs/`), read as text (`.md`, `.txt`, `.docx`, source code, notebooks; `.pdf` when
@@ -233,8 +238,10 @@ the existing model's artifacts, a button to download the template, interactive o
 backend), and a run workspace with the stage rail, each stage's engine evidence (the engagement
 brief and the interview form, profile, framework assessment, slate, experiment
 ledger, admissible set, coefficient and calibration charts, rubric, findings, the rendered white
-paper) beside its agent's recommendation, the gate form, live activity, questions & challenges, and
-an agent audit where every call's prompt, context slice and raw output can be inspected. Light and
+paper) beside its agent's recommendation, the gate form, the questions that stage raised for the
+sponsor and live activity. Two run-wide views sit above the stages: the run record (timeline,
+every question, challenge and decision) and the agent calls, where every call's prompt, context
+slice and raw output can be inspected. Light and
 dark themes; all state is on disk, so a refresh or restart loses nothing.
 
 ### Working as a team without a server
@@ -283,7 +290,7 @@ src/cognos/
                  providers.yaml, runner (retry/audit/limits), backends/ (claude_cli, anthropic, openai)
   datasources.py connectors (file, sqlite, snowflake) and snapshot provenance
   plugins.py     the plugin registry: tools (per stage) and data sources
-  analysis/      built-in tools, chart specs, the restricted code runner, the executor
+  analysis/      built-in tools (tools.py, eda.py), chart specs, the restricted code runner, the executor
   engagement.py  development modes, the intent template, document reading, ingest into the run
   stages/        the 9 stages + stat_tests battery (engine work; judgment via ctx.recommend)
   modeling/      metrics, fitters (GLM links incl. probit/cloglog), ratchet search, hazard,

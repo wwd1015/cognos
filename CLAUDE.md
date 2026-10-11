@@ -43,6 +43,10 @@ answers → `ctx.config.design`; exclusions → `ctx.profile()`; slate → model
 `overrides.champion`) — the profile YAML is never edited. A changed decision marks the downstream
 steps `stale`; a step invalidated while running stays stale when it finishes.
 
+A gap closes three ways (`gates.apply_answers`): answered (fills the brief, re-runs the stage
+that raised it), `assumed` or `limitation` (re-runs only `validate`, which raises a non-blocking
+finding per item; `document` lists the two apart). A new way to close a gap must reach both.
+
 Seats (`engine/process.py`): developer on intent, data, design and champion; reviewer on validation;
 approver on sign-off. The engine refuses a seat on another seat's gate. Use, horizon, default
 definition and segment cannot be assumed, and `approve` refuses while any of them is open.
@@ -181,7 +185,8 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   literals in `agents/contracts.py`, a question in `engagement.QUESTIONS` if required, then
   regenerate `docs/templates/` (`render_template`).
 - **New document format** → a reader in `engagement.read_text` that returns `(None, why)` on failure.
-- **New analysis tool** → `analysis/tools.py::register` (built in) or a plugin; return summary
+- **New analysis tool** → `analysis/tools.py::register` (built in; the standard exploration
+  battery is `analysis/eda.py`) or a plugin; return summary
   numbers, a table and a chart spec.
 - **New stage tool / custom test** → a plugin `Tool(stages=..., needs=...)`; return `checks` for
   pass/fail. A new kind of input → `plugins.NEEDS` (with its first stage) and
@@ -203,6 +208,9 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 
 ## Front ends
 `service.py` is the only boundary the CLI (`cli.py`) and the Dash + Mantine workbench (`ui/`) use.
+The run workspace has three views: Stages (a stage page shows only that stage's questions
+and challenges, `panels.stage_questions` / `stage_challenges`) and the run-wide Run record and
+Agent calls. Do not put run-wide content on a stage page.
 UI panels are pure functions of (result, state, scheme, seat) — keep them testable without a browser
 (`tests/ui`). Never write `component or fallback`: Dash components define `__len__`, so a childless
 component is falsy — use `graph(fig, placeholder)` / explicit `is None` checks. Never pass an

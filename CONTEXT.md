@@ -112,7 +112,9 @@ automatically a bounded number of times.
 **Gap** (open question):
 An intent, design or data point only the sponsor can decide (the objective, use case, horizon,
 default definition, segment, an unconfirmed leakage suspect…). Answered — filling the design brief and re-running the
-stage that raised it — or accepted as an assumption; never silently assumed.
+stage that raised it — or recorded as an **assumption** (the model rests on it) or as a
+**limitation** (the model does not cover it); never silently assumed. Validation challenges each
+assumption (sensitivity) and each limitation (mitigation); the white paper lists them apart.
 
 **Override**:
 A human decision stored in `state.json` that shapes the effective config (exclusions, slate,
