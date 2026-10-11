@@ -46,6 +46,9 @@ gates, a challenger loop, and an audit trail — on top of COGNOS's econometric 
 
 ---
 
+> **New here?** Open [`docs/deck/index.html`](docs/deck/index.html) in a browser: a short deck on
+> how a run moves and the thinking behind the design.
+
 ## The workflow
 
 ```

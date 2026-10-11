@@ -12,6 +12,11 @@ versioning is SemVer.
   feed. Still pure Dash + Mantine; no behaviour changed.
 
 ### Added
+- **The deck** (`docs/deck/index.html`). A self-contained HTML presentation of how COGNOS
+  works and why it is built this way: the three roles, an animated walk through the nine
+  stages and six gates, and eight principles each with a small demonstration. It is
+  documentation: `tests/unit/test_deck.py` holds its version, workflow and figures to the code,
+  and it carries an edition log.
 - **Standard data-exploration tools** (`analysis/eda.py`). Eight built-in tools beside the six
   existing ones, written for real data: `data_overview`, `outliers`, `predictive_power`
   (information value and Gini, or rank correlation for a continuous target), `woe_bins`,

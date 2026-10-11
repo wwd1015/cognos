@@ -32,6 +32,11 @@ trustworthy. v1.0 architecture: **agents recommend, humans decide, the engine di
    `fsutil.atomic_write`. For local end-to-end verification with real agents, run the opt-in live
    test through `claude -p`: `COGNOS_LIVE=1 pytest tests/live` (skipped by default).
 
+9. **The deck moves with the system.** `docs/deck/index.html` presents how COGNOS works and why.
+   A change to the workflow, a principle, a count the deck states, or the version changes the
+   deck in the same commit: the slide, the edition block and a row in the edition log
+   (`docs/deck/README.md`; `tests/unit/test_deck.py` holds the facts equal).
+
 ## The workflow (engine/graph.py)
 ```
 intake → gate_intent → explore → gate_data → ideate → gate_design → model → gate_champion
