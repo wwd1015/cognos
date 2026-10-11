@@ -187,7 +187,7 @@ def runs_page() -> Any:
                       html.Div("Model development", className="page-title"),
                       html.Div("A run starts from the sponsor's business intent (a new model, or "
                                "an update of an existing one) and takes it through nine stages "
-                               "and six review gates.", className="page-lede")]),
+                               "and seven review gates.", className="page-lede")]),
             dmc.Button("New run", id="new-open", leftSection=icon("tabler:plus")),
         ], justify="space-between", align="flex-end", mt="lg", mb="xl", wrap="nowrap"),
         html.Div(id="runs-figures", children=runs_figures()),
