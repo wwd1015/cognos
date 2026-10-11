@@ -15,6 +15,7 @@
       "validation": 0.30707897139227697,
       "correlation": 0.636157075356996,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -34,6 +35,7 @@
       "validation": 0.38994488343624284,
       "correlation": -0.20650479370962624,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.070"
@@ -53,6 +55,7 @@
       "validation": 0.38643547493118313,
       "correlation": -0.07561667527593496,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.600"
@@ -72,6 +75,7 @@
       "validation": 0.41307004313750495,
       "correlation": -0.04096021958878244,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.783"
@@ -91,6 +95,7 @@
       "validation": 0.2554605257016359,
       "correlation": 0.7171931708280442,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -110,6 +115,7 @@
       "validation": 0.4008375078556823,
       "correlation": 0.08103932041449655,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.723"
@@ -129,6 +135,7 @@
       "validation": 0.3528550554895163,
       "correlation": -0.008724966778457863,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.946"
@@ -148,6 +155,7 @@
       "validation": 0.3522235928904995,
       "correlation": -0.06188991502105747,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.448"
@@ -167,6 +175,7 @@
       "validation": 0.31887690208303326,
       "correlation": 0.5437180647015813,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -186,6 +195,7 @@
       "validation": 0.32925741040754336,
       "correlation": 0.41007796176417427,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -205,6 +215,7 @@
       "validation": 0.3454260208819679,
       "correlation": 0.23745070444976346,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.171"
@@ -224,6 +235,7 @@
       "validation": 0.35431017881637716,
       "correlation": 0.05169457137402888,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.731"
@@ -243,6 +255,7 @@
       "validation": 0.35615064977663297,
       "correlation": 0.350179078835477,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -262,6 +275,7 @@
       "validation": 0.3377389764996713,
       "correlation": 0.5304191298704006,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -281,6 +295,7 @@
       "validation": 0.29587696107308536,
       "correlation": 0.7105486046375034,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -300,6 +315,7 @@
       "validation": 0.258095646236109,
       "correlation": 0.7947924215812042,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -319,6 +335,7 @@
       "validation": 0.2700157448649205,
       "correlation": 0.7535164509092263,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -338,6 +355,7 @@
       "validation": 0.28068154687460095,
       "correlation": 0.7301233961522867,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -357,6 +375,7 @@
       "validation": 0.22504286569961265,
       "correlation": 0.853548737165937,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -376,6 +395,7 @@
       "validation": 0.20767050221836256,
       "correlation": 0.8807613570149438,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_correlation",
       "reason": "correlation +0.99 with the stronger unemployment_rate__yoy_pct__lag2"
@@ -395,6 +415,7 @@
       "validation": 0.2554501761350807,
       "correlation": 0.7957652841638094,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -414,6 +435,7 @@
       "validation": 0.30609168986807117,
       "correlation": 0.6329088667259571,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -433,6 +455,7 @@
       "validation": 0.2886057306046876,
       "correlation": 0.7004139592628777,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -452,6 +475,7 @@
       "validation": 0.23112946354129438,
       "correlation": 0.8316742902020962,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -471,6 +495,7 @@
       "validation": 0.20679913031601896,
       "correlation": 0.8732595481602088,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -490,6 +515,7 @@
       "validation": 0.2546053253223522,
       "correlation": 0.7995893515082199,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -509,6 +535,7 @@
       "validation": 0.306419961441546,
       "correlation": 0.6437883291695213,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -528,6 +555,7 @@
       "validation": 0.32437235391728797,
       "correlation": 0.46809461440955086,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of unemployment_rate are kept"
@@ -547,6 +575,7 @@
       "validation": 0.34005709622244046,
       "correlation": 0.31621183071818704,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.087"
@@ -566,6 +595,7 @@
       "validation": 0.3514737038032502,
       "correlation": 0.146208323423549,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.374"
@@ -585,6 +615,7 @@
       "validation": 0.35606155717427,
       "correlation": -0.02258356085051497,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.873"
@@ -604,6 +635,7 @@
       "validation": 0.35193936722892744,
       "correlation": -0.16948178140873274,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.194"
@@ -623,6 +655,7 @@
       "validation": 0.37536060978914065,
       "correlation": -0.28978548796872977,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of gdp_growth are kept"
@@ -642,6 +675,7 @@
       "validation": 0.34985919893161754,
       "correlation": -0.37625922139438556,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of gdp_growth are kept"
@@ -661,6 +695,7 @@
       "validation": 0.3603954423819446,
       "correlation": -0.3957175969860784,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of gdp_growth are kept"
@@ -680,6 +715,7 @@
       "validation": 0.35883107580835866,
       "correlation": -0.3909613839090625,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of gdp_growth are kept"
@@ -699,6 +735,7 @@
       "validation": 0.34942320093750084,
       "correlation": 0.06400835375594582,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.340"
@@ -718,6 +755,7 @@
       "validation": 0.34748703557723415,
       "correlation": 0.06899774698199775,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.221"
@@ -737,6 +775,7 @@
       "validation": 0.34967127487253785,
       "correlation": 0.014561838678124968,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.813"
@@ -756,6 +795,7 @@
       "validation": 0.3519202040085108,
       "correlation": -0.005065866154043266,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.941"
@@ -775,6 +815,7 @@
       "validation": 0.3503507586134315,
       "correlation": -0.021160572704233615,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.734"
@@ -794,6 +835,7 @@
       "validation": 0.35012946826056773,
       "correlation": 0.1453076712192121,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.237"
@@ -813,6 +855,7 @@
       "validation": 0.3524032817073259,
       "correlation": 0.058514696219064466,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.600"
@@ -832,6 +875,7 @@
       "validation": 0.3560120416479937,
       "correlation": -0.07105817295186845,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.497"
@@ -851,6 +895,7 @@
       "validation": 0.35498973647308824,
       "correlation": -0.09208839273982085,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.436"
@@ -870,6 +915,7 @@
       "validation": 0.35655680402986695,
       "correlation": -0.13932161096314807,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.195"
@@ -889,6 +935,7 @@
       "validation": 0.34567076680035497,
       "correlation": 0.3551786524832096,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "enforce_sign",
       "reason": "sign +, expected -"
@@ -908,6 +955,7 @@
       "validation": 0.38078032937791284,
       "correlation": 0.32574450034599833,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "enforce_sign",
       "reason": "sign +, expected -"
@@ -927,6 +975,7 @@
       "validation": 0.42848106648732026,
       "correlation": 0.2272283670760343,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "enforce_sign",
       "reason": "sign +, expected -"
@@ -946,6 +995,7 @@
       "validation": 0.3988381156420189,
       "correlation": 0.19832176081854797,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "enforce_sign",
       "reason": "sign +, expected -"
@@ -965,6 +1015,7 @@
       "validation": 0.4462242875962424,
       "correlation": 0.08847758539045662,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.365"
@@ -984,6 +1035,7 @@
       "validation": 0.34838123048920394,
       "correlation": -0.5343538742731581,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of gdp_growth are kept"
@@ -1003,6 +1055,7 @@
       "validation": 0.3190061632186176,
       "correlation": -0.6092160641449393,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of gdp_growth are kept"
@@ -1022,6 +1075,7 @@
       "validation": 0.3017499835428221,
       "correlation": -0.6373907425288524,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -1041,6 +1095,7 @@
       "validation": 0.3168015011404759,
       "correlation": -0.5999075486802913,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_correlation",
       "reason": "correlation +0.85 with the stronger gdp_growth__ma4__lag2"
@@ -1060,6 +1115,7 @@
       "validation": 0.33614794051933566,
       "correlation": -0.5509829281955702,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of gdp_growth are kept"
@@ -1079,6 +1135,7 @@
       "validation": 0.38846263116102286,
       "correlation": -0.049477105904330666,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.735"
@@ -1098,6 +1155,7 @@
       "validation": 0.3898538981622468,
       "correlation": -0.017168092376350735,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.907"
@@ -1117,6 +1175,7 @@
       "validation": 0.39070813480866334,
       "correlation": 0.01606301009579264,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.913"
@@ -1136,6 +1195,7 @@
       "validation": 0.3915986331099604,
       "correlation": 0.04719541920783447,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.748"
@@ -1155,6 +1215,7 @@
       "validation": 0.3497673211044061,
       "correlation": -0.4623473381505182,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1174,6 +1235,7 @@
       "validation": 0.3314984459623705,
       "correlation": -0.5964238771675207,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1193,6 +1255,7 @@
       "validation": 0.34828098775220534,
       "correlation": -0.6263177740683566,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1212,6 +1275,7 @@
       "validation": 0.3585190399718301,
       "correlation": -0.6005794872298452,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1231,6 +1295,7 @@
       "validation": 0.35469916094448944,
       "correlation": -0.49833031369074304,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1250,6 +1315,7 @@
       "validation": 0.3126661057465026,
       "correlation": -0.7135845282628075,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -1269,6 +1335,7 @@
       "validation": 0.3146990739785453,
       "correlation": -0.7205067983221913,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_correlation",
       "reason": "correlation +0.91 with the stronger hpi__yoy_diff"
@@ -1288,6 +1355,7 @@
       "validation": 0.3305611945333845,
       "correlation": -0.6391897638368936,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1307,6 +1375,7 @@
       "validation": 0.35224902662037355,
       "correlation": -0.5079282869832344,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1326,6 +1395,7 @@
       "validation": 0.36290343852402684,
       "correlation": -0.3498901458382386,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1345,6 +1415,7 @@
       "validation": 0.3342452367355265,
       "correlation": -0.6746818828058622,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1364,6 +1435,7 @@
       "validation": 0.3388816500859895,
       "correlation": -0.6852122494793994,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1383,6 +1455,7 @@
       "validation": 0.3494517636891717,
       "correlation": -0.6082244483218178,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1402,6 +1475,7 @@
       "validation": 0.36032695485595406,
       "correlation": -0.48191493650532624,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of hpi are kept"
@@ -1421,6 +1495,7 @@
       "validation": 0.3647614568256046,
       "correlation": -0.3284216303519758,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.057"
@@ -1440,6 +1515,7 @@
       "validation": 0.3891779475360244,
       "correlation": -0.031214325697100063,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.830"
@@ -1459,6 +1535,7 @@
       "validation": 0.39035960261622754,
       "correlation": -0.0004230546041943466,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.998"
@@ -1478,6 +1555,7 @@
       "validation": 0.3913903043738032,
       "correlation": 0.03006768970179932,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.837"
@@ -1497,6 +1575,7 @@
       "validation": 0.39299615606369587,
       "correlation": 0.05648724417422382,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.703"
@@ -1516,6 +1595,7 @@
       "validation": 0.39528289317874304,
       "correlation": 0.0769225026851482,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.610"
@@ -1535,6 +1615,7 @@
       "validation": 0.4193366537667638,
       "correlation": -0.02581409253677441,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.866"
@@ -1554,6 +1635,7 @@
       "validation": 0.42466814469360736,
       "correlation": -0.016762621407822257,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.914"
@@ -1573,6 +1655,7 @@
       "validation": 0.41991573569243545,
       "correlation": 0.007361743058053084,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.962"
@@ -1592,6 +1675,7 @@
       "validation": 0.4132255921456527,
       "correlation": 0.029637376454968393,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.846"
@@ -1611,6 +1695,7 @@
       "validation": 0.3542308741607312,
       "correlation": -0.1333598860189228,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.187"
@@ -1630,6 +1715,7 @@
       "validation": 0.3515031627784811,
       "correlation": -0.08039424048293546,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.425"
@@ -1649,6 +1735,7 @@
       "validation": 0.34403935449582407,
       "correlation": -0.21623251725580636,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of cre_price_index are kept"
@@ -1668,6 +1755,7 @@
       "validation": 0.35933424535886105,
       "correlation": -0.2006994581021963,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of cre_price_index are kept"
@@ -1687,6 +1775,7 @@
       "validation": 0.34784094250188985,
       "correlation": -0.15205853509610115,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.055"
@@ -1706,6 +1795,7 @@
       "validation": 0.35109520659567384,
       "correlation": -0.32185516764854244,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of cre_price_index are kept"
@@ -1725,6 +1815,7 @@
       "validation": 0.3409245104871297,
       "correlation": -0.32990502591365195,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of cre_price_index are kept"
@@ -1744,6 +1835,7 @@
       "validation": 0.3421331000021896,
       "correlation": -0.351300405843061,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of cre_price_index are kept"
@@ -1763,6 +1855,7 @@
       "validation": 0.35910334023267604,
       "correlation": -0.28779713389539857,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of cre_price_index are kept"
@@ -1782,6 +1875,7 @@
       "validation": 0.3705955884087428,
       "correlation": -0.21213013217997354,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.140"
@@ -1801,6 +1895,7 @@
       "validation": 0.34891934183180234,
       "correlation": -0.31055769810693384,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of cre_price_index are kept"
@@ -1820,6 +1915,7 @@
       "validation": 0.33963372353344456,
       "correlation": -0.32160002573269003,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -1839,6 +1935,7 @@
       "validation": 0.3400057764117454,
       "correlation": -0.3485526350094255,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -1858,6 +1955,7 @@
       "validation": 0.3552719359657517,
       "correlation": -0.29042247367528895,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of cre_price_index are kept"
@@ -1877,6 +1975,7 @@
       "validation": 0.3655331921430511,
       "correlation": -0.21921959122624754,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.130"
@@ -1896,6 +1995,7 @@
       "validation": 0.4210093526259229,
       "correlation": -0.019048492667007633,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.901"
@@ -1915,6 +2015,7 @@
       "validation": 0.42093216525106053,
       "correlation": -0.0012819628486428858,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.993"
@@ -1934,6 +2035,7 @@
       "validation": 0.41807220848890575,
       "correlation": 0.01685198899949988,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.913"
@@ -1953,6 +2055,7 @@
       "validation": 0.41431316986048344,
       "correlation": 0.036011656555923775,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.812"
@@ -1972,6 +2075,7 @@
       "validation": 0.4129199561271666,
       "correlation": 0.05132844741799341,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.729"
@@ -1991,6 +2095,7 @@
       "validation": 0.20294443340405663,
       "correlation": 0.8446799280660298,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_correlation",
       "reason": "correlation +0.94 with the stronger bbb_spread__ma4"
@@ -2010,6 +2115,7 @@
       "validation": 0.2354656385513355,
       "correlation": 0.7843340262570981,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2029,6 +2135,7 @@
       "validation": 0.2935687220492191,
       "correlation": 0.6658038827599854,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2048,6 +2155,7 @@
       "validation": 0.3340189187140308,
       "correlation": 0.48589809534945627,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2067,6 +2175,7 @@
       "validation": 0.349880996054945,
       "correlation": -0.23162941226006592,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.084"
@@ -2086,6 +2195,7 @@
       "validation": 0.3454533911684545,
       "correlation": 0.10869123909438703,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.396"
@@ -2105,6 +2215,7 @@
       "validation": 0.34838196351703515,
       "correlation": 0.20046186036701602,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.163"
@@ -2124,6 +2235,7 @@
       "validation": 0.34812263280785194,
       "correlation": 0.3131787599710692,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2143,6 +2255,7 @@
       "validation": 0.3410102354178696,
       "correlation": 0.43603210729992586,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2162,6 +2275,7 @@
       "validation": 0.34951025811667846,
       "correlation": 0.17013526430225065,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.350"
@@ -2181,6 +2295,7 @@
       "validation": 0.3217454163382743,
       "correlation": 0.4625772200057535,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2200,6 +2315,7 @@
       "validation": 0.30660137839966695,
       "correlation": 0.5986096701142887,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2219,6 +2335,7 @@
       "validation": 0.29231372745012496,
       "correlation": 0.664871097290648,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2238,6 +2355,7 @@
       "validation": 0.2746464259709908,
       "correlation": 0.6368248230226571,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2257,6 +2375,7 @@
       "validation": 0.3406448546448338,
       "correlation": 0.2279225947104344,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.086"
@@ -2276,6 +2395,7 @@
       "validation": 0.31490178978812916,
       "correlation": 0.49430654940716123,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2295,6 +2415,7 @@
       "validation": 0.3067824127271653,
       "correlation": 0.6143505910628575,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2314,6 +2435,7 @@
       "validation": 0.28889615427202275,
       "correlation": 0.660027752260112,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2333,6 +2455,7 @@
       "validation": 0.2787564892823675,
       "correlation": 0.6364023659862561,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2352,6 +2475,7 @@
       "validation": 0.18459065148989584,
       "correlation": 0.8565458982347616,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -2371,6 +2495,7 @@
       "validation": 0.23857832325885597,
       "correlation": 0.7892498390126514,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2390,6 +2515,7 @@
       "validation": 0.31128471069520863,
       "correlation": 0.6165979272732343,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2409,6 +2535,7 @@
       "validation": 0.3447267898394286,
       "correlation": 0.39416920645910103,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "best_per_source",
       "reason": "2 stronger transformation(s) of bbb_spread are kept"
@@ -2428,6 +2555,7 @@
       "validation": 0.3513433879781854,
       "correlation": 0.14601025527974915,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.340"
@@ -2447,6 +2575,7 @@
       "validation": 0.40362007805380035,
       "correlation": 0.05258615569811045,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.815"
@@ -2466,6 +2595,7 @@
       "validation": 0.40401228229340497,
       "correlation": 0.016327307171271246,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.940"
@@ -2485,6 +2615,7 @@
       "validation": 0.40511612242425016,
       "correlation": -0.028906196732722343,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.888"
@@ -2504,6 +2635,7 @@
       "validation": 0.40053267644879625,
       "correlation": -0.06300035327359572,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.746"
@@ -2523,6 +2655,7 @@
       "validation": 0.3485626820061622,
       "correlation": 0.11601792055726476,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.179"
@@ -2542,6 +2675,7 @@
       "validation": 0.34644197651417313,
       "correlation": 0.15498954007393168,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.103"
@@ -2561,6 +2695,7 @@
       "validation": 0.3532002690930822,
       "correlation": 0.1976441270348763,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.064"
@@ -2580,6 +2715,7 @@
       "validation": 0.355489945064299,
       "correlation": 0.15183489243988837,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.179"
@@ -2599,6 +2735,7 @@
       "validation": 0.355364988720099,
       "correlation": 0.12022896470292689,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.297"
@@ -2618,6 +2755,7 @@
       "validation": 0.349221885375727,
       "correlation": 0.3511368154804763,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.067"
@@ -2637,6 +2775,7 @@
       "validation": 0.354482062434178,
       "correlation": 0.35089557825934065,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.093"
@@ -2656,6 +2795,7 @@
       "validation": 0.36214417785874414,
       "correlation": 0.3039375713323111,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.143"
@@ -2675,6 +2815,7 @@
       "validation": 0.3560214258111381,
       "correlation": 0.19102567452903552,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.324"
@@ -2694,6 +2835,7 @@
       "validation": 0.35254603149288677,
       "correlation": 0.08294572979974744,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.611"
@@ -2713,6 +2855,7 @@
       "validation": 0.3476283768522533,
       "correlation": 0.33946985771213056,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.072"
@@ -2732,6 +2875,7 @@
       "validation": 0.3522481539414861,
       "correlation": 0.34249996877975436,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.096"
@@ -2751,6 +2895,7 @@
       "validation": 0.35954311908595254,
       "correlation": 0.29739315396320176,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.141"
@@ -2770,6 +2915,7 @@
       "validation": 0.35344108132133223,
       "correlation": 0.1848751799880695,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.327"
@@ -2789,6 +2935,7 @@
       "validation": 0.35126238699005013,
       "correlation": 0.07837238957026807,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.619"
@@ -2808,6 +2955,7 @@
       "validation": 0.4063459004955316,
       "correlation": 0.03003831205656607,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.892"
@@ -2827,6 +2975,7 @@
       "validation": 0.40656483295739454,
       "correlation": -0.006345911674515862,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.976"
@@ -2846,6 +2995,7 @@
       "validation": 0.40573215037235744,
       "correlation": -0.04227462781906809,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.835"
@@ -2865,6 +3015,7 @@
       "validation": 0.4046796935558907,
       "correlation": -0.07338773109854392,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.703"
@@ -2884,6 +3035,7 @@
       "validation": 0.40213675597221776,
       "correlation": -0.09267307468403753,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.614"
@@ -2903,6 +3055,7 @@
       "validation": 0.3530114618210085,
       "correlation": -0.059885970042933376,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.650"
@@ -2922,6 +3075,7 @@
       "validation": 0.36180664253611367,
       "correlation": -0.15939447956861524,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.233"
@@ -2941,6 +3095,7 @@
       "validation": 0.36353001981153216,
       "correlation": -0.25165287446972445,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.075"
@@ -2960,6 +3115,7 @@
       "validation": 0.36170531964968955,
       "correlation": -0.35761136886289285,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "enforce_sign",
       "reason": "sign -, expected +"
@@ -2979,6 +3135,7 @@
       "validation": 0.35333885969738965,
       "correlation": 0.05869247608509911,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.444"
@@ -2998,6 +3155,7 @@
       "validation": 0.3562864944590816,
       "correlation": 0.11368359669799707,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.125"
@@ -3017,6 +3175,7 @@
       "validation": 0.353395395332819,
       "correlation": 0.11047028725555905,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.115"
@@ -3036,6 +3195,7 @@
       "validation": 0.3546103231073287,
       "correlation": 0.12166178569099334,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.090"
@@ -3055,6 +3215,7 @@
       "validation": 0.36244813633368445,
       "correlation": 0.03986739975674572,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.654"
@@ -3074,6 +3235,7 @@
       "validation": 0.36721556054964416,
       "correlation": 0.26398672674828033,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.075"
@@ -3093,6 +3255,7 @@
       "validation": 0.3879654301808803,
       "correlation": 0.2485094106556987,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.104"
@@ -3112,6 +3275,7 @@
       "validation": 0.3696928307649299,
       "correlation": 0.19167470295714983,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.217"
@@ -3131,6 +3295,7 @@
       "validation": 0.357691305494608,
       "correlation": 0.12117454722032131,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.403"
@@ -3150,6 +3315,7 @@
       "validation": 0.34973958362751195,
       "correlation": 0.005059400978297086,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.968"
@@ -3169,6 +3335,7 @@
       "validation": 0.3725696210336528,
       "correlation": 0.2826923168766559,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.051"
@@ -3188,6 +3355,7 @@
       "validation": 0.39702304257666937,
       "correlation": 0.2877920162285509,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.064"
@@ -3207,6 +3375,7 @@
       "validation": 0.3704327710301327,
       "correlation": 0.2545422173246572,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.139"
@@ -3226,6 +3395,7 @@
       "validation": 0.3606139770834799,
       "correlation": 0.17626649541524156,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.281"
@@ -3245,6 +3415,7 @@
       "validation": 0.3501333708943093,
       "correlation": 0.05303709351995835,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.707"
@@ -3264,6 +3435,7 @@
       "validation": 0.36005518385883367,
       "correlation": -0.1533580545412659,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.301"
@@ -3283,6 +3455,7 @@
       "validation": 0.3610124517914915,
       "correlation": -0.26413928426846717,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.089"
@@ -3302,6 +3475,7 @@
       "validation": 0.36455837935343033,
       "correlation": -0.36984885760214675,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "enforce_sign",
       "reason": "sign -, expected +"
@@ -3321,6 +3495,7 @@
       "validation": 0.35751700539352305,
       "correlation": -0.4517891248262455,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "enforce_sign",
       "reason": "sign -, expected +"
@@ -3340,6 +3515,7 @@
       "validation": 0.351484647086667,
       "correlation": -0.5027586413114563,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "enforce_sign",
       "reason": "sign -, expected +"
@@ -3359,6 +3535,7 @@
       "validation": 0.3630199942711249,
       "correlation": -0.09838949853709514,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.301"
@@ -3378,6 +3555,7 @@
       "validation": 0.36605632350538825,
       "correlation": -0.11333764619368582,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.287"
@@ -3397,6 +3575,7 @@
       "validation": 0.3698003563401655,
       "correlation": -0.09081428176167683,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.487"
@@ -3416,6 +3595,7 @@
       "validation": 0.3638595503203849,
       "correlation": -0.08928279668517007,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.560"
@@ -3435,6 +3615,7 @@
       "validation": 0.35098665591511574,
       "correlation": 0.026619818526593595,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.549"
@@ -3454,6 +3635,7 @@
       "validation": 0.34884714399920463,
       "correlation": 0.010541303767456852,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.818"
@@ -3473,6 +3655,7 @@
       "validation": 0.3513543096525073,
       "correlation": -0.01620463308876504,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.758"
@@ -3492,6 +3675,7 @@
       "validation": 0.35033221181565444,
       "correlation": -0.0011915979141059272,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.983"
@@ -3511,6 +3695,7 @@
       "validation": 0.34684110549834374,
       "correlation": -0.04497497197303917,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.453"
@@ -3530,6 +3715,7 @@
       "validation": 0.351081397281029,
       "correlation": 0.01950260242653296,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.833"
@@ -3549,6 +3735,7 @@
       "validation": 0.3504943309008666,
       "correlation": -0.05108812945029078,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.622"
@@ -3568,6 +3755,7 @@
       "validation": 0.3494607980512676,
       "correlation": -0.07944009953611644,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.468"
@@ -3587,6 +3775,7 @@
       "validation": 0.35520127286625874,
       "correlation": -0.04646380621261175,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.682"
@@ -3606,6 +3795,7 @@
       "validation": 0.35462140023605976,
       "correlation": -0.027928618149379678,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.804"
@@ -3625,6 +3815,7 @@
       "validation": 0.36135700699242396,
       "correlation": 0.06617217050389086,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.583"
@@ -3644,6 +3835,7 @@
       "validation": 0.3644179453518146,
       "correlation": 0.015735047550954763,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.907"
@@ -3663,6 +3855,7 @@
       "validation": 0.3605015493446559,
       "correlation": -0.01629146958824609,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.905"
@@ -3682,6 +3875,7 @@
       "validation": 0.362863770130282,
       "correlation": -0.003332689900160455,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.980"
@@ -3701,6 +3895,7 @@
       "validation": 0.3650384922949605,
       "correlation": 0.001372555218947606,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.990"
@@ -3720,6 +3915,7 @@
       "validation": 0.3772884837488986,
       "correlation": -0.18103264881133765,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.312"
@@ -3739,6 +3935,7 @@
       "validation": 0.38365614442720614,
       "correlation": -0.19528806436599533,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.363"
@@ -3758,6 +3955,7 @@
       "validation": 0.3990826229256341,
       "correlation": -0.16121259544166022,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.515"
@@ -3777,6 +3975,7 @@
       "validation": 0.4042473867555141,
       "correlation": -0.10627063943749088,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.692"
@@ -3796,6 +3995,7 @@
       "validation": 0.3935241238779472,
       "correlation": -0.07356334644438861,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.783"

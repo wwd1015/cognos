@@ -34,6 +34,8 @@ def _accept_all(eng: Engine, until: str | None = None):
 def loss_run(tmp_path_factory):
     root = tmp_path_factory.mktemp("loss")
     cfg = service.demo_config("loss_forecast", root)
+    cfg.selection.methods = ["forward", "best_subset"]  # two methods, to see them agree
+    cfg.evaluation.pool_size = 4
     eng = Engine(cfg, runs_root=str(root))
     state = eng.run_until_idle()
     return eng, state
@@ -216,7 +218,7 @@ def test_a_clean_train_test_split_with_no_validation_ranks_in_sample(make_config
     assert model["samples"]["validation_blocks"] == [] and model["oof_perf_path"] is None
     assert model["rank_metric"] == "r2" and model["rank_by"][0]["sample"] == "in_sample"
     assert all(m["cv_mean"] is None and "validation" not in m["scores"] for m in model["pool"])
-    assert all(m["scores"]["in_sample"]["r2"] > 0.5 for m in model["pool"])
+    assert max(m["scores"]["in_sample"]["r2"] for m in model["pool"]) > 0.5
     path = model["paths"][0]
     assert path["criterion"] == "adj_r2" and all(s["change"] > 0 for s in path["steps"][1:])
     assert "rank_score" in orch.ctx.require("model").metrics  # r2 and rmse point opposite ways

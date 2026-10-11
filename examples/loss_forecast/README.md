@@ -14,10 +14,10 @@ cognos demo --task loss_forecast --interactive # the same data in the workbench:
 
 | Step | What the engine does | What the developer decides |
 |---|---|---|
-| The plan | reads "one row per period" and recommends an out-of-time test sample, a rolling forecast origin, no sealed third sample (and says why) | the ranking, the screen rules, the selection methods, the size limit |
+| The plan | reads "one row per period" and recommends an out-of-time test sample, a rolling forecast origin, no sealed third sample (and says why) | their own criteria: the primary metric and its sample, the screen rules, the selection method, the size limit |
 | Single-factor analysis | widens 8 columns into about 200 factors and fits each alone | the rules that cut the library: significance, expected sign, best per column, correlation |
-| Multi-factor selection | forward selection one factor at a time, checked against best subset; every step on record | one method or several, the step criterion, the constraints |
-| Candidate pool | ranks every model evaluated; proposes a pool of different models | adds or removes members, from anything in the ledger |
+| Multi-factor selection | forward selection, one factor at a time, every step on record | the method (one, or several ranked together), the step criterion, the constraints |
+| Candidate pool | ranks and names every model evaluated; proposes a pool of different models | carries as many as they want to compare, from anything in the ranking; renames |
 | Champion | scores every pool member on the held-back quarters and under each scenario | accepts the recommendation or chooses another member |
 
 The synthetic series (`cognos.synth.make_loss_forecast_dataset`) is driven by the change in

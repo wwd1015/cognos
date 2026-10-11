@@ -58,6 +58,17 @@ differ; that difference, not the last decimal of a fit statistic, is what decide
 … → ideate → gate_design → model → gate_candidates → backtest → gate_champion → validate → …
 ```
 
+7. **Names, and a pool of the developer's size.** A model's id is a hash; people need a name.
+   Every model gets one (`Logit 4F-A`: family, factors, a letter) that it keeps for the life
+   of the run, and the developer may rename a candidate. The engine proposes
+   `evaluation.pool_size` candidates; the developer may carry any number, from the whole
+   ranking.
+
+8. **One selection method unless more are asked for.** Forward and best subset shown side by
+   side read as a contest with no stated rule. The engine recommends one method. When the
+   developer chooses several, the rule is stated: every model any of them evaluates is ranked
+   in one list, and the leaders are the best across the methods.
+
 ## What stays frozen
 
 Principle 5 holds, with the sample named exactly. The **sealed holdout** is never read by the

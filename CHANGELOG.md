@@ -40,7 +40,23 @@ versioning is SemVer.
   forecast origin, sliding window.
 - **Outcomes analysis of the pool**: every candidate on the test sample and under every
   scenario, side by side, with a forecast chart; scenario forecasts for continuous targets.
-- **Demo `loss_forecast`**: a quarterly loss-rate series (`cognos demo --task loss_forecast`).
+- **Names for models.** Every evaluated model has a name a person can say (`Logit 4F-A`):
+  family, number of factors, a letter. A model keeps its name across re-runs and re-searches
+  (`stages/model/names.json`), and the developer can rename any candidate at the candidate gate.
+- **The whole ranking is selectable.** The candidate gate lists the top 20 leaders with tick
+  boxes and a searchable picker over every other ranked model (`stages/model/ranking.json`).
+  The pool the developer carries has no size limit; `evaluation.pool_size` (now 6) is only how
+  many the engine proposes.
+- **Modelling criteria as a form.** The design gate shows the primary metric and its sample,
+  the split, the single-factor ranking and rules (`factors.criterion`, new) and the
+  multi-factor method and step criterion, each marked as recommended or overridden. An
+  override is recorded on the run and is what the engine builds to.
+- **One selection method by default.** The engine recommends one (forward for a series,
+  stepwise otherwise). Several may be chosen; their models are then ranked in one list, and
+  the page says so.
+- **Two featured demos**: `cni` (a C&I PD scorecard: stepwise logit, sealed holdout, hazard
+  challengers, stress) and `loss_forecast` (a quarterly loss-rate series). Worked examples of
+  both flows: `examples/logistic_pd`, `examples/loss_forecast`.
 - **The deck** (`docs/deck/index.html`). A self-contained HTML presentation of how COGNOS
   works and why it is built this way: the three roles, an animated walk through the nine
   stages and seven gates, and eight principles each with a small demonstration. It is

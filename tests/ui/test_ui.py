@@ -362,31 +362,39 @@ def test_the_plan_the_pool_and_the_champion_are_decided_on_forms(root):
     assert "Development plan" in panel and "rolling origin" in panel and "cannot be shuffled" in panel
     assert "plan::evaluation.validation" in panel and "plan::selection.methods" in panel
     assert "plan::factors.max_p_value" in panel and "plan::rank.0.metric" in panel
+    assert "Your modelling criteria" in panel and "recommended by the engine" in panel
+    assert "Primary metric" in panel and "plan::factors.criterion" in panel
     assert '"c": null' not in panel
     untouched = {"plan::evaluation.test": plan["evaluation"]["test"],
                  "plan::evaluation.folds": float(plan["evaluation"]["folds"]),
                  "plan::evaluation.holdout_fraction": 0, "plan::factors.enforce_sign": "yes",
                  "plan::factors.transforms": list(plan["factors"]["transforms"]),
-                 "plan::selection.methods": ["forward", "best_subset"],
+                 "plan::selection.methods": ["forward"], "plan::factors.criterion": "validation",
                  "plan::factors.min_strength": "", "plan::selection.max_p_value": 0.1,
                  "plan::rank.0.metric": "rmse", "plan::rank.0.sample": "validation",
-                 "plan::rank.1.metric": "r2", "plan::rank.1.sample": "in_sample"}
+                 "plan::rank.1.metric": None, "plan::rank.1.sample": "in_sample"}
     assert ui.gate_payload("gate_design", "edit", dict(untouched), run_id)[0] == {}
-    edited = {**untouched, "plan::evaluation.pool_size": 3.0, "plan::selection.methods": ["forward"],
-              "plan::factors.enforce_sign": "no", "plan::factors.top_n": "",
-              "plan::rank.1.metric": None}
+    # the developer picks their own criteria: the primary metric, the single-factor ranking,
+    # the multi-factor method and what a step must improve
+    edited = {**untouched, "plan::evaluation.pool_size": 3.0,
+              "plan::rank.0.metric": "mae", "plan::rank.1.metric": "r2",
+              "plan::factors.criterion": "in_sample", "plan::factors.enforce_sign": "no",
+              "plan::factors.top_n": "", "plan::selection.methods": ["best_subset"],
+              "plan::selection.criterion": "bic"}
     payload, _ = ui.gate_payload("gate_design", "edit", edited, run_id)
     assert payload == {"plan": {
-        "evaluation": {"pool_size": 3, "rank_by": [{"metric": "rmse", "sample": "validation"}]},
-        "selection": {"methods": ["forward"]},
-        "factors": {"enforce_sign": False, "top_n": None}}}
+        "evaluation": {"pool_size": 3, "rank_by": [{"metric": "mae", "sample": "validation"},
+                                                   {"metric": "r2", "sample": "in_sample"}]},
+        "selection": {"methods": ["best_subset"], "criterion": "bic"},
+        "factors": {"criterion": "in_sample", "enforce_sign": False, "top_n": None}}}
     service.submit_gate(run_id, "gate_design", "edit", payload, "one method, three candidates",
                         background=False)
     st = service.run_until_idle(run_id)
     ideate = service.results(run_id)["ideate"]
-    assert ideate.payload["plan"]["sources"]["pool_size"] == "human"
+    plan = ideate.payload["plan"]
+    assert plan["sources"]["pool_size"] == plan["sources"]["factors.criterion"] == "human"
     panel = _serialize(stage_panel("ideate", ideate, st, "light"))
-    assert '"developer"' in panel  # the plan says who set what
+    assert '"developer"' in panel and "set by the developer" in panel  # who set what
     service.submit_gate(run_id, "gate_design", "accept", reason="ok", background=False)
     st = service.run_until_idle(run_id)
 
@@ -395,23 +403,34 @@ def test_the_plan_the_pool_and_the_champion_are_decided_on_forms(root):
     model = service.results(run_id)["model"]
     panel = _serialize(stage_panel("model", model, st, "dark"))
     for text in ("Review the candidate pool", "Single-factor screen", "Multi-factor selection",
-                 "Forward", "Leaders", "Candidate pool", "Accept the pool", "best per source"):
+                 "Best subset", "the method chosen in the plan", "Leaders", "Candidate pool",
+                 "Accept the pool", "best per source", "as many as you want to compare"):
         assert text in panel, text
     assert '"type": "Graph"' in panel and "No ledger." not in panel and '"c": null' not in panel
+    assert model.payload["rank_metric"] == "mae"  # the developer's primary metric is in force
     ids = model.payload["pool_ids"]
-    assert len(ids) <= 3 and all(i in panel for i in ids)
+    names = model.payload["names"]
+    assert len(ids) <= 3 and all(i in panel and names[i] in panel for i in ids)
+    assert all(n.startswith("OLS ") or n.split()[0] in ("Lasso", "Ridge") for n in names.values())
+    leaders = {a["id"] for a in model.payload["leaders"]}
     outside = next(a["id"] for a in model.payload["leaders"] if a["id"] not in ids)
-    below = next(i for i in model.payload["evaluated_ids"]
-                 if i not in {a["id"] for a in model.payload["leaders"]})
-    payload, reason = ui.gate_payload("gate_candidates", "edit", {
-        "pool": [ids[0], outside], "extra": f" {below}; ", "reason": "one from the ledger"}, run_id)
-    assert payload == {"pool": [ids[0], outside, below]} and reason == "one from the ledger"
+    below = next(i for i in model.payload["evaluated_ids"] if i not in leaders)
+    assert f"name::{ids[0]}" in panel and "Add from the rest of the ranking" in panel
+    assert below in panel  # every ranked model can be picked, not only the leaders shown
+    # more than the engine proposed, one from below the leaders, and a name of the developer's own
+    fields = {"pool": [*ids, outside], "extra": [below], "reason": "wider comparison",
+              **{f"name::{a['id']}": a["name"] for a in model.payload["leaders"]},
+              f"name::{ids[0]}": "  Base   case "}
+    payload, reason = ui.gate_payload("gate_candidates", "edit", fields, run_id)
+    assert payload == {"pool": [*ids, outside, below], "names": {ids[0]: "Base case"}}
     service.submit_gate(run_id, "gate_candidates", "edit", payload, reason, background=False)
     st = service.run_until_idle(run_id)
     model = service.results(run_id)["model"]
-    assert model.payload["pool_ids"] == [ids[0], outside, below]
+    assert model.payload["pool_ids"] == [*ids, outside, below]
+    assert model.payload["names"][ids[0]] == "Base case"
+    assert model.payload["names"][outside] == names[outside]  # the others keep their names
     panel = _serialize(stage_panel("model", model, st, "light"))
-    assert below in panel and "Add candidates from the ledger" in panel
+    assert "Base case" in panel
     service.submit_gate(run_id, "gate_candidates", "accept", reason="ok", background=False)
     st = service.run_until_idle(run_id)
 
@@ -424,6 +443,7 @@ def test_the_plan_the_pool_and_the_champion_are_decided_on_forms(root):
                  "no sealed holdout was reserved"):
         assert text in panel, text
     assert '"type": "Graph"' in panel and '"actual"' in panel and '"c": null' not in panel
+    assert "Base case" in panel and len(backtest.payload["candidates"]) == len(ids) + 2
     other = next(c["id"] for c in backtest.payload["candidates"]
                  if c["id"] != backtest.payload["champion_id"])
     payload, _ = ui.gate_payload("gate_champion", "override", {"champion": other}, run_id)

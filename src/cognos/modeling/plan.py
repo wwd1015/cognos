@@ -20,7 +20,6 @@ import pandas as pd
 
 from . import factors as factors_mod
 from . import selection, splits
-from .fit import LINEAR_FAMILIES
 from .metrics import MAXIMIZE
 
 SECTIONS = ("evaluation", "factors", "selection")
@@ -64,6 +63,7 @@ def options(shape: dict[str, Any], cfg, columns: list[str]) -> dict[str, list[st
         if group and group in columns:
             validations.insert(0, "group_kfold")
     return {"test": tests, "validation": validations, "methods": list(selection.METHODS),
+            "factor_criterion": ["validation", "in_sample"],
             "criterion": list(selection.CRITERIA), "sample": list(SAMPLES),
             "metric": list(METRICS[is_clf]),
             "transforms": ["none", *(factors_mod.ALL_OPS if shape["shape"] == "series"
@@ -169,22 +169,32 @@ def recommend(cfg, shape: dict[str, Any], *, families: list[str], columns: list[
         if kind == "series" else
         "Amounts with a long right tail are also tried as logarithms.")
 
+    factor_criterion = choose(
+        "factors.criterion", fc.criterion, "validation" if validation != "none" else "in_sample",
+        "A factor fitted alone is ranked on rows it was not fitted on, so a factor that only "
+        "fits its own sample does not lead the shortlist." if validation != "none" else
+        "No validation sample: a factor is ranked on its in-sample fit.")
+
     # --- from single factors to models --------------------------------------------------
     steppable = [f for f in families if selection.steppable(f)]
-    linear_only = bool(families) and all(f in LINEAR_FAMILIES for f in families)
     if not steppable:
         auto_methods, why = ["grid"], (
             "No family on the slate has coefficient tests, so a stepwise path has nothing to "
             "test: every family is fitted on the strongest factors and on all of them.")
     elif kind == "series":
-        auto_methods, why = ["forward", "best_subset"], (
-            "Few periods and many transformations: start from the best single factor and add "
-            "one at a time, and check the path against every combination up to the size limit.")
+        auto_methods, why = ["forward"], (
+            "Few periods and many transformations: start from the best single factor and add one "
+            "at a time while the model improves, so every factor's contribution is on record.")
     else:
-        auto_methods, why = (["stepwise", "grid"] if not linear_only or len(families) > len(
-            steppable) else ["stepwise"]), (
-            "Add the factor that helps most, then drop any that no longer earns its place. "
-            "Families without coefficient tests go through the grid.")
+        auto_methods, why = ["stepwise"], (
+            "Add the factor that helps most, then drop any that no longer earns its place.")
+    if steppable:
+        why += (" One method is recommended. Choose another, or several: every model any of "
+                "them evaluates is ranked in the same list, so the leaders are the best across "
+                "the methods you ran.")
+        if len(steppable) < len(families):
+            why += (" Families on the slate without coefficient tests cannot be stepped; each "
+                    "is fitted on the shortlist so it still has a candidate.")
     methods = choose("methods", [m for m in sc.methods if m != "auto"] or None, auto_methods, why)
     criterion = choose(
         "criterion", sc.criterion, "validation" if validation != "none" else "bic",
@@ -208,6 +218,7 @@ def recommend(cfg, shape: dict[str, Any], *, families: list[str], columns: list[
         "factors": {
             "transforms": transforms, "lags": list(fc.lags), "windows": list(fc.windows),
             "period": fc.period or shape.get("period"),
+            "criterion": factor_criterion,
             "max_missing": fc.max_missing, "max_p_value": fc.max_p_value,
             "enforce_sign": fc.enforce_sign, "expected_signs": dict(fc.expected_signs),
             "min_strength": fc.min_strength, "best_per_source": fc.best_per_source,
@@ -287,6 +298,8 @@ def problems(plan: dict) -> list[str]:
             out.append(f"unknown selection method {m!r}")
     if sel.get("criterion") not in selection.CRITERIA:
         out.append(f"unknown criterion {sel.get('criterion')!r}")
+    if plan["factors"].get("criterion") == "validation" and ev["validation"] == "none":
+        out.append("single factors are ranked on the validation sample, but the plan has none")
     if sel.get("criterion") == "validation" and ev["validation"] == "none":
         out.append("the criterion reads the validation sample, but the plan has none")
     if int(sel.get("max_factors") or 0) < 1:

@@ -93,6 +93,14 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
 - **One evaluator.** Every selection method goes through `selection.Evaluator`, so a
   specification is fitted once and all models share one ledger. Candidate ids come from
   `selection.candidate_id` (a hash of the specification): never a position in a list.
+- **A model has a name and an id.** The id (`selection.candidate_id`) is what decisions and
+  overrides store. The name (`selection.assign_names`, kept in `stages/model/names.json`,
+  overridable through `overrides.names`) is what a page or a sentence shows. Never show a bare
+  id where a person has to tell models apart, and never key anything on a name.
+- **The pool is the developer's size.** `evaluation.pool_size` bounds what the engine and the
+  Modeler propose, never what a person may carry. Anything in `ranking.json` can be added.
+- **One method unless asked.** `plan.recommend` names one selection method. When several run,
+  their models share one ranking; say so wherever paths are shown side by side.
 - **Every rule and every step is on record.** The screen stamps each dropped factor with its
   rule and reason; a path records each step, what it did to the criterion and how many
   additions the constraints refused. A new rule or method must do the same.

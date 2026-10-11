@@ -89,7 +89,9 @@ def test_the_plan_follows_the_shape_of_the_data():
     assert (ev["test"], ev["validation"], ev["holdout_fraction"]) == ("out_of_time",
                                                                       "rolling_origin", 0.0)
     assert ev["horizon"] == 4 and ev["folds"] > cfg.search.cv_folds  # reaches back over the cycle
-    assert sel["methods"] == ["forward", "best_subset"] and sel["max_p_value"] == 0.10
+    assert sel["methods"] == ["forward"] and sel["max_p_value"] == 0.10  # one method, by default
+    assert "ranked in the same list" in p["reasons"]["methods"]
+    assert p["factors"]["criterion"] == "validation" and p["reasons"]["factors.criterion"]
     assert "lag" in p["factors"]["transforms"] and "kfold" not in p["options"]["validation"]
     assert all(p["reasons"][k] for k in ("test", "validation", "holdout_fraction", "methods"))
     assert plan.problems(p) == []
@@ -407,3 +409,17 @@ def test_the_test_sample_is_scored_only_when_the_ranking_reads_it_and_every_look
         ev = loud.evaluate(Candidate("ols", feats, {}))
     assert loud.test_evaluations == 2  # a specification already scored is not scored again
     assert set(ev.scores) == {"validation", "in_sample", "test"} and "r2" in ev.scores["test"]
+
+
+def test_every_model_gets_a_name_it_keeps():
+    ranked = [("c1", "logit", 4), ("c2", "logit", 4), ("c3", "probit", 3), ("c4", "ridge_logit", 4)]
+    names = selection.assign_names(ranked, {})
+    assert names == {"c1": "Logit 4F-A", "c2": "Logit 4F-B", "c3": "Probit 3F-A",
+                     "c4": "Ridge logit 4F-A"}
+    # a re-search that ranks them differently and finds a new model changes no existing name
+    again = selection.assign_names([("c9", "logit", 4), ("c2", "logit", 4), ("c1", "logit", 4)],
+                                   names)
+    assert again["c1"] == "Logit 4F-A" and again["c2"] == "Logit 4F-B"
+    assert again["c9"] == "Logit 4F-C" and again["c3"] == "Probit 3F-A"
+    many = selection.assign_names([(f"m{i}", "ols", 2) for i in range(28)], {})
+    assert many["m25"] == "OLS 2F-Z" and many["m26"] == "OLS 2F-AA"

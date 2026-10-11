@@ -66,6 +66,8 @@ def why(gate: str, action: str, payload: dict[str, Any] | None, reason: str = ""
         if payload.get("answers"):
             parts.append(f"{len(payload['answers'])} design question(s) answered")
         return f"{label}: " + (" and ".join(parts) if parts else action.replace("_", " "))
+    if gate == "gate_candidates" and action == "edit" and not payload.get("pool"):
+        return f"{label}: {len(payload.get('names') or {})} candidate(s) renamed"
     if gate == "gate_candidates" and action == "edit":
         return (f"{label}: pool set to {_clip(', '.join(payload.get('pool') or []), 80)}"
                 + (f" — {_clip(reason)}" if reason else ""))
@@ -233,17 +235,19 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
         model = (res.payload if res is not None else None) or {}
         current = list(model.get("pool_ids") or [])
         if action == "edit":
-            pool = list(dict.fromkeys(payload.get("pool") or []))
-            if not pool:
-                raise GateError("the pool cannot be empty: outcomes analysis needs a candidate")
             known = ({a["id"] for a in model.get("leaders") or []} | set(current)
                      | set(model.get("evaluated_ids") or []))
+            renamed = _rename(state, model, payload.get("names") or {}, known)
+            pool = list(dict.fromkeys(payload["pool"] if "pool" in payload else current))
+            if not pool:
+                raise GateError("the pool cannot be empty: outcomes analysis needs a candidate")
             unknown = [i for i in pool if i not in known]
             if unknown:
                 raise GateError(f"{unknown} were not evaluated in this search; add a candidate "
                                 "by its id from the leaders or the ledger")
             if sorted(pool) == sorted(current):
-                return [], True  # the pool on the page is the pool asked for
+                # the pool on the page is the pool asked for; a new name is shown after a re-run
+                return (["model"], False) if renamed else ([], True)
             if not reason.strip():
                 raise GateError("changing the pool requires a reason")
             state.overrides.pool = pool
@@ -289,6 +293,25 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
         return [], True
 
     raise GateError(f"unhandled decision {gate}/{action}")
+
+
+def _rename(state: RunState, model: dict[str, Any], names: dict[str, str], known: set[str]) -> bool:
+    """Record the developer's names for candidates. Returns whether any name changed."""
+    names = {k: " ".join(str(v).split()) for k, v in names.items()}
+    names = {k: v for k, v in names.items() if v and v != (model.get("names") or {}).get(k)}
+    if not names:
+        return False
+    unknown = [k for k in names if k not in known]
+    if unknown:
+        raise GateError(f"cannot name {unknown}: not evaluated in this search")
+    taken = {v: k for k, v in {**(model.get("names") or {}), **state.overrides.names}.items()}
+    for cid, name in names.items():
+        if len(name) > 40:
+            raise GateError(f"a name is at most 40 characters: {name!r}")
+        if taken.get(name, cid) != cid or list(names.values()).count(name) > 1:
+            raise GateError(f"the name {name!r} is already used by another candidate")
+    state.overrides.names = {**state.overrides.names, **names}
+    return True
 
 
 def apply_plan(state: RunState, res: Any, patch: dict[str, Any]) -> list[str]:

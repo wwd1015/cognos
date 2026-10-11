@@ -4,7 +4,7 @@ title: Methodology
 description: Search procedure and statistical battery.
 tags:
 - method
-timestamp: '2026-10-11T15:49:47.473372+00:00'
+timestamp: '2026-10-11T21:25:44.453029+00:00'
 ---
 
 # Methodology
@@ -20,8 +20,8 @@ Development follows a plan confirmed at the design gate. The data are cut into a
 | Test sample | out of time, 0.20 of the rows | engine | The rows carry dates: the model will be used on periods after the ones it was built on, so the latest ones are held back. |
 | Validation | stratified kfold, 5 block(s) | engine | Folds keep the event rate. Rows of the same entity can sit on both sides of a fold: name evaluation.group_col to prevent it. |
 | Sealed holdout | 0.20 of the rows | engine | 2,400 rows are enough to seal a final sample. The candidates are compared on the test sample, so only a sample nobody chose on gives an unbiased last number. |
-| Ranking | roc_auc (validation) | engine | roc_auc on the validation sample: every model is scored on rows it was not fitted on, and the test sample stays unused until the pool is compared. |
-| Selection methods | stepwise + best subset | human | Add the factor that helps most, then drop any that no longer earns its place. Families without coefficient tests go through the grid. |
+| Ranking | roc_auc (validation), then log_loss (validation) | human | roc_auc on the validation sample: every model is scored on rows it was not fitted on, and the test sample stays unused until the pool is compared. |
+| Selection methods | stepwise | engine | Add the factor that helps most, then drop any that no longer earns its place. One method is recommended. Choose another, or several: every model any of them evaluates is ranked in the same list, so the leaders are the best across the methods you ran. |
 | Step criterion | validation | engine | A step is kept when the ranking metric improves on rows the model was not fitted on. |
 
 Rows: 1440 development, 480 test, 480 sealed holdout.
@@ -53,32 +53,25 @@ Shortlist (5): debt_to_ebitda, gdp_growth, interest_coverage, current_ratio, ope
 | 3 | add | interest_coverage | debt_to_ebitda, gdp_growth, interest_coverage | 0.7780 | 0.0335 |
 | 4 | add | current_ratio | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7895 | 0.0115 |
 
-**Best subset** (logit; criterion validation): best model of each size; the path ends on the best of them
-
-| step | action | factor | factors in the model | criterion | change |
-| --- | --- | --- | --- | --- | --- |
-| 1 | size |  | debt_to_ebitda | 0.7032 |  |
-| 2 | size |  | debt_to_ebitda, gdp_growth | 0.7445 | 0.0413 |
-| 3 | size |  | debt_to_ebitda, gdp_growth, interest_coverage | 0.7780 | 0.0335 |
-| 4 | size |  | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7895 | 0.0115 |
-
 **Same factors** (probit; criterion validation): the factor sets of the logit path(s), fitted as probit
 
 ## Candidate pool
 
-46 model(s) were evaluated and ranked. The pool carried to outcomes analysis was set by the human.
+33 model(s) were evaluated and ranked. The pool carried to outcomes analysis was set by the human.
 
 | candidate | specification | factors | development | gini | ks | expected_calibration_error | psi | champion |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| c5482c3 | probit(3f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage | 0.7781 | 0.4815 | 0.4268 | 0.0136 | 0.1811 | yes |
+| cc59646 | logit(3f;random_state=42) | debt_to_ebitda, interest_coverage, current_ratio | 0.7497 | 0.5423 | 0.4119 | 0.0332 | 0.0219 | yes |
+| c5482c3 | probit(3f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage | 0.7781 | 0.4815 | 0.4268 | 0.0136 | 0.1811 |  |
 | c46d7e4 | probit(4f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7899 | 0.4428 | 0.3949 | 0.0175 | 0.1390 |  |
 | cfc227e | logit(4f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7895 | 0.4338 | 0.3999 | 0.0173 | 0.1441 |  |
+| c0cd73f | probit(2f;random_state=42) | debt_to_ebitda, gdp_growth | 0.7450 | 0.3687 | 0.4579 | 0.0175 | 0.3028 |  |
 | cfde806 | logit(2f;random_state=42) | debt_to_ebitda, gdp_growth | 0.7445 | 0.3654 | 0.4579 | 0.0172 | 0.3206 |  |
 | ccb8810 | logit(3f;random_state=42) | debt_to_ebitda, gdp_growth, current_ratio | 0.7647 | 0.3607 | 0.4289 | 0.0169 | 0.2067 |  |
 
-Compared on the out of time sample (roc_auc first). Champion chosen by the engine: c5482c3 has the best roc_auc on the out of time sample among the 5 pool member(s); c46d7e4 is next.
+Compared on the out of time sample (roc_auc first). Champion chosen by the engine: Logit 3F-C has the best roc_auc on the out of time sample among the 7 pool member(s); Probit 3F-A is next.
 
-- **Candidates tried:** 46
+- **Candidates tried:** 33
 - **Hypothesis families considered:** logit, probit
 
 ## Statistical battery

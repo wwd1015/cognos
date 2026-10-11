@@ -15,6 +15,7 @@
       "validation": 0.7032061515127208,
       "correlation": 0.1929431030525098,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -34,6 +35,7 @@
       "validation": 0.5942973960346223,
       "correlation": -0.07075178153679618,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -53,6 +55,7 @@
       "validation": 0.5899645609864589,
       "correlation": -0.07116707357575376,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -72,6 +75,7 @@
       "validation": 0.569247190765439,
       "correlation": -0.04406059807932146,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -91,6 +95,7 @@
       "validation": 0.4047730955176211,
       "correlation": -0.0012763167913488775,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.961"
@@ -110,6 +115,7 @@
       "validation": 0.5359784594967077,
       "correlation": -0.03363078785225979,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.202"
@@ -129,6 +135,7 @@
       "validation": 0.5518153233627687,
       "correlation": 0.04040199824193172,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.126"
@@ -148,6 +155,7 @@
       "validation": 0.5563243617696172,
       "correlation": -0.027700757474548504,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.294"
@@ -167,6 +175,7 @@
       "validation": 0.6342182489043802,
       "correlation": 0.12191928247466903,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_correlation",
       "reason": "correlation -0.89 with the stronger gdp_growth"
@@ -186,6 +195,7 @@
       "validation": 0.646502300619089,
       "correlation": -0.1260563315170986,
       "note": "",
+      "ranked_on": "validation",
       "status": "kept",
       "dropped_by": null,
       "reason": ""
@@ -205,6 +215,7 @@
       "validation": 0.5353698564209513,
       "correlation": null,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.291"
@@ -224,6 +235,7 @@
       "validation": 0.5117727382106944,
       "correlation": null,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.608"
@@ -243,6 +255,7 @@
       "validation": 0.7032061515127208,
       "correlation": 0.14970386034630762,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_correlation",
       "reason": "correlation +0.90 with the stronger debt_to_ebitda"
@@ -262,6 +275,7 @@
       "validation": 0.5942973960346223,
       "correlation": -0.06592190794381365,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_correlation",
       "reason": "correlation +0.93 with the stronger interest_coverage"
@@ -281,6 +295,7 @@
       "validation": 0.5563243617696172,
       "correlation": -0.03746493365106557,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_p_value",
       "reason": "p-value 0.155"
@@ -300,6 +315,7 @@
       "validation": 0.6342182489043802,
       "correlation": 0.12027917357995795,
       "note": "",
+      "ranked_on": "validation",
       "status": "dropped",
       "dropped_by": "max_correlation",
       "reason": "correlation -0.88 with the stronger gdp_growth"

@@ -61,6 +61,7 @@ def view(run_dir: str | Path, model: dict[str, Any] | None,
         "champion": candidate,
         "champion_id": cid,
         "champion_label": entry["label"],
+        "champion_name": entry.get("name") or entry["label"],
         "champion_source": ((backtest or {}).get("champion_source") if decided
                             else "provisional"),
         "champion_decided": decided,

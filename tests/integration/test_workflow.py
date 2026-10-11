@@ -146,11 +146,23 @@ def test_the_developer_adds_and_removes_pool_members(make_config, runs_dir):
     assert after["recommendation"].get("reused") is True  # the modeler was not re-asked
     assert state.status_of("gate_candidates") == "awaiting"
     assert "pool set to" in state.steps["model"].rerun_reason
+    # a name is the developer's to change; it sticks, and no other name moves
+    names = after["names"]
+    with pytest.raises(GateError, match="already used"):
+        eng.submit_gate("gate_candidates", "edit", {"names": {pool[0]: names[pool[1]]}})
+    eng.submit_gate("gate_candidates", "edit", {"names": {pool[0]: "Scorecard A"}})
+    state = eng.run_until_idle()
+    after = eng.results()["model"].payload
+    assert after["names"][pool[0]] == "Scorecard A" and after["names"][pool[1]] == names[pool[1]]
+    assert after["pool_ids"] == pool and "renamed" in state.steps["model"].rerun_reason
+    assert state.status_of("gate_candidates") == "awaiting"
     for member in after["pool"]:  # every member is fitted, tested and saved on its own
         assert (eng.run_dir / member["detail_path"]).exists()
         assert member["diagnostics_run"] > 0
     _accept_all(eng, until="gate_champion")
-    assert {c["id"] for c in eng.results()["backtest"].payload["candidates"]} == set(pool)
+    backtest = eng.results()["backtest"].payload
+    assert {c["id"] for c in backtest["candidates"]} == set(pool)
+    assert "Scorecard A" in {c["name"] for c in backtest["candidates"]}
 
 
 def test_the_plan_is_recommended_from_the_data_and_edited_at_the_design_gate(make_config, runs_dir):

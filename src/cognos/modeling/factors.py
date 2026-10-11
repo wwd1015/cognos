@@ -290,7 +290,10 @@ def single_factor(dev: pd.DataFrame, y: np.ndarray, factors: list[Factor], *, me
 
 
 def strength(row: dict) -> float | None:
-    """What a factor is ranked on: its validation score when there is one, else in sample."""
+    """What a factor is ranked on: the sample the plan names (``row["ranked_on"]``), else its
+    validation score when there is one, else in sample."""
+    if row.get("ranked_on") == "in_sample":
+        return row.get("in_sample")
     v = row.get("validation")
     return v if v is not None else row.get("in_sample")
 

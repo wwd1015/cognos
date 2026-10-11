@@ -370,6 +370,11 @@ def design_lead(sl: dict[str, Any]) -> dict[str, Any]:
 
 
 # --- model -------------------------------------------------------------------------------
+def _nm(c: dict) -> str:
+    """How a candidate is referred to in prose: its name, else its id."""
+    return str(c.get("name") or c.get("id"))
+
+
 def modeler(sl: dict[str, Any]) -> dict[str, Any]:
     leaders = sl.get("leaders", [])
     size = int(sl.get("pool_size") or 1)
@@ -397,7 +402,7 @@ def modeler(sl: dict[str, Any]) -> dict[str, Any]:
     first = (sl.get("rank_by") or [{}])[0]
     return {
         "summary": (f"Carry {len(picks)} candidate(s) to outcomes analysis: "
-                    f"{', '.join(p['id'] for p in picks)}. They lead the plan's ranking and "
+                    f"{', '.join(_nm(p) for p in picks)}. They lead the plan's ranking and "
                     + ("pass its constraints." if not broken else
                        f"{len(broken)} of them break a constraint (no cleaner model ranks as "
                        "high).")),
@@ -442,14 +447,14 @@ def outcomes_analyst(sl: dict[str, Any]) -> dict[str, Any]:
     sample = str(sl.get("evaluation_sample", "test")).replace("_", " ")
     runner_up = next((c for c in ranked if c is not pick), None)
     if pick is best:
-        why = (f"{pick['id']} has the best {metric} on the {sample} sample among the "
+        why = (f"{_nm(pick)} has the best {metric} on the {sample} sample among the "
                f"{len(candidates)} pool member(s)")
     else:
-        why = (f"{pick['id']} is within 2% of the best {metric} on the {sample} sample "
-               f"({best['id']}) with fewer factors"
+        why = (f"{_nm(pick)} is within 2% of the best {metric} on the {sample} sample "
+               f"({_nm(best)}) with fewer factors"
                + (" and no broken constraint" if best.get("violations") else ""))
     if runner_up is not None:
-        why += f"; {runner_up['id']} is next"
+        why += f"; {_nm(runner_up)} is next"
     oa = pick.get("outcomes") or {}
     gini, ks = oa.get("gini"), oa.get("ks")
     ece, psi = oa.get("expected_calibration_error"), oa.get("psi")
@@ -467,7 +472,7 @@ def outcomes_analyst(sl: dict[str, Any]) -> dict[str, Any]:
             "Significant population shift (PSI above 0.25)." if psi is not None else
             "Stability not assessed.")
     return {
-        "summary": f"Recommend {pick['id']}: {why}. {disc} {cal}",
+        "summary": f"Recommend {_nm(pick)}: {why}. {disc} {cal}",
         "uncertainties": ([] if sl.get("sealed_holdout") else
                           ["The comparison sample is also what the choice rests on; there is no "
                            "sealed sample to confirm it."]),

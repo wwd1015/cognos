@@ -36,7 +36,7 @@ from . import stat_tests
 from .base import Stage, attach_recommendation, register_stage
 
 _TREES = {"random_forest", "gradient_boosting"}
-MAX_LEADERS = 12
+MAX_LEADERS = 20
 
 
 @register_stage
@@ -277,9 +277,20 @@ class ModelStage(Stage):
                 guided_entry.info["transforms"] = list(gr.transforms)
                 guided_entry.info["base_features"] = explored
 
+        # --- names a person can say; they stay with a model for the life of the run ------
+        names = self._names(ctx, [*([guided_entry] if guided_entry is not None else []), *ranked])
+        ctx.save_json("stages/model/ranking.json", [
+            {"id": e.id, "name": names[e.id], "rank": i, "family": e.candidate.family,
+             "features": list(e.candidate.features), "methods": list(e.methods),
+             "score": e.value(rank_metric, rank_by[0]["sample"])}
+            for i, e in enumerate(ranked, 1)])
+
         # --- the leaders and the pool (no champion is chosen here) ---------------------
+        must = list(dict.fromkeys([*(plan["selection"].get("must_include") or []), *protected]))
         leaders, lookup = self._leaders(evaluator, ranked, cfg, plan, expected, found["corr"],
-                                        guided_entry, train_df, y_train, is_clf)
+                                        guided_entry, train_df, y_train, is_clf, must)
+        for entry in leaders:
+            entry["name"] = names[entry["id"]]
         rec = self._modeler_choice(ctx, leaders, plan, len(ledger), fingerprint)
         pool_ids, pool_source = [i for i in rec.pool if i in lookup], "agent"
         if ctx.runner.kind == "heuristic":
@@ -306,6 +317,7 @@ class ModelStage(Stage):
                 leaders, expected))
         for member in pool:
             member["source"] = pool_source
+            member["name"] = names.get(member["id"], member["label"])
 
         # Pure-structural / pure-migration challenger benchmarks: the PD scored directly on the
         # test sample — labelled reference points, never a pool member.
@@ -396,6 +408,8 @@ class ModelStage(Stage):
             "pool": pool,
             "pool_ids": [m["id"] for m in pool],
             "evaluated_ids": [e.id for e in ranked],
+            "names": {i: names[i] for i in {*(a["id"] for a in leaders), *(m["id"] for m in pool)}},
+            "ranking_path": "stages/model/ranking.json",
             "pool_source": pool_source,
             "search_fingerprint": fingerprint,
             "metric": metric,
@@ -442,7 +456,7 @@ class ModelStage(Stage):
         res.summary = (
             f"{len(library)} factors screened to {len(shortlist)}; "
             f"{len(ledger)} models evaluated by {' + '.join(plan['selection']['methods'])}; "
-            f"pool of {len(pool)} ({pool_source}): {', '.join(m['id'] for m in pool)}. "
+            f"pool of {len(pool)} ({pool_source}): {', '.join(m['name'] for m in pool)}. "
             f"Best {rank_metric} ({rank_by[0]['sample'].replace('_', ' ')}) "
             f"{payload['best_score']:.4f}."
         )
@@ -463,6 +477,22 @@ class ModelStage(Stage):
         return plan_mod.resolve(cfg, plan_mod.shape_of(df, cfg), families=list(families),
                                 columns=list(df.columns), proposed=proposed,
                                 human=ctx.overrides.plan)
+
+    @staticmethod
+    def _names(ctx: RunContext, ranked: list) -> dict[str, str]:
+        """Every evaluated model's name. Names given earlier in the run are kept (the register
+        on disk), new models take the next free letter, and a name the developer gave wins."""
+        path = ctx.resolve("stages/model/names.json")
+        try:
+            import json
+
+            known = json.loads(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):
+            known = {}
+        names = selection.assign_names(
+            [(e.id, e.candidate.family, len(e.candidate.features)) for e in ranked], known)
+        ctx.save_json("stages/model/names.json", names)
+        return {**names, **{k: v for k, v in (ctx.overrides.names or {}).items() if k in names}}
 
     @staticmethod
     def _expected_signs(profile: dict, plan: dict) -> dict[str, str]:
@@ -496,6 +526,8 @@ class ModelStage(Stage):
             dev, y, library, metric=rank_metric, is_classification=is_clf,
             hac_lags=int(period or 4) if shape == "series" and not is_clf else None,
             validation=alone if evaluator.splitter is not None else None)
+        for r in rows:  # the sample a factor's own strength is read on (the plan's choice)
+            r["ranked_on"] = plan["factors"].get("criterion") or "validation"
         numeric = [r["name"] for r in rows if r["numeric"]]
         corr = dev[numeric].astype(float).corr() if len(numeric) >= 2 else None
         carried = tuple(dict.fromkeys([*protected, *(plan["selection"].get("must_include") or [])]))
@@ -577,7 +609,8 @@ class ModelStage(Stage):
 
     # --- leaders, the Modeler's pool, and finalizing a member ---------------------------
     def _leaders(self, evaluator, ranked, cfg, plan: dict, expected: dict, corr,
-                 guided_entry, train_df, y_train, is_clf: bool) -> tuple[list[dict], dict]:
+                 guided_entry, train_df, y_train, is_clf: bool,
+                 must: list[str] | None = None) -> tuple[list[dict], dict]:
         """The top of the ranking, one entry per distinct specification, with what the Modeler
         and the developer need to pick a pool: scores, signs, and any constraint it breaks."""
         ev = plan["evaluation"]
@@ -586,7 +619,7 @@ class ModelStage(Stage):
         maximize = metric_direction(first["metric"]) == "maximize"
         required = cfg.design.interpretability == "required"
         pool_size = max(1, int(ev["pool_size"]))
-        want = min(MAX_LEADERS, max(2 * pool_size, pool_size + 4))
+        want = MAX_LEADERS  # the page shows these; the whole ranking is one click further
         signs_by_factor = {r: s for r, s in (expected or {}).items()}
 
         chosen, seen = [], set()
@@ -634,6 +667,9 @@ class ModelStage(Stage):
                     signs = []
             for s in signs:
                 s["expected"] = signs_by_factor.get(self._source_of(s["feature"]), "none")
+            missing = [f for f in must or [] if f not in cand.features and not transforms]
+            if missing:
+                bad = [*bad, f"does not carry {', '.join(missing)}, which every model must"]
             v = e.value(first["metric"], first["sample"])
             within = None
             if best_sd is not None and v is not None and best_v is not None:
@@ -687,8 +723,7 @@ class ModelStage(Stage):
             lambda a: eligible(a) and close(a) and not a["violations"]
             and not any(alike(a, p) for p in picked),
             lambda a: eligible(a) and close(a) and not a["violations"],
-            lambda a: eligible(a) and close(a),
-        )
+        )  # a model that breaks a constraint is never added just to fill the pool
         for ok in passes:
             for a in leaders:
                 if len(picked) >= pool_size:
@@ -728,7 +763,7 @@ class ModelStage(Stage):
 
         prev = ctx.get("model")
         prev_rec = (prev.payload.get("recommendation") or {}) if prev else {}
-        if (ctx.overrides.pool and prev is not None
+        if ((ctx.overrides.pool or ctx.overrides.names) and prev is not None
                 and prev.payload.get("search_fingerprint") == fingerprint
                 and prev_rec.get("output") and not ctx.challenges_for("model")):
             try:

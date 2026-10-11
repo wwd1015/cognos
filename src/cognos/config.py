@@ -257,7 +257,7 @@ class EvaluationConfig(BaseModel):
     # How candidates are ranked, most important first. Empty => the run's metric on the
     # validation sample (in sample when there is no validation).
     rank_by: list[RankRule] = Field(default_factory=list)
-    pool_size: int = 4  # candidates carried to outcomes analysis
+    pool_size: int = 6  # candidates the engine proposes; the developer may carry any number
 
 
 class FactorConfig(BaseModel):
@@ -274,6 +274,9 @@ class FactorConfig(BaseModel):
     lags: list[int] = Field(default_factory=lambda: [1, 2, 3, 4])
     windows: list[int] = Field(default_factory=lambda: [4])  # moving-average lengths
     period: int | None = None  # periods per year (yoy); None => read from the date spacing
+    # What a factor is ranked on when fitted alone: the ranking metric on the validation sample
+    # or in sample (auto => validation when the plan has one).
+    criterion: Literal["auto", "validation", "in_sample"] = "auto"
     max_missing: float | None = 0.2
     max_p_value: float | None = 0.10  # single-factor coefficient
     enforce_sign: bool = True  # drop a factor whose sign contradicts the expected one

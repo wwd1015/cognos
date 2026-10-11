@@ -7,11 +7,13 @@
   Validation        rolling_origin               [engine] A series cannot be shuffled. Each block is forecast from the history before it, and the origin rolls forward.
   Sealed holdout    0.0                          [engine] 120 periods: too few to hold back a third sample. The champion's test result is then also what it was chosen on, and validation says so.
   Forecast origins  12                           [engine] 12 forecast origins, 4 period(s) each: together they cover about the later half of the development sample, so a model is not judged on one stretch of the cycle.
-  Selection         ['forward', 'best_subset']   [profile] Stated in the profile.
+  Selection         ['forward']                  [engine] Few periods and many transformations: start from the best single factor and add one at a time while the model improves, so every factor's contribution is on record. One method is recommended. Choose another, or several: every model any of them evaluates is ranked in the same list, so the leaders are the best across the methods you ran. Families on the slate without coefficient tests cannot be stepped; each is fitted on the shortlist so it still has a candidate.
   Step criterion    validation                   [engine] A step is kept when the ranking metric improves on rows the model was not fitted on.
   The data also allow: validation ['rolling_origin', 'sliding_window', 'none'], test ['out_of_time', 'none']
+  Primary metric    rmse (validation)   [engine]
+  Metrics to rank on: ['rmse', 'mae', 'r2', 'direction_accuracy']; samples: ['validation', 'in_sample', 'test']
 
-  The developer's edit: pool of 3 [human], single-factor p ≤ 0.05 [human]
+  The developer's criteria: rank by rmse (validation), then r2 (in_sample) [human]; single-factor p ≤ 0.05 [human]
 
 ==============================================================================
   2. SINGLE-FACTOR ANALYSIS — the library, and the rules that shorten it
@@ -39,42 +41,41 @@
     1. add   bbb_spread__ma4                    → 0.1846         (6 tried, 0 refused by the constraints)
     2. add   unemployment_rate__yoy_pct__lag2   → 0.1000 -0.0846  (5 tried, 2 refused by the constraints)
     3. add   hpi__yoy_diff                      → 0.0898 -0.0102  (4 tried, 1 refused by the constraints)
-  best subset (ols; criterion validation): best model of each size; the path ends on the best of them
-    1. size                                     → 0.1846         (6 tried, 0 refused by the constraints)
-    2. size                                     → 0.1000 -0.0846  (15 tried, 6 refused by the constraints)
-    3. size                                     → 0.0898 -0.0102  (20 tried, 13 refused by the constraints)
-  grid (lasso, ridge; criterion validation): 12 specification(s) from the slate
-  247 models evaluated in one ledger; the test sample was scored 0 times during the search
+  grid (lasso, ridge; criterion validation): these families have no coefficient tests, so they cannot be stepped: each is fitted on the strongest shortlisted factors and on all of them (12 specification(s))
+  221 models evaluated in one ledger; the test sample was scored 0 times during the search
 
 ==============================================================================
   4. THE CANDIDATE POOL — no champion yet
 ==============================================================================
-  pool c8914d2  lasso  rmse=0.0866  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, gdp_growth__ma4__lag2, hpi__yoy_diff, cre_price_index__yoy_pct__lag1, cre_price_index__yoy_pct__lag2
-       cf27eed  lasso  rmse=0.0866  unemployment_rate__yoy_pct__lag2, bbb_spread__ma4, hpi__yoy_diff, gdp_growth__ma4__lag2, cre_price_index__yoy_pct__lag2
-       cf05663  ridge  rmse=0.0891  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, gdp_growth__ma4__lag2, hpi__yoy_diff, cre_price_index__yoy_pct__lag1, cre_price_index__yoy_pct__lag2
-  pool c229cb4  ols    rmse=0.0898  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, hpi__yoy_diff
-       cf38eb5  ridge  rmse=0.0906  unemployment_rate__yoy_pct__lag2, bbb_spread__ma4, hpi__yoy_diff, gdp_growth__ma4__lag2, cre_price_index__yoy_pct__lag2
-  pool c79c8af  ols    rmse=0.0952  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, cre_price_index__yoy_pct__lag2
+  pool Lasso 6F-A   c8914d2  rmse=0.0866  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, gdp_growth__ma4__lag2, hpi__yoy_diff, cre_price_index__yoy_pct__lag1, cre_price_index__yoy_pct__lag2
+  pool Lasso 5F-A   cf27eed  rmse=0.0866  unemployment_rate__yoy_pct__lag2, bbb_spread__ma4, hpi__yoy_diff, gdp_growth__ma4__lag2, cre_price_index__yoy_pct__lag2
+       Ridge 6F-A   cf05663  rmse=0.0891  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, gdp_growth__ma4__lag2, hpi__yoy_diff, cre_price_index__yoy_pct__lag1, cre_price_index__yoy_pct__lag2
+  pool OLS 3F-A     c229cb4  rmse=0.0898  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, hpi__yoy_diff
+       Ridge 5F-A   cf38eb5  rmse=0.0906  unemployment_rate__yoy_pct__lag2, bbb_spread__ma4, hpi__yoy_diff, gdp_growth__ma4__lag2, cre_price_index__yoy_pct__lag2
+  pool OLS 3F-B     c79c8af  rmse=0.0952  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, cre_price_index__yoy_pct__lag2
 
-  The developer adds c41e6dd from the ledger (the two-factor step of the forward path).
-  The search is not re-run; the new member is fitted, tested and saved.
+  The developer widens the pool to 7: Lasso 6F-A, Lasso 5F-A, OLS 3F-A, OLS 3F-B, Two-driver base, OLS 3F-C, Ridge 6F-A.
+  “Two-driver base” is the developer's name for c41e6dd; Lasso 6F-A and the rest keep theirs.
+  The search is not re-run; the new members are fitted, tested and saved.
 
 ==============================================================================
   5. THE CHAMPION — chosen on the out of time sample and the scenarios
 ==============================================================================
-  candidate validation  test rmse     R²     bias   severely adverse Δ
-  c8914d2       0.0866     0.1049  0.945  -0.0252   +1.338
-  c229cb4       0.0898     0.1050  0.945  -0.0227   +1.406  ← recommended
-  c79c8af       0.0952     0.1085  0.941  -0.0111   +1.376
-  c41e6dd       0.1000     0.1103  0.939  -0.0088   +1.452
-  Outcomes Analyst: c229cb4 is within 2% of the best rmse on the out of time sample (c8914d2) with fewer factors; c8914d2 is next.
+  candidate        validation  test rmse     R²     bias   severely adverse Δ
+  OLS 3F-C             0.1001     0.1046  0.945  -0.0112   +1.404  ← recommended
+  Lasso 6F-A           0.0866     0.1049  0.945  -0.0252   +1.338
+  Lasso 5F-A           0.0866     0.1049  0.945  -0.0252   +1.338
+  OLS 3F-A             0.0898     0.1050  0.945  -0.0227   +1.406
+  Ridge 6F-A           0.0891     0.1066  0.943  -0.0226   +1.367
+  OLS 3F-B             0.0952     0.1085  0.941  -0.0111   +1.376
+  Two-driver base      0.1000     0.1103  0.939  -0.0088   +1.452
+  Outcomes Analyst: OLS 3F-C has the best rmse on the out of time sample among the 7 pool member(s); Lasso 6F-A is next.
   The test sample was the only out-of-sample evidence and it was used to choose: sealed holdout = False
 
 ==============================================================================
   VALIDATION — WARN
 ==============================================================================
-  [MEDIUM] The validation rmse (0.0898) and the test-sample rmse (0.1050) differ by 17% (> 15%): the validation blocks are forecast one block ahead from a refitted model, the out-of-time sample from one fixed origin, so some gap is expected; read how fast the error grows.
-  [LOW] No sealed holdout was reserved: the champion was chosen from 4 candidate(s) compared on the test sample, so its test result is also what it was chosen on.
+  [LOW] No sealed holdout was reserved: the champion was chosen from 7 candidate(s) compared on the test sample, so its test result is also what it was chosen on.
 
   Run directory: <workdir>/<run_id>
   Open it in the workbench:  cognos ui --runs-dir <workdir>

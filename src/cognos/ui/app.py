@@ -112,7 +112,7 @@ def runs_page() -> Any:
         dmc.SegmentedControl(id="new-kind", value="new", fullWidth=True, data=[
             {"value": "new", "label": "New model development"},
             {"value": "update", "label": "Model update"}]),
-        dmc.Select(id="new-source", label="Data & design", data=source_data, value="demo:commercial",
+        dmc.Select(id="new-source", label="Data & design", data=source_data, value="demo:cni",
                    allowDeselect=False, searchable=True),
         html.Div(dmc.Stack([
             dmc.TextInput(id="new-name", label="Model name", placeholder="e.g. commercial_pd"),
@@ -1021,8 +1021,17 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
             if patch:
                 payload["plan"] = patch
     if gate == "gate_candidates" and action == "edit":
-        extra = [x.strip() for x in str(fields.get("extra") or "").replace(";", ",").split(",")]
+        extra = fields.get("extra") or []
+        if isinstance(extra, str):  # ids typed by hand, comma separated
+            extra = [x.strip() for x in extra.replace(";", ",").split(",")]
         payload["pool"] = list(dict.fromkeys([*(fields.get("pool") or []), *(x for x in extra if x)]))
+        model = (service.results(run_id).get("model").payload or {})
+        shown = {a["id"]: a.get("name") for a in model.get("leaders") or []}
+        names = {k.split("::", 1)[1]: " ".join(str(v).split()) for k, v in fields.items()
+                 if k.startswith("name::") and v and str(v).strip()}
+        names = {k: v for k, v in names.items() if shown.get(k) != v}
+        if names:
+            payload["names"] = names
     if gate == "gate_champion" and action == "override":
         payload["champion"] = fields.get("champion")
     return payload, reason

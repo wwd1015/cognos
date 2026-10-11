@@ -45,6 +45,7 @@ _MINIMIZE_CRITERIA = ("aic", "bic")
 
 METHOD_LABELS = {
     "grid": "Grid (every family on the strongest factors and on all of them)",
+    "same_factors": "Same factors, another family",
     "forward": "Forward selection (start from the best single factor, add one at a time)",
     "backward": "Backward elimination (start from all, drop one at a time)",
     "stepwise": "Stepwise (add one, then drop any that no longer helps)",
@@ -60,6 +61,42 @@ def candidate_id(cand: Candidate, transforms: list | None = None) -> str:
            "transforms": [t.to_dict() if hasattr(t, "to_dict") else t for t in transforms or []]}
     return "c" + hashlib.sha256(json.dumps(key, sort_keys=True, default=str).encode()
                                 ).hexdigest()[:6]
+
+
+FAMILY_NAMES = {"ols": "OLS", "logit": "Logit", "probit": "Probit", "cloglog": "Cloglog",
+                "ridge": "Ridge", "lasso": "Lasso", "elasticnet": "Elastic net",
+                "ridge_logit": "Ridge logit", "lasso_logit": "Lasso logit",
+                "random_forest": "Forest", "gradient_boosting": "Boosting",
+                "hazard_logit": "Hazard logit", "hazard_cloglog": "Hazard cloglog"}
+
+
+def _letters(n: int) -> str:
+    out = ""
+    while True:
+        n, r = divmod(n, 26)
+        out = chr(65 + r) + out
+        if n == 0:
+            return out
+        n -= 1
+
+
+def assign_names(ranked_ids: list[tuple[str, str, int]], known: dict[str, str]) -> dict[str, str]:
+    """A name a person can say for every model: family, number of factors, a letter
+    ("Logit 4F-A"). ``ranked_ids`` is (id, family, n_factors), best first; ``known`` are the
+    names already given in this run, which never change: a model keeps its name across
+    re-runs and re-searches, and a new model takes the next free letter."""
+    names = dict(known)
+    taken = set(names.values())
+    for cid, family, k in ranked_ids:
+        if cid in names:
+            continue
+        base = f"{FAMILY_NAMES.get(family, family.replace('_', ' ').capitalize())} {k}F"
+        i = 0
+        while f"{base}-{_letters(i)}" in taken:
+            i += 1
+        names[cid] = f"{base}-{_letters(i)}"
+        taken.add(names[cid])
+    return names
 
 
 @dataclass
@@ -509,7 +546,11 @@ def run_methods(evaluator: Evaluator, *, families: list[str], factors: list[str]
             if better("validation", evaluator.metric, value, best[1] if best else None):
                 best = (ev, value)
         path.final = best[0].id if best else None
-        path.note = path.note or f"{len(space)} specification(s) from the slate"
+        path.note = path.note or (
+            f"{len(space)} specification(s) from the slate" if "grid" in methods else
+            f"these families have no coefficient tests, so they cannot be stepped: each is "
+            f"fitted on the strongest shortlisted factors and on all of them "
+            f"({len(space)} specification(s))")
         paths.append(path)
     return paths
 

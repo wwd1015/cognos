@@ -46,6 +46,11 @@ DEMO_PRESETS: dict[str, dict[str, Any]] = {
                 objective="Rank commercial and industrial middle-market borrowers by their "
                           "risk of default over the next 12 months, to support origination "
                           "underwriting, and size the portfolio's loss under stress.",
+                factors={"expected_signs": {
+                    "debt_to_ebitda": "+", "utilization_rate": "+", "unemployment_rate": "+",
+                    "interest_coverage": "-", "current_ratio": "-", "operating_margin": "-",
+                    "log_total_assets": "-", "collateral_coverage": "-", "gdp_growth": "-",
+                    "revenue_growth": "-"}},
                 design={"use_case": "origination underwriting", "horizon": "12-month PD",
                         "default_definition": "90+ DPD or nonaccrual within 12 months",
                         "segment": "C&I middle-market", "interpretability": "required"}),
@@ -74,9 +79,7 @@ DEMO_PRESETS["loss_forecast"] = dict(
     task="timeseries", target="nco_rate", metric="rmse", datetime_col="date",
     factors={"expected_signs": {"unemployment_rate": "+", "bbb_spread": "+",
                                 "gdp_growth": "-", "hpi": "-", "cre_price_index": "-"}},
-    selection={"methods": ["forward", "best_subset"], "max_factors": 3},
-    evaluation={"rank_by": [{"metric": "rmse", "sample": "validation"},
-                            {"metric": "r2", "sample": "in_sample"}]},
+    selection={"max_factors": 3},
     stress={"enabled": True, "scenarios": [
         {"name": "adverse",
          "shocks": {"unemployment_rate": {"add": 2.0}, "bbb_spread": {"add": 1.0},
@@ -93,11 +96,12 @@ DEMO_PRESETS["loss_forecast"] = dict(
 # table): the Data Analyst proposes how they join and the developer confirms it.
 DEMO_PRESETS["linked"] = {**DEMO_PRESETS["cni"], "generator": "cni", "linked": True}
 DEMO_LABELS = {
-    "loss_forecast": "Loss forecasting (quarterly series: factor screen, stepwise selection, "
-                     "candidate pool)",
+    "cni": "C&I PD scorecard (obligors by vintage: stepwise logit, sealed holdout, hazard "
+           "challengers, stress)",
+    "loss_forecast": "Loss forecasting (quarterly series: lags and changes, forward selection, "
+                     "rolling origin)",
     "linked": "C&I portfolio from three linked sources (the Data Analyst proposes the join)",
     "commercial": "Commercial PD (vintage panel, out-of-time)",
-    "cni": "C&I portfolio (hazard term structure, portfolio sim, stress)",
     "migration": "Rating migration (agency transition matrix, loss forecast)",
     "credit": "Consumer-style credit with fair-lending scan",
     "classification": "Generic classification",

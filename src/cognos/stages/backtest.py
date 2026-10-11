@@ -77,7 +77,7 @@ class BacktestStage(Stage):
                if cfg.portfolio.ead_column and cfg.portfolio.ead_column in eval_df.columns else None)
         candidates, series = [], {}
         for m in members:
-            entry = {k: m.get(k) for k in ("id", "label", "family", "n_features", "features",
+            entry = {k: m.get(k) for k in ("id", "name", "label", "family", "n_features", "features",
                                            "role", "interpretable", "methods", "violations")}
             entry["development"] = (m.get("scores") or {})
             entry["development_score"] = m.get("score")
@@ -243,6 +243,7 @@ class BacktestStage(Stage):
             "comparison": comparison,
             "champion_id": champion_id,
             "champion_label": chosen["label"],
+            "champion_name": chosen.get("name") or chosen["label"],
             "champion_source": champion_source,
             "champion_rationale": out.champion_rationale,
             "recommended_id": out.champion,
@@ -276,7 +277,8 @@ class BacktestStage(Stage):
 
         impact_word = "IMPACT" if impact_res.used_impact else "built-in scorer"
         bits = [f"Compared {len(candidates)} candidate(s) on the {sample.replace('_', ' ')} "
-                f"sample; champion {champion_id} {chosen['label']} ({champion_source})",
+                f"sample; champion {chosen.get('name') or champion_id} [{champion_id}] "
+                f"{chosen['label']} ({champion_source})",
                 f"scored {len(impact_res.scored_df)} rows via {impact_word}"]
         if oos_metric is not None:
             bits.append(f"OOS {metric}={oos_metric:.4f}")

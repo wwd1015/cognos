@@ -7,16 +7,16 @@ every step, because the data are different:
 
   1. THE PLAN. Dated rows of many obligors, enough of them: the latest vintages are held back
      as the test sample, validation is stratified k-fold, and there are rows to spare for a
-     SEALED HOLDOUT that nobody chooses on. The developer adds best subset beside stepwise and
-     asks every coefficient to be significant.
+     SEALED HOLDOUT that nobody chooses on. The developer sets their own criteria: every
+     coefficient significant at 5%, and log loss as a second ranking line.
   2. SINGLE-FACTOR ANALYSIS. Each financial ratio and macro column, and the logarithm of the
      skewed ones, is fitted alone in a logit. Rules cut the list: significance, the expected
      credit sign, the better of two transformations, no two factors too alike.
-  3. FROM ONE FACTOR TO SEVERAL. Stepwise adds the factor that lifts validation AUC most and
-     drops any that stops earning its place. Best subset checks the path. Probit is fitted on
-     the same factor sets, so the link is compared on equal terms.
+  3. FROM ONE FACTOR TO SEVERAL. One method, the one the plan names: stepwise adds the factor
+     that lifts validation AUC most and drops any that stops earning its place. Probit is
+     fitted on the same factor sets, so the link is compared on equal terms.
   4. THE CANDIDATE POOL. Several scorecards within noise of each other on the development
-     sample. The developer adds a smaller one from the ledger.
+     sample, each with a name. The developer adds a smaller one and names it.
   5. THE CHAMPION, ON OUTCOMES. Each candidate is scored on the out-of-time vintages: Gini, KS,
      calibration, population stability, and the PD under an adverse scenario.
   6. THE SEALED HOLDOUT. Opened once, at validation, for the champion only.
@@ -129,16 +129,24 @@ def main(save: bool = False) -> int:
             f"{plan['reasons'].get(field, '')}")
     say(f"  The data also allow: validation {plan['options']['validation']}, "
         f"test {plan['options']['test']}")
-    edit = {"selection": {"methods": ["stepwise", "best_subset"], "max_p_value": 0.05,
-                          "max_factors": 5}}
+    say("  Primary metric  " + ", then ".join(
+        f"{r['metric']} ({r['sample']})" for r in plan["evaluation"]["rank_by"])
+        + f"   [{plan['sources'].get('rank_by', '')}]")
+    say(f"  Metrics to rank on: {plan['options']['metric']}")
+    edit = {"evaluation": {"rank_by": [{"metric": "roc_auc", "sample": "validation"},
+                                       {"metric": "log_loss", "sample": "validation"}]},
+            "selection": {"max_p_value": 0.05, "max_factors": 5}}
     service.submit_gate(run_id, "gate_design", "edit", {"plan": edit}, root=root,
-                        reason="check stepwise against best subset; every coefficient significant",
+                        reason="AUC then log loss; every coefficient significant at 5%",
                         background=False)
     assert _next_gate(run_id, root) == "gate_design"  # re-opens on the plan in force
     plan = service.results(run_id, root)["ideate"].payload["plan"]
-    say(f"\n  The developer's edit: {' + '.join(plan['selection']['methods'])} "
-        f"[{plan['sources']['methods']}], every coefficient p ≤ {plan['selection']['max_p_value']} "
-        f"[{plan['sources']['max_p_value']}], at most {plan['selection']['max_factors']} factors")
+    say("\n  The developer's criteria: rank by " + ", then ".join(
+        f"{r['metric']} ({r['sample']})" for r in plan["evaluation"]["rank_by"])
+        + f" [{plan['sources']['rank_by']}]; every coefficient p ≤ "
+        f"{plan['selection']['max_p_value']} [{plan['sources']['max_p_value']}], at most "
+        f"{plan['selection']['max_factors']} factors; method {plan['selection']['methods'][0]} "
+        f"[{plan['sources']['methods']}]")
     service.submit_gate(run_id, "gate_design", "accept", reason="plan confirmed", root=root,
                         background=False)
 
@@ -181,19 +189,21 @@ def main(save: bool = False) -> int:
     banner("4. THE CANDIDATE POOL — no champion yet")
     for a in model["leaders"][:7]:
         mark = "pool" if a["id"] in model["pool_ids"] else "    "
-        say(f"  {mark} {a['id']}  {a['family']:6s} auc={a['score']:.4f}  {', '.join(a['features'])}"
+        say(f"  {mark} {a['name']:13s} {a['id']}  auc={a['score']:.4f}  {', '.join(a['features'])}"
             + (f"   ✗ {a['violations'][0]}" if a["violations"] else ""))
     stepwise = next(p for p in model["paths"] if p["method"] == "stepwise")
     smaller = next((s["model"] for s in stepwise["steps"]
                     if s["n_factors"] == 2 and s["model"] not in model["pool_ids"]), None)
     if smaller:
         pool = [*model["pool_ids"], smaller]
-        service.submit_gate(run_id, "gate_candidates", "edit", {"pool": pool}, root=root,
+        service.submit_gate(run_id, "gate_candidates", "edit",
+                            {"pool": pool, "names": {smaller: "Two-ratio card"}}, root=root,
                             reason="add the two-factor scorecard: how much do the others buy?",
                             background=False)
         assert _next_gate(run_id, root) == "gate_candidates"
-        say(f"\n  The developer adds {smaller} from the ledger (the two-factor step of the "
-            "stepwise path).\n  The search is not re-run; the new member is fitted, tested and saved.")
+        say(f"\n  The developer widens the pool to {len(pool)} with the two-factor step of the "
+            f"stepwise path ({smaller}) and names it “Two-ratio card”.\n  The search is not "
+            "re-run; the new member is fitted, tested and saved.")
     service.submit_gate(run_id, "gate_candidates", "accept", reason="pool confirmed", root=root,
                         background=False)
 
@@ -202,13 +212,13 @@ def main(save: bool = False) -> int:
     backtest = service.results(run_id, root)["backtest"].payload
     banner(f"5. THE CHAMPION — chosen on the {backtest['evaluation_sample'].replace('_', ' ')} "
            "vintages and the scenarios")
-    say(f"  {'candidate':9s} {'factors':>7s} {'validation':>10s} {'test AUC':>9s} {'Gini':>6s} "
+    say(f"  {'candidate':15s} {'factors':>7s} {'validation':>10s} {'test AUC':>9s} {'Gini':>6s} "
         f"{'KS':>6s} {'calib.':>7s} {'PSI':>6s}   severely adverse ΔPD")
     for c in backtest["candidates"]:
         o = c["outcomes"]
         severe = next(s["delta"] for s in c["scenarios"] if s["name"] == "severely_adverse")
         mark = "  ← recommended" if c["id"] == backtest["champion_id"] else ""
-        say(f"  {c['id']:9s} {c['n_features']:7d} {c['development_score']:10.4f} "
+        say(f"  {c['name']:15s} {c['n_features']:7d} {c['development_score']:10.4f} "
             f"{c['metrics']['roc_auc']:9.4f} {o['gini']:6.3f} {o['ks']:6.3f} "
             f"{o['expected_calibration_error']:7.4f} {o['psi']:6.3f}   {severe:+.4f}{mark}")
     say(f"  Outcomes Analyst: {backtest['champion_rationale']}")

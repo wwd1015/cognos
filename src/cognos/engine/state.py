@@ -127,6 +127,7 @@ class Overrides(BaseModel):
     # recommended plan ({"evaluation": {...}, "factors": {...}, "selection": {...}}).
     plan: dict[str, Any] | None = None
     pool: list[str] | None = None  # candidate ids carried to outcomes analysis (gate_candidates)
+    names: dict[str, str] = Field(default_factory=dict)  # candidate id -> the developer's name
     champion: str | None = None  # the pool member chosen at gate_champion
 
 
