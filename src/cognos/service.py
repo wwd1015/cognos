@@ -500,8 +500,9 @@ def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
                 recorded = d / "stages" / stage / "result.json"
                 if champ is None and recorded.exists():
                     try:
-                        champ = json.loads(recorded.read_text(encoding="utf-8"))["metrics"].get(
-                            "champion")
+                        got = json.loads(recorded.read_text(encoding="utf-8"))
+                        champ = ((got.get("payload") or {}).get("champion_name")
+                                 or got["metrics"].get("champion"))
                     except Exception:
                         champ = None
             waiting = [s for s, v in st.steps.items() if v.status == "awaiting"]
