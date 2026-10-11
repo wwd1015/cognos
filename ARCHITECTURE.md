@@ -37,7 +37,7 @@ both first-class and interdependent ([ADR-0001](docs/adr/0001-reasoning-proposes
 Neither layer is optional. Running with the deterministic (heuristic) agents is the offline and demo
 path and the test substrate (`replay` re-runs recorded agent outputs), not a degraded product — it is
 how the deliverable's analysis is always reproduced ([ADR-0003](docs/adr/0003-two-tier-reproducibility.md)).
-In production the LLM agents recommend and a model developer decides at six review gates.
+In production the LLM agents recommend and a model developer decides at seven review gates.
 
 The agents run **inside the engine** (v1.0): each stage consults its agent through
 `ctx.recommend()`, and the runner calls the configured backend — `claude -p` in an isolated
@@ -307,7 +307,7 @@ enforces a per-call time limit and a per-run spend budget. Provider resolution:
   model-risk readiness report that never PASSes or BLOCKs, never marks an unevidenced element compliant
   (ongoing monitoring is always outstanding at dev time), and lists human-only steps (independent
   validation sign-off, monitoring plan, governance). The **only verdict gates are `validate` and
-  `review`** (the six human review gates decide, they never BLOCK);
+  `review`** (the seven human review gates decide, they never BLOCK);
   `validate` hard-BLOCKs only on confirmed target leakage, and `review` BLOCKs only on stale docs↔code
   references.
 - **Single interpretable champion** ([ADR-0007](docs/adr/0007-single-interpretable-champion-no-silent-ensemble.md)):

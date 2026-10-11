@@ -316,8 +316,14 @@ def apply_plan(state: RunState, res: Any, patch: dict[str, Any]) -> list[str]:
     return ["ideate"]
 
 
-def apply_answers(state: RunState, answers: dict[str, str], *, assume: bool = False) -> list[str]:
-    """Answer gaps. Design answers fill the effective config; returns stages to re-run."""
+def apply_answers(state: RunState, answers: dict[str, str], *, assume: bool = False,
+                  limitation: bool = False) -> list[str]:
+    """Answer gaps. Design answers fill the effective config; returns stages to re-run.
+
+    ``assume`` records the question as an assumption and ``limitation`` as a model limitation
+    instead of answering it: the stage that raised it does not re-run, and validation (which
+    challenges both) does when it has already run."""
+    assume = assume or limitation
     rerun: list[str] = []
     from .state import utcnow
 
@@ -329,10 +335,10 @@ def apply_answers(state: RunState, answers: dict[str, str], *, assume: bool = Fa
         if assume and gap.design_field in CORE_DESIGN:
             raise GateError(
                 f"{gap.design_field.replace('_', ' ')} is a sponsor decision. "
-                "Answer it; it cannot be accepted as an assumption.")
+                "Answer it; it cannot be accepted as an assumption or a limitation.")
         if not text and not assume:
             continue
-        gap.status = "assumed" if assume else "answered"
+        gap.status = "limitation" if limitation else "assumed" if assume else "answered"
         gap.answer = text or gap.answer
         gap.answered_at = utcnow()
         if gap.design_field and not assume:
@@ -345,4 +351,6 @@ def apply_answers(state: RunState, answers: dict[str, str], *, assume: bool = Fa
                 # re-enters at the design stage, not at the interview.
                 reentry = "ideate"
             rerun.append(reentry)
+        else:
+            rerun.append("validate")
     return rerun

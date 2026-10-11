@@ -262,7 +262,7 @@ def test_own_data_form_builds_a_source_and_explore_shows_charts_and_code(root, t
     service.submit_gate(run_id, "gate_intent", "accept", reason="as given", background=False)
     st = service.run_until_idle(run_id)
     panel = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light"))
-    assert "agent-written code" in panel and "Code to review" in panel and "groupby" in panel
+    assert "Agent-written script" in panel and "Code to review" in panel and "groupby" in panel
     assert "Rate by sector" in panel and '"type": "Graph"' in panel
     assert "proposed by the Data Analyst" in panel and "loans.csv" in panel
     assert "analysis script(s) written by the Data Analyst" in panel  # the gate says what is accepted
@@ -280,7 +280,7 @@ def test_every_stage_page_shows_the_tools_its_agent_ran_and_the_ones_it_could_no
     st, results = service.state(run_id), service.results(run_id)
     panel = _serialize(stage_panel("validate", results["validate"], st, "light"))
     assert "Tools run (1)" in panel and "score_band_monotonicity" in panel
-    assert "plugin: validation_tools" in panel and "monotonic" in panel
+    assert "Plugin tool (validation_tools)" in panel and "monotonic" in panel
     assert "Tools not run" in panel and "impact_test_suite" in panel
     assert '"c": null' not in panel
     assert "events_per_feature" in _serialize(stage_panel("ideate", results["ideate"], st, "dark"))
@@ -431,3 +431,60 @@ def test_the_plan_the_pool_and_the_champion_are_decided_on_forms(root):
     # another seat reads the page and cannot decide on it
     locked = _serialize(stage_panel("backtest", backtest, st, "light", seat="reviewer"))
     assert "Accept the champion" not in locked and "belongs to the model developer" in locked
+
+
+def test_a_stage_shows_only_its_own_questions_and_the_record_covers_the_run(root):
+    cfg = service.demo_config("commercial", root, n=500, search_budget=4)  # a blank design brief
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic")
+    service.run_until_idle(run_id)
+    st = service.state(run_id)
+    core = [g for g in st.gaps if g.design_field in ("use_case", "horizon")]
+    assert core and all(g.stage == "intake" for g in core)  # intent questions are intake's
+    results = service.results(run_id)
+    # while the intent gate is open the interview is the one place to answer
+    intake = _serialize(stage_panel("intake", results["intake"], st, "light"))
+    assert "Questions from this stage" not in intake and "Interview" in intake
+    rail = _serialize(ui.rail(st, "intake"))
+    assert "open question" in rail and "required" in rail
+    assert '"disableRightSectionRotation": true' in rail  # the status label stays level
+    assert '"active": true' not in _serialize(ui.rail(st, None))  # a run-wide view: no stage
+    record = _serialize(ui.questions_tab(st))
+    assert "Run record" in record and "Raised at" in record and "business owner" in record
+    assert "must be answered before sign-off" in record
+    assert "Agent calls" in _serialize(ui.audit_tab(run_id))
+    page = _serialize(ui.workspace_page(run_id))
+    assert page.index('"ws-tab"') < page.index('"ws-rail"')  # the views sit above the stages
+
+
+def test_assumptions_and_limitations_reach_validation_and_the_white_paper(root):
+    cfg = service.demo_config("cni", root, n=500, search_budget=4)
+    run_id = service.create_run(cfg, mode="autonomous", provider="heuristic")
+    st = service.run_until_idle(run_id)
+    assert st.status_of("validate") == "done"
+    from cognos.engine.state import Gap
+
+    eng = service.engine(run_id)
+    with eng.lock:  # two data questions, as the Data Analyst raises them
+        state = eng.state
+        state.gaps += [Gap(id="data-t1", question="Is utilization known at origination?",
+                           category="data", stage="explore", reentry="explore"),
+                       Gap(id="data-t2", question="Is collateral revalued?", category="data",
+                           stage="explore", reentry="explore")]
+        eng._save(state)
+    a, b = "data-t1", "data-t2"
+    explore = _serialize(stage_panel("explore", service.results(run_id)["explore"],
+                                     service.state(run_id), "light"))
+    assert "Flag as limitation" in explore and "What each choice does" in explore
+    service.answer_gap(run_id, a, "Taken as known.", assume=True, background=False)
+    st = service.answer_gap(run_id, b, "Not covered.", limitation=True, background=False)
+    assert st.status_of("explore") == "done"  # the stage that asked does not run again
+    assert st.status_of("validate") == "stale" and "assumption" in st.steps["validate"].rerun_reason
+    st = service.run_until_idle(run_id)
+    found = {f.id: f for f in service.results(run_id)["validate"].findings}
+    assert "sensitiv" in found[f"assumption-{a}"].suggestion
+    assert "mitigated" in found[f"limitation-{b}"].suggestion
+    assert service.results(run_id)["validate"].verdict.value != "BLOCK"
+    page = service.read_artifact(run_id, "docs/limitations.md")
+    assert "Assumptions accepted" in page and "Taken as known." in page
+    assert page.index("Limitations recorded") < page.index("Not covered.")
+    assert "limitation" in _serialize(ui.questions_tab(st))

@@ -287,8 +287,9 @@ def data_linker(sl: dict[str, Any]) -> dict[str, Any]:
 
 def data_scout(sl: dict[str, Any]) -> dict[str, Any]:
     """The standard look at a dataset, as tool calls. Round one settles the target when the
-    profile leaves it open (the engine's first candidate); the visuals follow once it is known.
-    The deterministic analyst never writes code."""
+    profile leaves it open (the engine's first candidate). Then the survey (overview, target,
+    gaps, time, ranking, collinearity, outliers, drift) and, in a further round, the drill-down
+    into the strongest features. The deterministic analyst never writes code."""
     target = sl.get("target") or ""
     out: dict[str, Any] = {"target_column": "", "target_rationale": "", "requests": [],
                            "done": True, "notes": ""}
@@ -298,20 +299,42 @@ def data_scout(sl: dict[str, Any]) -> dict[str, Any]:
                    target_rationale=best.get("why", ""),
                    notes="Target taken from the engine's ranking of outcome-like columns.")
         return out
-    if sl.get("analyses"):  # the standard set has run
-        return out
     tools = {t["name"] for t in sl.get("tools", [])}
-    reqs = [("target_distribution", {}, "How is the dependent variable distributed, and how many "
-                                        "events are there?")]
-    if sl.get("columns_with_missing"):
-        reqs.append(("missingness", {}, "Which columns have gaps large enough to matter?"))
-    if sl.get("datetime_col"):
-        reqs.append(("time_trend", {}, "Is the target stable over time, and are the latest "
-                                       "periods thin?"))
-    for c in sl.get("top_correlations", [])[:3]:
-        reqs.append(("target_relationship", {"column": c["feature"]},
-                     f"How does the target move across {c['feature']}: direction, shape?"))
-    reqs.append(("correlation_matrix", {}, "Which candidate features duplicate each other?"))
+    ran = {a.get("tool") for a in sl.get("analyses", [])}
+    gaps, dated = bool(sl.get("columns_with_missing")), bool(sl.get("datetime_col"))
+    binary = sl.get("task") == "classification"
+    top = [c["feature"] for c in sl.get("top_correlations", [])]
+    if not sl.get("analyses"):
+        reqs = [("data_overview", {}, "What is in the dataset: types, gaps, duplicates, columns "
+                                      "that cannot be inputs?"),
+                ("target_distribution", {}, "How is the dependent variable distributed, and how "
+                                            "many events are there?")]
+        if gaps:
+            reqs.append(("missingness", {}, "Which columns have gaps large enough to matter?"))
+        if dated:
+            reqs.append(("time_trend", {}, "Is the target stable over time, and are the latest "
+                                           "periods thin?"))
+        reqs += [("predictive_power", {}, "Which features carry signal on their own, and is any "
+                                          "of them too good to be true?"),
+                 ("correlation_matrix", {}, "Which candidate features duplicate each other?"),
+                 ("outliers", {}, "Which numeric columns have tails that need capping or a "
+                                  "transform?")]
+        if dated:
+            reqs.append(("stability", {}, "Have the inputs drifted between the early and the "
+                                          "late periods?"))
+        out["done"] = not top  # nothing to drill into
+    elif "target_relationship" not in ran:
+        reqs = [("target_relationship", {"column": c},
+                 f"How does the target move across {c}: direction, shape?") for c in top[:3]]
+        if binary and top:
+            reqs.append(("woe_bins", {"column": top[0]},
+                         f"What shape would a scorecard give {top[0]}?"))
+        reqs.append(("collinearity", {}, "Which candidates do the others already explain?"))
+        if gaps:
+            reqs.append(("missing_vs_target", {}, "Is a missing value informative about the "
+                                                  "outcome?"))
+    else:
+        reqs = []
     out["requests"] = [{"purpose": why, "tool": name, "code": "",
                         "params": [{"name": k, "value": v} for k, v in params.items()]}
                        for name, params, why in reqs if name in tools][: sl.get("max_requests", 8)]

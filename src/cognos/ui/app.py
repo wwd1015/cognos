@@ -23,7 +23,7 @@ from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
 from .. import __version__, service
 from ..engine import GateError
 from ..engine.graph import GATE_OF_STAGE, GATES, LABELS, STAGE_OF_GATE, STAGES
-from ..engine.process import CORE_DESIGN, SEAT_LABEL, SEAT_OF_GATE, journal, next_action, seat_label
+from ..engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, next_action, seat_label
 from .components import (
     empty,
     fmt,
@@ -35,7 +35,17 @@ from .components import (
     table,
     verdict_badge,
 )
-from .panels import compare_page, stage_panel
+from .panels import (
+    SPONSOR_NOTE,
+    challenge_rows,
+    compare_page,
+    gap_cell,
+    gap_need,
+    gap_outcomes,
+    gap_required,
+    questions_summary,
+    stage_panel,
+)
 from .theme import FONT_CSS, MANTINE_THEME
 
 ASSETS = Path(__file__).with_name("assets")
@@ -49,8 +59,6 @@ def header() -> dmc.AppShellHeader:
                   html.Span("Model development workbench", className="masthead-eyebrow")],
                  href="/", className="masthead-brand"),
         html.Div([
-            html.Span("agents recommend · you decide · the engine disposes",
-                      className="masthead-meta"),
             dcc.Link("All runs", href="/", className="masthead-link"),
             html.Span(["as ", html.B(service.whoami())], className="masthead-meta",
                       title="Recorded on your decisions and answers (COGNOS_USER, else your "
@@ -374,20 +382,21 @@ def workspace_page(run_id: str) -> Any:
                 data=[{"value": k, "label": v.title()} for k, v in SEAT_LABEL.items()
                       if k != "express"],
             ),
-        ], gap="sm", mt="xs", mb="lg"),
+        ], gap="sm", mt="xs", mb="sm"),
+        # The run's views. "Stages" is the work, one stage at a time; the other two cover the
+        # whole run, so they sit above the stage index, not inside a stage.
+        dmc.Tabs([dmc.TabsList([
+            dmc.TabsTab("Stages", value="workflow", leftSection=icon("tabler:route")),
+            dmc.TabsTab("Run record", value="questions", leftSection=icon("tabler:notebook")),
+            dmc.TabsTab("Agent calls", value="audit", leftSection=icon("tabler:list-search")),
+        ])], id="ws-tab", value="workflow", mb="lg"),
         dmc.Grid([
             dmc.GridCol([html.Div(id="ws-head"), html.Div(id="ws-rail", className="cognos-rail")],
                         span={"base": 24, "md": 6}),
-            dmc.GridCol([
-                dmc.Tabs([dmc.TabsList([
-                    dmc.TabsTab("Workflow", value="workflow", leftSection=icon("tabler:route")),
-                    dmc.TabsTab("Questions & challenges", value="questions",
-                                leftSection=icon("tabler:messages")),
-                    dmc.TabsTab("Agent audit", value="audit", leftSection=icon("tabler:list-search")),
-                ])], id="ws-tab", value="workflow", mb="md"),
-                html.Div(id="ws-content", className="cognos-content"),
-            ], span={"base": 24, "md": 13}),
-            dmc.GridCol(html.Div(id="ws-activity"), span={"base": 24, "md": 5}),
+            dmc.GridCol(html.Div(id="ws-content", className="cognos-content"),
+                        id="ws-main-col", span={"base": 24, "md": 13}),
+            dmc.GridCol(html.Div(id="ws-activity"), id="ws-activity-col",
+                        span={"base": 24, "md": 5}),
         ], gutter="lg", columns=24),
         dmc.Modal(id="io-modal", size="80%", title="Agent call", children=html.Div(id="io-body")),
         dcc.Download(id="export-download"),
@@ -436,7 +445,9 @@ def run_actions(run_id: str) -> Any:
     ], gap="xs", mt="sm")
 
 
-def rail(st, selected: str) -> Any:
+def rail(st, selected: str | None) -> Any:
+    """The stage index. ``selected`` is None while a run-wide view is open: no stage is the
+    current page then, and a click on one returns to it."""
     items = []
     for i, stage in enumerate(STAGES, 1):
         status = st.status_of(stage)
@@ -455,13 +466,20 @@ def rail(st, selected: str) -> Any:
             desc = "Out of date — " + (why if len(why) <= 70 else why[:69].rstrip() + "…")
         if status == "running" and st.steps[stage].by:  # whose machine is doing the work
             desc = f"Running — {st.steps[stage].by}"
+        asked = [g for g in st.gaps if g.stage == stage and g.status == "open"]
+        if asked:  # questions are answered on the stage's page: say they are there
+            must = sum(1 for g in asked if gap_required(g))
+            desc += (f" · {len(asked)} open question{'s' if len(asked) != 1 else ''}"
+                     + (f", {must} required" if must else ""))
         items.append(dmc.NavLink(
             id={"type": "rail", "step": stage},
             label=dmc.Text([html.Span(f"{i:02d}", className="rail-no"), LABELS[stage]],
                            size="sm", fw=600 if stage == selected else 500),
             description=desc, leftSection=status_icon("awaiting" if gstatus == "awaiting" else status),
             rightSection=right, active=stage == selected, variant="subtle", color="oxblood",
-            disabled=status == "skipped", n_clicks=0))
+            # (Mantine turns the right section a quarter when a link is clicked, as if it were
+            # the chevron of a submenu; ours is a status label)
+            disableRightSectionRotation=True, disabled=status == "skipped", n_clicks=0))
     return dmc.Card([html.Div("Stages", className="eyebrow", style={"marginBottom": 6}),
                      *items])
 
@@ -487,55 +505,44 @@ def activity(run_id: str) -> Any:
 
 
 def questions_tab(st, seat: str = "developer") -> Any:
-    gaps = [g for g in st.gaps]
-    q_rows = []
-    for g in gaps:
-        if g.status == "open":
-            ctrl = dmc.Group([
-                dmc.TextInput(id={"type": "gap-text", "gap": g.id}, placeholder="Your answer",
-                              style={"flex": 1}),
-                dmc.Button("Answer", id={"type": "gap-act", "gap": g.id, "action": "answer"},
-                           size="xs", disabled=seat != "developer"),
-                dmc.Button("Accept as assumption", id={"type": "gap-act", "gap": g.id,
-                                                       "action": "assume"},
-                           size="xs", variant="subtle",
-                           disabled=seat != "developer" or g.design_field in CORE_DESIGN)
-                if g.design_field not in CORE_DESIGN else dmc.Text(
-                    "A sponsor decision — answer it. It cannot be assumed.", size="xs", c="dimmed"),
-            ], gap="xs", wrap="nowrap")
-        else:
-            ctrl = dmc.Text([dmc.Badge(g.status, size="xs", variant="light"), " ", g.answer or "",
-                             *([html.Span(f" — {g.answered_by}", className="stamp")]
-                               if g.answered_by else [])], size="sm")
-        q_rows.append([dmc.Code(g.id), dmc.Badge(g.category, size="xs", variant="outline"),
-                       dmc.Stack([dmc.Text(g.question, size="sm"), ctrl], gap=4)])
-    c_rows = [[dmc.Code(c.id), c.source, LABELS.get(c.target_stage, c.target_stage),
-               dmc.Badge(c.status, size="xs", variant="light",
-                         color="oxblood" if c.status == "open" else "gray"),
-               dmc.Stack([dmc.Text(c.message, size="sm"),
-                          dmc.Text(f"↳ {c.response}", size="xs", c="dimmed") if c.response else None],
-                         gap=2)] for c in st.challenges]
+    """The run record: everything stamped on the run, across every stage."""
+    q_rows = [[LABELS.get(g.stage, g.stage), gap_need(g), gap_cell(g, seat)]
+              for g in sorted(st.gaps, key=lambda g: (g.status != "open", not gap_required(g)))]
     d_rows = [[LABELS.get(d.gate, d.gate), d.action.replace("_", " "), d.by or "—",
                d.seat or d.actor, d.reason or "—", stamp(d.at)] for d in st.decisions]
     record = journal(st, service.results(st.run_id))
     r_rows = [[stamp(row["at"]), row["who"], row["name"],
                dmc.Text(row["what"], size="sm")] for row in record]
     return dmc.Stack([
-        section("The record", table(["When", "Who", "Name", "What"], r_rows)
+        view_lede("Run record", "The whole run, every stage: who did what and when, every "
+                  "question asked of the sponsor, every challenge and every decision. A "
+                  "stage's own questions and challenges are also on that stage's page."),
+        section("Timeline", table(["When", "Who", "Name", "What"], r_rows, max_height=520)
                 if r_rows else empty("Nothing stamped yet."),
-                description="People, agents, and the engine, in order. Computed from the stamps "
+                description="People, agents and the engine, in order. Computed from the stamps "
                             "already on the run."),
-        section("Questions for the sponsor", table(["Id", "Kind", "Question"], q_rows)
-                if q_rows else empty("No open design or data questions."),
-                description="Answering a design question fills the design brief and re-runs the "
-                            "stage that raised it."),
-        section("Challenges", table(["Id", "From", "Sent to", "Status", "Challenge / response"], c_rows)
-                if c_rows else empty("No challenges yet."),
-                description="Send-backs from you and findings routed back by the independent "
-                            "validator; each agent must answer every challenge."),
-        section("Decision log", table(["Gate", "Action", "By", "Seat", "Reason", "At"], d_rows)
-                if d_rows else empty("No decisions yet.")),
+        section(f"Questions for the business sponsor ({len(st.gaps)})",
+                dmc.Text(questions_summary(list(st.gaps)), size="sm", mb="xs") if q_rows else None,
+                gap_outcomes() if q_rows else None,
+                table(["Raised at", "", "Question"], q_rows)
+                if q_rows else empty("No questions were raised."),
+                description=SPONSOR_NOTE + " An answer re-runs the stage that raised it."),
+        section(f"Challenges ({len(st.challenges)})",
+                table(["Id", "From", "Sent to", "Status", "Challenge / response"],
+                      challenge_rows(st.challenges))
+                if st.challenges else empty("No challenges yet."),
+                description="Send-backs from a person at a gate and findings routed back by the "
+                            "independent validator; each agent must answer every challenge."),
+        section(f"Decision log ({len(d_rows)})",
+                table(["Gate", "Action", "By", "Seat", "Reason", "At"], d_rows)
+                if d_rows else empty("No decisions yet."),
+                description="What a person (or express preparation) decided at each gate."),
     ], gap="md")
+
+
+def view_lede(title: str, text: str) -> Any:
+    return html.Div([html.Div(title, className="page-title", style={"fontSize": 24}),
+                     html.Div(text, className="page-lede")])
 
 
 def stamp(at: str | None) -> Any:
@@ -556,11 +563,17 @@ def audit_tab(run_id: str) -> Any:
             fmt(a.get("duration_s"), 2), f"${a['cost_usd']:.4f}" if a.get("cost_usd") else "—",
             dmc.Text((a.get("error") or "")[:140], size="xs", c="dimmed"),
         ])
-    return section("Agent calls", table(["Call", "Agent", "Try", "Status", "Backend", "Sec.",
-                                         "Cost", "Check"], rows, max_height=640)
-                   if rows else empty("No agent calls yet."),
-                   description="Every attempt is kept with its full input (prompt + context slice) "
-                               "and raw output. Click a call to inspect it.")
+    return dmc.Stack([
+        view_lede("Agent calls", "The audit trail of the agents, for the whole run: each call "
+                  "an agent made, what it was shown and what it answered. Use it to check an "
+                  "agent's work; the run record says what was decided."),
+        section(f"Calls ({len(rows)})",
+                table(["Call", "Agent", "Try", "Status", "Backend", "Sec.", "Cost", "Check"],
+                      rows, max_height=640)
+                if rows else empty("No agent calls yet."),
+                description="Every attempt is kept with its full input (prompt + context "
+                            "slice) and raw output. Click a call to inspect it."),
+    ], gap="md")
 
 
 def auto_step(st) -> str:
@@ -785,9 +798,11 @@ def register_callbacks(app: Dash) -> None:
         gate = GATE_OF_STAGE.get(sel)
         pkg = f"{st.package.version}:{st.package.status}" if st.package else ""
         if tab == "workflow":
+            asked = ",".join(f"{g.id}:{g.status}" for g in st.gaps if g.stage == sel)
+            sent = ",".join(f"{c.id}:{c.status}" for c in st.challenges if c.target_stage == sel)
             content_key = (f"wf|{sel}|{st.status_of(sel)}|{st.steps[sel].runs}|"
                            f"{st.status_of(gate) if gate else ''}|{len(st.decisions)}|"
-                           f"{scheme}|{seat}|{pkg}")
+                           f"{scheme}|{seat}|{pkg}|{asked}|{sent}")
         elif tab == "questions":
             content_key = "q|" + "|".join(f"{g.id}:{g.status}" for g in st.gaps) + "|" + "|".join(
                 f"{c.id}:{c.status}" for c in st.challenges) + f"|{len(st.decisions)}|{scheme}|{seat}|{pkg}"
@@ -807,7 +822,16 @@ def register_callbacks(app: Dash) -> None:
                 content = questions_tab(st, seat)
             else:
                 content = audit_tab(run_id)
-        return run_header(st), rail(st, sel), activity(run_id), content, full_key
+        return (run_header(st), rail(st, sel if tab == "workflow" else None), activity(run_id),
+                content, full_key)
+
+    @app.callback(Output("ws-main-col", "span"), Output("ws-activity-col", "style"),
+                  Input("ws-tab", "value"))
+    def widen(tab):
+        """A run-wide view takes the room of the live activity feed."""
+        if tab == "workflow":
+            return {"base": 24, "md": 13}, {"display": "block"}
+        return {"base": 24, "md": 18}, {"display": "none"}
 
     @app.callback(Output("ws-step", "data"), Output("ws-tab", "value"),
                   Input({"type": "rail", "step": ALL}, "n_clicks"), prevent_initial_call=True)
@@ -871,16 +895,20 @@ def register_callbacks(app: Dash) -> None:
         if not trig or not any(c for c in (clicks or []) if c):
             return no_update, no_update
         text = next((v for i, v in zip(ids, texts, strict=False) if i["gap"] == trig["gap"]), "") or ""
-        assume = trig["action"] == "assume"
-        if not assume and not text.strip():
-            return [notice("Answer needed", "Type an answer, or accept it as an assumption.",
-                           "yellow")], no_update
+        assume, limitation = trig["action"] == "assume", trig["action"] == "limitation"
+        if not (assume or limitation) and not text.strip():
+            return [notice("Answer needed", "Type an answer, or record it as an assumption or "
+                           "a limitation.", "yellow")], no_update
         try:
-            service.answer_gap(run_id, trig["gap"], text, assume=assume, seat=seat)
+            service.answer_gap(run_id, trig["gap"], text, assume=assume, limitation=limitation,
+                               seat=seat)
         except GateError as exc:
             return [notice("Not possible", str(exc), "red")], no_update
-        return [notice("Recorded", "The stage that raised it will re-run." if not assume else
-                       "Recorded as an assumption.", "oxblood")], None
+        said = ("Recorded as a limitation. Validation will ask how it is mitigated."
+                if limitation else
+                "Recorded as an assumption. Validation will ask how sensitive the result is "
+                "to it." if assume else "The stage that raised it will re-run.")
+        return [notice("Recorded", said, "oxblood")], None
 
     @app.callback(Output("io-modal", "opened"), Output("io-body", "children"),
                   Input({"type": "audit-row", "call": ALL}, "n_clicks"), State("ws-run", "data"),

@@ -262,6 +262,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .cognos-rail .mantine-NavLink-root[data-active] .mantine-NavLink-label { color: var(--ink); }
 .cognos-rail .mantine-NavLink-description { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
 .cognos-rail .mantine-NavLink-section { margin-top: 2px; }
+/* the right section holds a status label, never a chevron: it does not turn on click */
+.cognos-rail .mantine-NavLink-section[data-rotate] { transform: none; }
 .rail-no { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-right: 8px; }
 
 /* ── The human decision: the one place that is allowed weight ── */

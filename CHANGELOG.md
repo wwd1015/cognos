@@ -41,6 +41,31 @@ versioning is SemVer.
 - **Outcomes analysis of the pool**: every candidate on the test sample and under every
   scenario, side by side, with a forecast chart; scenario forecasts for continuous targets.
 - **Demo `loss_forecast`**: a quarterly loss-rate series (`cognos demo --task loss_forecast`).
+- **The deck** (`docs/deck/index.html`). A self-contained HTML presentation of how COGNOS
+  works and why it is built this way: the three roles, an animated walk through the nine
+  stages and seven gates, and eight principles each with a small demonstration. It is
+  documentation: `tests/unit/test_deck.py` holds its version, workflow and figures to the code,
+  and it carries an edition log.
+- **Standard data-exploration tools** (`analysis/eda.py`). Eight built-in tools beside the six
+  existing ones, written for real data: `data_overview`, `outliers`, `predictive_power`
+  (information value and Gini, or rank correlation for a continuous target), `woe_bins`,
+  `stability` (PSI, early vs late periods), `collinearity` (VIF), `scatter` and
+  `missing_vs_target`. The offline Data Analyst now runs a survey round and then a drill-down
+  into the strongest features.
+- **Run-wide views.** The workspace has three views above the stage index: Stages, Run record
+  (timeline, every question, challenge and decision) and Agent calls. Each stage page shows
+  only the questions it raised and the challenges sent to it; the stage index counts a stage's
+  open questions and says how many are required. Every analysis is labelled with its source
+  (built-in tool, plugin tool, agent-written script) and the section counts each.
+
+- **Limitations beside assumptions.** A sponsor question can be closed three ways: answered,
+  accepted as an assumption, or flagged as a model limitation (`cognos answer --limitation`).
+  Neither of the last two re-runs the stage that asked. Independent validation raises a finding
+  for each (an assumption: show the sensitivity; a limitation: say how it is mitigated) and
+  re-runs when one is recorded after it; `docs/limitations.md` lists the two apart.
+
+### Fixed
+- A stage's status label in the stage index no longer turns sideways when the stage is clicked.
 - **Linked sources** ([ADR-0014](docs/adr/0014-linked-sources-the-join-is-proposed-and-confirmed.md)).
   `data.sources` lists several inputs of any kind (a Snowflake table and a CSV, ...). The engine
   measures how they connect, the Data Analyst proposes the base table and the joins

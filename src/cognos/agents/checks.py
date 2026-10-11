@@ -250,7 +250,7 @@ def data_scout(out: DataScoutOutput, sl: dict[str, Any]) -> list[str]:
         for p in r.params:
             if p.name not in tool.get("params", {}):
                 errs.append(f"{where}: {r.tool} has no parameter {p.name!r}")
-            elif p.name == "column" and p.value not in columns:
+            elif p.name in ("column", "against") and p.value not in columns:
                 errs.append(f"{where}: unknown column {p.value!r}")
     return errs[:12]
 

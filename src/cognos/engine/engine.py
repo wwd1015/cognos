@@ -430,25 +430,29 @@ class Engine:
         return self.state
 
     def answer_gap(self, gap_id: str, answer: str, *, assume: bool = False,
-                   seat: str | None = None, by: str | None = None) -> RunState:
-        """Answer (or, for a data question, accept as an assumption) an open question.
-        Sponsor questions belong to the model developer."""
+                   limitation: bool = False, seat: str | None = None,
+                   by: str | None = None) -> RunState:
+        """Answer an open question, or record it as an assumption or as a model limitation
+        (not the four core design questions). Sponsor questions belong to the model
+        developer."""
         if seat not in (None, "", "developer"):
             raise gates.GateError("Sponsor questions are answered by the model developer.")
         by = by or whoami()
         with self.lock:
             state = self.state
             answered = self._answered(state)
-            rerun = gates.apply_answers(state, {gap_id: answer}, assume=assume)
+            rerun = gates.apply_answers(state, {gap_id: answer}, assume=assume,
+                                        limitation=limitation)
             self._sign_answers(state, answered, by)
             ran = [s for s in rerun if state.status_of(s) not in ("pending", "skipped")]
             gap = state.gap(gap_id)
-            state.invalidate(ran, f"Question {gap_id} answered"
+            how = ("flagged as a limitation" if limitation else
+                   "accepted as an assumption" if assume else "answered")
+            state.invalidate(ran, f"Question {gap_id} {how}"
                              + (f": “{gates._clip(gap.question, 90)}” → {gates._clip(answer, 60)}" if gap else ""))
             self._save(state)
         events.publish(self.run_dir, "gap_answered",
-                       f"Question {gap_id} {'accepted as an assumption' if assume else 'answered'} "
-                       f"by {by}.", by=by)
+                       f"Question {gap_id} {how} by {by}.", by=by)
         return self.state
 
     def retry(self, step: str, *, stuck: bool = False) -> RunState:

@@ -468,7 +468,8 @@ class DocumentStage(Stage):
                 )
                 + "- The frozen-holdout metric is a single-shot estimate; real-world performance "
                 "may differ.\n\n"
-                "See the [model card](./model_card.md) and [methodology](./methodology.md)."
+                + self._recorded(ctx)
+                + "See the [model card](./model_card.md) and [methodology](./methodology.md)."
             ),
         ))
 
@@ -829,8 +830,29 @@ class DocumentStage(Stage):
                 ]
         return "\n".join(parts)
 
+
+    @staticmethod
+    def _recorded(ctx: RunContext) -> str:
+        """Sponsor questions that were not answered, as the developer recorded them: the
+        assumptions the model rests on and its limitations, listed apart."""
+        rows = ctx.sponsor_answers()
+        out = ""
+        for status, title, none in (
+                ("assumed", "Assumptions accepted in place of a sponsor answer",
+                 "None recorded."),
+                ("limitation", "Limitations recorded in place of a sponsor answer",
+                 "None recorded.")):
+            mine = [a for a in rows if a["status"] == status]
+            out += f"## {title}\n\n"
+            out += "".join(f"- **{a['question']}**" + (f" {a['answer']}" if a["answer"] else "")
+                           + f" (`{a['id']}`)\n" for a in mine) or f"{none}\n"
+            out += "\n"
+        return out + ("Independent validation challenges each assumption (how sensitive the "
+                      "result is to it) and each limitation (how it is mitigated).\n\n")
+
     def _narrative(self, ctx: RunContext, cfg, ip: dict, emit) -> dict:
         """Ask the Technical Writer for the narrative; render placeholders; emit the decision log."""
+        recorded = ctx.sponsor_answers()
         from ..agents import facts as facts_mod
         from ..agents.contracts import FRIENDLY, SECTIONS
         from ..agents.slices import fact_scope
@@ -851,6 +873,10 @@ class DocumentStage(Stage):
             "design": cfg.design.model_dump(),
             "excluded_columns": list(ctx.overrides.exclude_columns),
             "open_questions": [q["question"] for q in ip.get("open_questions", [])],
+            "assumptions": [{k: a[k] for k in ("id", "question", "answer")}
+                            for a in recorded if a["status"] == "assumed"],
+            "recorded_limitations": [{k: a[k] for k in ("id", "question", "answer")}
+                                     for a in recorded if a["status"] == "limitation"],
             "decisions": decisions,
             "challenge_log": challenge_log,
         })

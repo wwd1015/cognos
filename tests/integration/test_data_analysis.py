@@ -72,9 +72,10 @@ def test_target_is_proposed_from_a_database_source_and_confirmed_at_the_gate(boo
     assert src["table"] == "loans" and len(src["snapshot_sha256"]) == 64
     # the standard visuals ran as tool calls, each a kept artifact with a chart
     tools = [a["tool"] for a in p["analyses"]]
-    assert tools[:2] == ["target_distribution", "time_trend"] and "correlation_matrix" in tools
+    assert tools[:3] == ["data_overview", "target_distribution", "time_trend"]
+    assert {"predictive_power", "correlation_matrix", "stability", "target_relationship"} <= set(tools)
     assert all(a["status"] == "ok" and a["kind"] == "tool" for a in p["analyses"])
-    first = json.loads((eng.run_dir / p["analyses"][0]["artifact"]).read_text(encoding="utf-8"))
+    first = json.loads((eng.run_dir / p["analyses"][1]["artifact"]).read_text(encoding="utf-8"))
     assert first["charts"][0]["kind"] in ("bar", "histogram") and first["summary"]["n_events"] > 0
     assert state.overrides.target is None  # nothing is decided until the developer decides
 
@@ -226,7 +227,7 @@ def test_plugin_tool_is_requested_by_name_and_shown_with_its_origin(make_config,
     monkeypatch.setenv("COGNOS_RUNS_DIR", runs_dir)
     panel = json.dumps(stage_panel("explore", eng.results()["explore"], state, "light"),
                        cls=plotly.utils.PlotlyJSONEncoder)
-    assert "plugin: credit_tools" in panel and '"type": "Graph"' in panel
+    assert "Plugin tool (credit_tools)" in panel and "Built-in tool" not in panel and '"type": "Graph"' in panel
     assert "Weight of evidence by band of leverage" in panel or "Weight of evidence" in panel
     assert "Dependent variable" in panel and "Features to consider" in panel
     assert '"c": null' not in panel

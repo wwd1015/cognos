@@ -103,7 +103,10 @@ class Gap(BaseModel):
     stage: str = "ideate"  # the stage that raised it
     design_field: str | None = None  # DesignConfig field an answer fills, if any
     reentry: str = "ideate"  # stage that re-runs when the gap is answered
-    status: Literal["open", "answered", "assumed"] = "open"
+    # answered: the sponsor's answer. assumed / limitation: not answered, and recorded as an
+    # assumption the model rests on or as a limitation of the model (validation challenges
+    # both; the white paper lists them).
+    status: Literal["open", "answered", "assumed", "limitation"] = "open"
     answer: str | None = None
     answered_at: str | None = None
     answered_by: str = ""

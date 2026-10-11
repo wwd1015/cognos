@@ -195,3 +195,6 @@ def register(registry) -> None:
                      {"column": "the date column (default: data.datetime_col)"}, needs_target=True),
     ):
         registry.add_tool(tool)
+    from . import eda
+
+    eda.register(registry)
