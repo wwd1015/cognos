@@ -40,6 +40,15 @@ def test_app_builds_and_routes(root, completed_run):
     assert _serialize(app.layout)
     assert "Model development" in _serialize(ui.runs_page())
     assert completed_run in _serialize(ui.runs_table())
+    # a second run of the same model is listed under it, numbered, saying where it stands
+    again = service.create_run(service.demo_config("cni", root, n=800, search_budget=6),
+                               mode="interactive", provider="heuristic")
+    service.run_until_idle(again)
+    listed = _serialize(ui.runs_table())
+    assert "2 runs of this model" in listed and "Run 1 of 2" in listed and "Run 2 of 2" in listed
+    assert "same model" in listed and "waiting at" in listed and "Confirm the intent" in listed
+    assert "finished, not signed off" in listed and "one development of one model" in _serialize(
+        ui.runs_page())
     assert _serialize(ui.workspace_page(completed_run))
 
 

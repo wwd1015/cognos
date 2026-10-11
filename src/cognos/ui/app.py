@@ -195,6 +195,9 @@ def runs_page() -> Any:
             dmc.Group([html.Div("All runs", className="ledger-title"),
                        html.Div(id="runs-tools", children=runs_tools())],
                       justify="space-between", align="center", mb="xs", wrap="nowrap"),
+            html.Div("A run is one development of one model, and it stands at one place in the "
+                     "workflow at a time. Runs of the same model are listed together.",
+                     className="ledger-desc"),
             html.Div(id="runs-table", children=runs_table()),
         ], mt="xl"),
         html.Div([html.Span("Agents recommend, people decide, the engine computes every number."),
@@ -349,24 +352,50 @@ def runs_table() -> Any:
                          html.Div("Start a run with “New run”: upload a business intent document, "
                                   "or try a synthetic demo.", className="ledger-desc")],
                         style={"padding": "28px 0"})
-    body = []
+    # A run is one development of one model, and it is at one place at a time. Several runs
+    # of the same model (a re-start, an update, a comparison) are listed together under the
+    # model's name, each numbered and saying where it stands.
+    groups: dict[str, list[dict]] = {}
     for r in rows:
-        link = (dcc.Link(r["project"], href=f"/run/{r['run_id']}",
-                         style={"fontWeight": 600, "color": "var(--ink)"}) if not r["legacy"]
-                else dmc.Text(r["project"], c="dimmed", size="sm"))
-        body.append([
-            link, dmc.Text(r["run_id"], size="xs", ff="monospace", c="dimmed"),
-            run_badge(r["status"], "sm"),
-            dmc.Text(LABELS.get(r["waiting_on"], "") if r["waiting_on"] else "", size="sm"),
-            dmc.Text(r["mode"] + (" · update" if r.get("kind") == "update" else ""), size="sm"),
-            dmc.Text(r["provider"], size="xs", ff="monospace"),
-            dmc.Text(r["champion"] or "—", size="xs", ff="monospace"),
-            dmc.Text(f"${r['spend_usd']:.2f}" if r["spend_usd"] else "—", size="xs", ff="monospace"),
-            dmc.Text((r["updated_at"] or "")[:16].replace("T", " "), size="xs", ff="monospace",
-                     c="dimmed"),
-        ])
-    return table(["Model", "Run", "Status", "Waiting on", "Mode", "Agents", "Champion", "Spend",
+        groups.setdefault(r["project"], []).append(r)
+    body = []
+    for project, runs in groups.items():
+        oldest_first = sorted(runs, key=lambda r: r["run_id"])
+        number = {r["run_id"]: i for i, r in enumerate(oldest_first, 1)}
+        for i, r in enumerate(runs):
+            label = f"Run {number[r['run_id']]}" + (f" of {len(runs)}" if len(runs) > 1 else "")
+            link = (dcc.Link(label, href=f"/run/{r['run_id']}",
+                             style={"fontWeight": 600, "color": "var(--ink)"})
+                    if not r["legacy"] else dmc.Text(label, c="dimmed", size="sm"))
+            model = (dmc.Stack([dmc.Text(project, size="sm", fw=650),
+                                dmc.Text(f"{len(runs)} runs of this model", size="xs", c="dimmed")
+                                if len(runs) > 1 else None], gap=0)
+                     if i == 0 else dmc.Text("same model", size="xs", c="dimmed"))
+            body.append([
+                model,
+                dmc.Stack([link, dmc.Text(r["run_id"], size="xs", ff="monospace", c="dimmed")],
+                          gap=0),
+                dmc.Group([run_badge(r["status"], "sm"),
+                           dmc.Text(where_it_stands(r), size="sm")], gap="xs", wrap="nowrap"),
+                dmc.Text(r["mode"] + (" · update" if r.get("kind") == "update" else ""), size="sm"),
+                dmc.Text(r["provider"], size="xs", ff="monospace"),
+                dmc.Text(r["champion"] or "—", size="xs", ff="monospace"),
+                dmc.Text(f"${r['spend_usd']:.2f}" if r["spend_usd"] else "—", size="xs",
+                         ff="monospace"),
+                dmc.Text((r["updated_at"] or "")[:16].replace("T", " "), size="xs", ff="monospace",
+                         c="dimmed"),
+            ])
+    return table(["Model", "Run", "Where it stands", "Mode", "Agents", "Champion", "Spend",
                   "Updated"], body)
+
+
+def where_it_stands(r: dict) -> str:
+    """One run is at one place: the gate it is waiting at, or how it ended."""
+    if r.get("waiting_on"):
+        return f"waiting at “{LABELS.get(r['waiting_on'], r['waiting_on'])}”"
+    return {"completed": "finished, not signed off", "approved": "signed off",
+            "rejected": "rejected", "blocked": "blocked", "failed": "a step failed",
+            "running": "working", "created": "not started"}.get(r.get("status") or "", "")
 
 
 def workspace_page(run_id: str) -> Any:
