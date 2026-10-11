@@ -8,6 +8,7 @@ by gate.
 
 ```bash
 python examples/loss_forecast/run_demo.py     # the walkthrough, offline, about 30 seconds
+python examples/loss_forecast/run_demo.py --save-sample   # also refresh sample_output/
 cognos demo --task loss_forecast --interactive # the same data in the workbench: cognos ui
 ```
 
@@ -28,3 +29,8 @@ finds a transformation of each true driver and leaves the rest out.
 The profile is [`projects/example-loss-forecast.yaml`](../../projects/example-loss-forecast.yaml).
 Lagged values of the loss rate itself are not offered as factors: an autoregressive model needs
 a recursive forecast, which the scorer does not do.
+
+The captured run is in [`sample_output/`](sample_output): `walkthrough.txt` (this script's
+output), `methodology.md` (the white paper's methodology page for the run) and
+`single_factor.json` (all 200 factors, each with its fate). The companion example on
+cross-sectional data is [`logistic_pd`](../logistic_pd).

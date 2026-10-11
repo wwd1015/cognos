@@ -1,0 +1,80 @@
+
+==============================================================================
+  1. THE PLAN — recommended from the data and the intent, confirmed by the developer
+==============================================================================
+  Data: 120 rows, one per period (4 a year) → 'series'
+  Test sample       out_of_time                  [engine] One row per period: a forecast is judged on periods after the ones it was fitted on, so the latest periods are held back.
+  Validation        rolling_origin               [engine] A series cannot be shuffled. Each block is forecast from the history before it, and the origin rolls forward.
+  Sealed holdout    0.0                          [engine] 120 periods: too few to hold back a third sample. The champion's test result is then also what it was chosen on, and validation says so.
+  Forecast origins  12                           [engine] 12 forecast origins, 4 period(s) each: together they cover about the later half of the development sample, so a model is not judged on one stretch of the cycle.
+  Selection         ['forward', 'best_subset']   [profile] Stated in the profile.
+  Step criterion    validation                   [engine] A step is kept when the ranking metric improves on rows the model was not fitted on.
+  The data also allow: validation ['rolling_origin', 'sliding_window', 'none'], test ['out_of_time', 'none']
+
+  The developer's edit: pool of 3 [human], single-factor p ≤ 0.05 [human]
+
+==============================================================================
+  2. SINGLE-FACTOR ANALYSIS — the library, and the rules that shorten it
+==============================================================================
+  Samples: 90 development quarters, 22 test, 0 sealed; 12 forecast origins
+  Library: 200 factors from 8 columns (lag, diff, yoy_diff, yoy_pct, ma)
+    note: the first 8 period(s) were dropped: the lags and year-on-year changes have no history there
+    max p value        0.05    200 → 79  
+    enforce sign       True     79 → 71  
+    best per source    2        71 → 10  
+    max correlation    0.8      10 → 6   
+  Shortlist (fitted alone: sign, p-value, validation RMSE):
+    unemployment_rate__yoy_pct__lag2   +  p=0.0000  rmse=0.2068
+    gdp_growth__ma4__lag2              -  p=0.0002  rmse=0.3017
+    hpi__yoy_diff                      -  p=0.0000  rmse=0.3127
+    cre_price_index__yoy_pct__lag1     -  p=0.0023  rmse=0.3396
+    cre_price_index__yoy_pct__lag2     -  p=0.0018  rmse=0.3400
+    bbb_spread__ma4                    +  p=0.0000  rmse=0.1846
+  A factor the rules dropped: gdp_growth__yoy_pct — sign +, expected -
+
+==============================================================================
+  3. FROM ONE FACTOR TO SEVERAL — each method's path
+==============================================================================
+  forward (ols; criterion validation): stopped at the size limit
+    1. add   bbb_spread__ma4                    → 0.1846         (6 tried, 0 refused by the constraints)
+    2. add   unemployment_rate__yoy_pct__lag2   → 0.1000 -0.0846  (5 tried, 2 refused by the constraints)
+    3. add   hpi__yoy_diff                      → 0.0898 -0.0102  (4 tried, 1 refused by the constraints)
+  best subset (ols; criterion validation): best model of each size; the path ends on the best of them
+    1. size                                     → 0.1846         (6 tried, 0 refused by the constraints)
+    2. size                                     → 0.1000 -0.0846  (15 tried, 6 refused by the constraints)
+    3. size                                     → 0.0898 -0.0102  (20 tried, 13 refused by the constraints)
+  grid (lasso, ridge; criterion validation): 12 specification(s) from the slate
+  247 models evaluated in one ledger; the test sample was scored 0 times during the search
+
+==============================================================================
+  4. THE CANDIDATE POOL — no champion yet
+==============================================================================
+  pool c8914d2  lasso  rmse=0.0866  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, gdp_growth__ma4__lag2, hpi__yoy_diff, cre_price_index__yoy_pct__lag1, cre_price_index__yoy_pct__lag2
+       cf27eed  lasso  rmse=0.0866  unemployment_rate__yoy_pct__lag2, bbb_spread__ma4, hpi__yoy_diff, gdp_growth__ma4__lag2, cre_price_index__yoy_pct__lag2
+       cf05663  ridge  rmse=0.0891  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, gdp_growth__ma4__lag2, hpi__yoy_diff, cre_price_index__yoy_pct__lag1, cre_price_index__yoy_pct__lag2
+  pool c229cb4  ols    rmse=0.0898  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, hpi__yoy_diff
+       cf38eb5  ridge  rmse=0.0906  unemployment_rate__yoy_pct__lag2, bbb_spread__ma4, hpi__yoy_diff, gdp_growth__ma4__lag2, cre_price_index__yoy_pct__lag2
+  pool c79c8af  ols    rmse=0.0952  bbb_spread__ma4, unemployment_rate__yoy_pct__lag2, cre_price_index__yoy_pct__lag2
+
+  The developer adds c41e6dd from the ledger (the two-factor step of the forward path).
+  The search is not re-run; the new member is fitted, tested and saved.
+
+==============================================================================
+  5. THE CHAMPION — chosen on the out of time sample and the scenarios
+==============================================================================
+  candidate validation  test rmse     R²     bias   severely adverse Δ
+  c8914d2       0.0866     0.1049  0.945  -0.0252   +1.338
+  c229cb4       0.0898     0.1050  0.945  -0.0227   +1.406  ← recommended
+  c79c8af       0.0952     0.1085  0.941  -0.0111   +1.376
+  c41e6dd       0.1000     0.1103  0.939  -0.0088   +1.452
+  Outcomes Analyst: c229cb4 is within 2% of the best rmse on the out of time sample (c8914d2) with fewer factors; c8914d2 is next.
+  The test sample was the only out-of-sample evidence and it was used to choose: sealed holdout = False
+
+==============================================================================
+  VALIDATION — WARN
+==============================================================================
+  [MEDIUM] The validation rmse (0.0898) and the test-sample rmse (0.1050) differ by 17% (> 15%): the validation blocks are forecast one block ahead from a refitted model, the out-of-time sample from one fixed origin, so some gap is expected; read how fast the error grows.
+  [LOW] No sealed holdout was reserved: the champion was chosen from 4 candidate(s) compared on the test sample, so its test result is also what it was chosen on.
+
+  Run directory: <workdir>/<run_id>
+  Open it in the workbench:  cognos ui --runs-dir <workdir>

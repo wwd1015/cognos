@@ -307,7 +307,7 @@ src/cognos/
   cli.py  config.py  context.py  artifacts.py  orchestrator.py (compat)  okf.py  synth.py
   integrations/  impact_adapter, autoforge_loop
   runtime/       deployment scorer (IMPACT derived-field entry point)
-projects/  examples/  evals/  tests/  docs/adr/ (0001–0013)  docs/templates/  CONTEXT.md (glossary)
+projects/  examples/  evals/  tests/  docs/adr/ (0001–0016)  docs/templates/  CONTEXT.md (glossary)
 ```
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`FEATURES.md`](FEATURES.md), [`CONTEXT.md`](CONTEXT.md),

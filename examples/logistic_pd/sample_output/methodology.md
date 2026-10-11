@@ -1,0 +1,90 @@
+---
+type: methodology
+title: Methodology
+description: Search procedure and statistical battery.
+tags:
+- method
+timestamp: '2026-10-11T15:49:47.473372+00:00'
+---
+
+# Methodology
+
+## From factors to a champion
+
+Development follows a plan confirmed at the design gate. The data are cut into a development sample, a test sample and, when the data can spare the rows, a sealed holdout ({@code:src/cognos/modeling/splits.py#split_samples}). Explored columns are widened into a factor library, every factor is fitted alone, and the plan's rules cut the library to a shortlist ({@code:src/cognos/modeling/factors.py#screen}). Multi-factor models are built from the shortlist by the plan's selection methods ({@code:src/cognos/modeling/selection.py#run_methods}); every model is scored with all preprocessing fitted inside each validation block, and all of them are ranked together. The top of the ranking forms a candidate pool, the pool is compared on the test sample, and the champion is chosen on that comparison. The deployed model is one model. The stage is orchestrated at {@code:src/cognos/stages/model.py}.
+
+## The development plan
+
+| choice | value | set by | reason |
+| --- | --- | --- | --- |
+| Test sample | out of time, 0.20 of the rows | engine | The rows carry dates: the model will be used on periods after the ones it was built on, so the latest ones are held back. |
+| Validation | stratified kfold, 5 block(s) | engine | Folds keep the event rate. Rows of the same entity can sit on both sides of a fold: name evaluation.group_col to prevent it. |
+| Sealed holdout | 0.20 of the rows | engine | 2,400 rows are enough to seal a final sample. The candidates are compared on the test sample, so only a sample nobody chose on gives an unbiased last number. |
+| Ranking | roc_auc (validation) | engine | roc_auc on the validation sample: every model is scored on rows it was not fitted on, and the test sample stays unused until the pool is compared. |
+| Selection methods | stepwise + best subset | human | Add the factor that helps most, then drop any that no longer earns its place. Families without coefficient tests go through the grid. |
+| Step criterion | validation | engine | A step is kept when the ranking metric improves on rows the model was not fitted on. |
+
+Rows: 1440 development, 480 test, 480 sealed holdout.
+
+## Single-factor analysis
+
+The library holds 16 factor(s) from 12 explored column(s) (transformations: log). Each was fitted alone on the development sample; the rules below were applied in this order.
+
+| rule | setting | factors in | factors out |
+| --- | --- | --- | --- |
+| not fitted |  | 16 | 16 |
+| max missing | 0.2 | 16 | 16 |
+| max p value | 0.1 | 16 | 9 |
+| enforce sign | True | 9 | 9 |
+| best per source | 2 | 9 | 9 |
+| max correlation | 0.8 | 9 | 5 |
+| top n | 12 | 5 | 5 |
+
+Shortlist (5): debt_to_ebitda, gdp_growth, interest_coverage, current_ratio, operating_margin. The full table, with the rule and the reason for every dropped factor, is `stages/model/single_factor.json`.
+
+## Multi-factor selection
+
+**Stepwise** (logit; criterion validation): no step improves the criterion within the constraints
+
+| step | action | factor | factors in the model | criterion | change |
+| --- | --- | --- | --- | --- | --- |
+| 1 | add | debt_to_ebitda | debt_to_ebitda | 0.7032 |  |
+| 2 | add | gdp_growth | debt_to_ebitda, gdp_growth | 0.7445 | 0.0413 |
+| 3 | add | interest_coverage | debt_to_ebitda, gdp_growth, interest_coverage | 0.7780 | 0.0335 |
+| 4 | add | current_ratio | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7895 | 0.0115 |
+
+**Best subset** (logit; criterion validation): best model of each size; the path ends on the best of them
+
+| step | action | factor | factors in the model | criterion | change |
+| --- | --- | --- | --- | --- | --- |
+| 1 | size |  | debt_to_ebitda | 0.7032 |  |
+| 2 | size |  | debt_to_ebitda, gdp_growth | 0.7445 | 0.0413 |
+| 3 | size |  | debt_to_ebitda, gdp_growth, interest_coverage | 0.7780 | 0.0335 |
+| 4 | size |  | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7895 | 0.0115 |
+
+**Same factors** (probit; criterion validation): the factor sets of the logit path(s), fitted as probit
+
+## Candidate pool
+
+46 model(s) were evaluated and ranked. The pool carried to outcomes analysis was set by the human.
+
+| candidate | specification | factors | development | gini | ks | expected_calibration_error | psi | champion |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| c5482c3 | probit(3f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage | 0.7781 | 0.4815 | 0.4268 | 0.0136 | 0.1811 | yes |
+| c46d7e4 | probit(4f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7899 | 0.4428 | 0.3949 | 0.0175 | 0.1390 |  |
+| cfc227e | logit(4f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7895 | 0.4338 | 0.3999 | 0.0173 | 0.1441 |  |
+| cfde806 | logit(2f;random_state=42) | debt_to_ebitda, gdp_growth | 0.7445 | 0.3654 | 0.4579 | 0.0172 | 0.3206 |  |
+| ccb8810 | logit(3f;random_state=42) | debt_to_ebitda, gdp_growth, current_ratio | 0.7647 | 0.3607 | 0.4289 | 0.0169 | 0.2067 |  |
+
+Compared on the out of time sample (roc_auc first). Champion chosen by the engine: c5482c3 has the best roc_auc on the out of time sample among the 5 pool member(s); c46d7e4 is next.
+
+- **Candidates tried:** 46
+- **Hypothesis families considered:** logit, probit
+
+## Statistical battery
+
+A battery of 2 statistical tests is run on the champion (2 passed, 0 failed). See [diagnostics](./diagnostics.md) for the full table.
+
+## Deployment scoring
+
+The trained champion is persisted as a picklable scorer bundle. The deployment scoring entry point is {@code:src/cognos/runtime/score.py#score_row}, which evaluates a single row as the IMPACT derived-field contract. See [model](./model.md).
