@@ -12,12 +12,16 @@
   FLOW list below must agree with src/cognos. When the system changes, change the deck in the
   same commit and add a row to the edition log on the last slide. See docs/deck/README.md.
 
+  Geometry: every slide is a fixed 1920 x 1080 canvas. The stage scales to fit the window
+  (and letterboxes in the paper colour), so a slide looks the same on a laptop, a monitor
+  and a projector. Lay out in canvas pixels; never in vw/vh.
+
   Look: the Ledger design system of the workbench (src/cognos/ui/assets/cognos.css): warm
   paper, ink, one oxblood accent, serif display type, mono numerals, hairline rules.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..600;1,8..60,300..600&display=swap">
 <style>
 /* ===========================================
    THEME: the Ledger tokens (same values as ui/assets/cognos.css)
@@ -43,335 +47,389 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: var(--paper); color: var(--ink); font-family: var(--font);
-       -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+html, body { height: 100%; overflow: hidden; background: var(--paper); }
+body { color: var(--ink); font-family: var(--font); font-size: 28px; line-height: 1.45;
+       -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+       transition: background 0.4s; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+b { font-weight: 600; }
 
 /* ===========================================
-   VIEWPORT FITTING: every slide is exactly one screen
+   THE STAGE: a 1920 x 1080 canvas scaled to the window
    =========================================== */
-html, body { height: 100%; overflow-x: hidden; }
-html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
-.slide {
-  width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; scroll-snap-align: start;
-  display: flex; flex-direction: column; position: relative;
-  padding: clamp(0.9rem, 3vh, 2rem) var(--slide-padding) clamp(0.7rem, 2.4vh, 1.5rem);
-}
-.slide-content { flex: 1; display: flex; flex-direction: column; justify-content: center;
-                 max-height: 100%; overflow: hidden; min-height: 0; }
-:root {
-  --title-size: clamp(1.8rem, 5.4vw, 4.6rem);
-  --h2-size: clamp(1.3rem, 3.1vw, 2.7rem);
-  --h3-size: clamp(0.95rem, 1.55vw, 1.35rem);
-  --body-size: clamp(0.78rem, 1.25vw, 1.12rem);
-  --small-size: clamp(0.62rem, 0.92vw, 0.86rem);
-  --slide-padding: clamp(1.1rem, 5vw, 5rem);
-  --content-gap: clamp(0.6rem, 2.2vh, 1.8rem);
-  --element-gap: clamp(0.3rem, 1vw, 1rem);
-}
-img { max-width: 100%; max-height: min(50vh, 400px); object-fit: contain; }
-@media (max-height: 700px) {
-  :root { --content-gap: clamp(0.4rem, 1.6vh, 1rem); --title-size: clamp(1.5rem, 4.6vw, 3rem);
-          --h2-size: clamp(1.1rem, 2.7vw, 2rem); --body-size: clamp(0.72rem, 1.1vw, 0.98rem); }
-}
-@media (max-height: 600px) {
-  :root { --title-size: clamp(1.2rem, 4vw, 2.2rem); --h2-size: clamp(1rem, 2.4vw, 1.6rem);
-          --body-size: clamp(0.66rem, 1vw, 0.9rem); --small-size: clamp(0.56rem, 0.85vw, 0.76rem); }
-  .nav-dots, .keys, .optional { display: none; }
-}
-@media (max-height: 500px) {
-  :root { --title-size: clamp(1rem, 3.5vw, 1.6rem); --h2-size: clamp(0.9rem, 2.2vw, 1.3rem);
-          --body-size: clamp(0.6rem, 0.95vw, 0.82rem); }
-}
-@media (max-width: 760px) {
-  :root { --title-size: clamp(1.5rem, 8vw, 2.6rem); --h2-size: clamp(1.1rem, 5vw, 1.7rem);
-          --body-size: clamp(0.7rem, 2.6vw, 0.95rem); --small-size: clamp(0.58rem, 2vw, 0.78rem); }
-  .cols, .cols-3, .split { grid-template-columns: 1fr !important; }
-  .optional, .nav-dots { display: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.2s !important; }
-  html { scroll-behavior: auto; }
-}
-@media print {
-  html { scroll-snap-type: none; }
-  .slide { page-break-after: always; height: 100vh; }
-  .nav-dots, .progress, .keys { display: none; }
-  .reveal { opacity: 1 !important; transform: none !important; }
-}
+.stage { position: fixed; left: 50%; top: 50%; width: 1920px; height: 1080px;
+         transform: translate(-50%, -50%) scale(var(--scale, 0.5)); transform-origin: center; }
+.slide { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden;
+         background: var(--paper); padding: 176px 128px 136px;
+         display: flex; flex-direction: column;
+         opacity: 0; visibility: hidden; transition: opacity 0.5s var(--ease), visibility 0s 0.5s; }
+.slide.active { opacity: 1; visibility: visible; transition: opacity 0.5s var(--ease), visibility 0s; }
+
+/* running head and foot: the same place on every slide */
+.folio { position: absolute; left: 128px; right: 128px; top: 64px; height: 40px;
+         display: flex; justify-content: space-between; align-items: center;
+         font-family: var(--font-mono); font-size: 18px; letter-spacing: 0.14em; text-transform: uppercase;
+         color: var(--ink-3); border-bottom: 1px solid var(--line); }
+.folio b { font-weight: 500; color: var(--ink); letter-spacing: 0.22em; }
+.foot { position: absolute; left: 128px; right: 128px; bottom: 52px; height: 32px;
+        display: flex; justify-content: space-between; align-items: center;
+        font-family: var(--font-mono); font-size: 18px; color: var(--ink-3); letter-spacing: 0.06em; }
+.pg { font-variant-numeric: tabular-nums; }
+.progress { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--accent);
+            transition: width 0.6s var(--ease); z-index: 5; }
+
+.slide-content { flex: 1; display: flex; flex-direction: column; gap: 48px; min-height: 0; }
+.slide-content.center { justify-content: center; padding-bottom: 40px; }
 
 /* ===========================================
-   PAGE FURNITURE: folio line, title, footer
+   TYPE: one scale. 200 / 88 / 60 / 40 / 28 / 22 / 18
    =========================================== */
-.folio { display: flex; justify-content: space-between; align-items: baseline;
-         padding-bottom: clamp(0.3rem, 1vh, 0.6rem); border-bottom: 2px solid var(--ink);
-         box-shadow: 0 3px 0 var(--paper), 0 4px 0 var(--line-strong); flex: none; }
-.eyebrow, .folio span { font-size: var(--small-size); letter-spacing: 0.16em; text-transform: uppercase;
-                        color: var(--ink-2); font-weight: 500; }
-.folio b { font-family: var(--font-display); font-weight: 700; letter-spacing: 0.02em; color: var(--ink);
-           font-size: clamp(0.8rem, 1.2vw, 1.05rem); text-transform: none; }
-.foot { flex: none; display: flex; justify-content: space-between; font-family: var(--font-mono);
-        font-size: var(--small-size); color: var(--ink-3); padding-top: clamp(0.2rem, 0.8vh, 0.5rem); }
-h1 { font-family: var(--font-display); font-weight: 700; font-size: var(--title-size); line-height: 1.04;
-     letter-spacing: -0.012em; }
-h2 { font-family: var(--font-display); font-weight: 600; font-size: var(--h2-size); line-height: 1.12;
-     letter-spacing: -0.008em; max-width: 22em; }
-h3 { font-family: var(--font-display); font-weight: 600; font-size: var(--h3-size); line-height: 1.25; }
-p, li { font-size: var(--body-size); line-height: 1.5; }
-.lede { color: var(--ink-2); max-width: 46em; margin-top: clamp(0.3rem, 1.2vh, 0.8rem); }
-.kicker { font-family: var(--font-mono); font-size: var(--small-size); color: var(--accent);
-          letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: clamp(0.3rem, 1.2vh, 0.7rem); }
-em.a { font-style: normal; color: var(--accent); }
-.mono { font-family: var(--font-mono); }
-.body { margin-top: var(--content-gap); min-height: 0; }
-.cols { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1rem, 3.5vw, 3.5rem); align-items: start; }
-.cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
-.split { display: grid; grid-template-columns: 5fr 6fr; gap: clamp(1rem, 4vw, 4rem); align-items: center; }
-.rule-list { list-style: none; border-top: 1px solid var(--line-strong); }
-.rule-list li { padding: clamp(0.3rem, 1.2vh, 0.7rem) 0; border-bottom: 1px solid var(--hair);
-                display: grid; grid-template-columns: 2.2em 1fr; }
-.rule-list li > span:first-child { font-family: var(--font-mono); color: var(--ink-3); font-size: var(--small-size);
-                                   padding-top: 0.25em; }
-.rule-list b { font-weight: 600; }
-.note { border-left: 2px solid var(--accent); background: var(--surface); padding: clamp(0.4rem, 1.4vh, 0.8rem) clamp(0.6rem, 1.2vw, 1rem);
-        font-size: var(--body-size); }
-.tag { display: inline-block; font-family: var(--font-mono); font-size: var(--small-size); letter-spacing: 0.06em;
-       text-transform: uppercase; padding: 0.12em 0.5em; border-radius: 2px; border: 1px solid var(--line-strong);
-       color: var(--ink-2); white-space: nowrap; }
-.tag.a { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: 200px; line-height: 0.92;
+     letter-spacing: -0.035em; }
+h2 { font-family: var(--font-display); font-weight: 400; font-size: 60px; line-height: 1.1;
+     letter-spacing: -0.015em; max-width: 1500px; text-wrap: balance; }
+h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1.25; }
+.kicker { font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.14em; text-transform: uppercase;
+          color: var(--accent); }
+.lede { font-size: 28px; line-height: 1.5; color: var(--ink-2); max-width: 1200px; }
+.eyebrow { display: block; font-family: var(--font-mono); font-size: 17px; letter-spacing: 0.12em;
+           text-transform: uppercase; color: var(--ink-3); }
+.mono { font-family: var(--font-mono); font-size: 0.86em; }
+.note { font-size: 24px; color: var(--ink-2); }
+.a, em.a { color: var(--accent); }
+.head { display: flex; flex-direction: column; gap: 20px; }
+
+/* tags */
+.tag { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 14px;
+       font-family: var(--font-mono); font-size: 16px; letter-spacing: 0.1em; text-transform: uppercase;
+       border: 1px solid var(--line-strong); color: var(--ink-2); border-radius: 2px; white-space: nowrap; }
 .tag.good { color: var(--good); border-color: var(--good); }
 .tag.warn { color: var(--warn); border-color: var(--warn); }
-.tag.bad { color: var(--bad); border-color: var(--bad); }
+.tag.bad  { color: var(--bad);  border-color: var(--bad); }
+.tag.a    { color: var(--paper); background: var(--accent); border-color: var(--accent); }
+
+/* panels */
+.panel { background: var(--raised); border: 1px solid var(--line); padding: 44px 48px;
+         display: flex; flex-direction: column; gap: 28px; }
 
 /* ===========================================
-   REVEAL: staggered entrance when a slide comes into view
+   REVEALS: content arrives in order when a slide becomes active
    =========================================== */
 .reveal { opacity: 0; transform: translateY(18px);
           transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease); }
-.slide.visible .reveal { opacity: 1; transform: none; }
-.slide.visible .d1 { transition-delay: 0.08s; } .slide.visible .d2 { transition-delay: 0.2s; }
-.slide.visible .d3 { transition-delay: 0.32s; } .slide.visible .d4 { transition-delay: 0.44s; }
-.slide.visible .d5 { transition-delay: 0.56s; } .slide.visible .d6 { transition-delay: 0.68s; }
-.draw { transform: scaleX(0); transform-origin: left; transition: transform 1.1s var(--ease) 0.25s; }
-.slide.visible .draw { transform: scaleX(1); }
+.slide.active .reveal { opacity: 1; transform: none; }
+.slide.active .d1 { transition-delay: 0.05s; } .slide.active .d2 { transition-delay: 0.18s; }
+.slide.active .d3 { transition-delay: 0.31s; } .slide.active .d4 { transition-delay: 0.44s; }
+.slide.active .d5 { transition-delay: 0.57s; } .slide.active .d6 { transition-delay: 0.70s; }
+.draw { transform: scaleX(0); transform-origin: left; transition: transform 1.1s var(--ease) 0.3s; }
+.slide.active .draw { transform: scaleX(1); }
 
 /* ===========================================
-   NAVIGATION: progress rule, dots, key hint
+   1. TITLE
    =========================================== */
-.progress { position: fixed; top: 0; left: 0; height: 2px; background: var(--accent); width: 0; z-index: 50;
-            transition: width 0.3s var(--ease); }
-.nav-dots { position: fixed; right: clamp(0.4rem, 1.2vw, 1.1rem); top: 50%; transform: translateY(-50%); z-index: 40;
-            display: flex; flex-direction: column; gap: 7px; }
-.nav-dots button { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--line-strong); background: transparent;
-                   cursor: pointer; padding: 0; transition: background 0.2s, transform 0.2s; }
-.nav-dots button.on { background: var(--accent); border-color: var(--accent); transform: scale(1.35); }
-.keys { color: var(--ink-3); }
+.title-slide { padding-top: 0; padding-bottom: 0; }
+.title-grid { flex: 1; display: grid; grid-template-columns: 1fr 640px; gap: 120px; align-items: center; }
+.title-grid h1 { margin: 28px 0 0; }
+.title-rule { height: 3px; width: 360px; background: var(--accent); margin: 52px 0 44px; }
+.title-slide .lede { font-size: 32px; max-width: 880px; color: var(--ink-2); }
+.creed { border-top: 1px solid var(--line-strong); }
+.creed > div { display: grid; grid-template-columns: 220px 1fr; align-items: baseline;
+               padding: 34px 0; border-bottom: 1px solid var(--line-strong); }
+.creed .who { font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); }
+.creed em { font-family: var(--font-display); font-style: italic; font-size: 76px; line-height: 1; color: var(--accent); }
 
 /* ===========================================
-   SLIDE 1: title
+   SHARED BLOCKS
    =========================================== */
-.title-slide .slide-content { justify-content: center; }
-.creed { font-family: var(--font-display); font-size: clamp(1.1rem, 2.6vw, 2.3rem); line-height: 1.25; margin-top: var(--content-gap); }
-.creed span { display: block; }
-.creed i { font-style: normal; color: var(--ink-3); }
-.title-rule { height: 2px; background: var(--ink); margin: var(--content-gap) 0 clamp(0.4rem, 1.4vh, 0.9rem); }
+/* numbered findings: 2 x 2 */
+.grid-2x2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 96px; }
+.grid-3x2 { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 64px; }
+.item { display: grid; grid-template-columns: 76px 1fr; padding: 30px 0; border-top: 1px solid var(--line-strong); }
+.item .n { font-family: var(--font-mono); font-size: 22px; color: var(--accent); padding-top: 3px; }
+.item p { font-size: 26px; color: var(--ink-2); line-height: 1.45; }
+.item p b { color: var(--ink); display: block; font-size: 28px; margin-bottom: 6px; }
+.grid-3x2 .item { grid-template-columns: 1fr; gap: 14px; align-content: start; padding: 36px 0 40px; }
+.callout { display: grid; grid-template-columns: 1fr 1fr; gap: 96px; align-items: start;
+           padding: 36px 44px; background: var(--surface); border-left: 4px solid var(--accent); }
+.callout p { font-size: 26px; color: var(--ink-2); }
+.callout p.strong { color: var(--ink); }
+
+/* three roles */
+.roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; flex: 1; }
+.role { background: var(--raised); border: 1px solid var(--line); border-top: 4px solid var(--ink);
+        padding: 44px 44px 40px; display: flex; flex-direction: column; gap: 22px; }
+.role:nth-child(2) { border-top-color: var(--accent); }
+.role .who { font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); }
+.role .verb { font-family: var(--font-display); font-style: italic; font-size: 88px; line-height: 0.95; color: var(--accent); margin-bottom: 6px; }
+.role p { font-size: 25px; color: var(--ink-2); line-height: 1.45; }
+.role ul { list-style: none; margin-top: auto; border-top: 1px solid var(--line); }
+.role li { font-family: var(--font-mono); font-size: 19px; padding: 14px 0; border-bottom: 1px solid var(--hair); color: var(--ink); }
+
+/* principle slides: a left argument, a right demonstration */
+.split { flex: 1; display: grid; grid-template-columns: 700px 1fr; gap: 104px; align-items: center; }
+.split .argue { display: flex; flex-direction: column; gap: 32px; padding-top: 8px; }
+.split h2 { font-size: 60px; }
+.split .lede { font-size: 28px; }
+.pips { display: flex; gap: 8px; align-items: center; }
+.pips i { width: 36px; height: 4px; background: var(--line-strong); }
+.pips i.on { background: var(--accent); }
+.pips span { font-family: var(--font-mono); font-size: 18px; letter-spacing: 0.12em; color: var(--ink-3); margin-left: 14px; }
 
 /* ===========================================
-   SLIDE 3: the three roles
+   4. THE WORKFLOW
    =========================================== */
-.role { padding: clamp(0.5rem, 2vh, 1.3rem) clamp(0.6rem, 1.6vw, 1.5rem) clamp(0.4rem, 1.4vh, 1rem) 0;
-        border-top: 1px solid var(--ink); border-right: 1px solid var(--line); margin-right: clamp(0.6rem, 1.6vw, 1.5rem); }
-.role:last-child { border-right: 0; margin-right: 0; }
-.role .verb { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.2rem, 2.6vw, 2.2rem); line-height: 1.1; }
-.role .who { font-family: var(--font-mono); font-size: var(--small-size); color: var(--accent); letter-spacing: 0.1em;
-             text-transform: uppercase; margin-bottom: 0.3em; }
-.role p { margin-top: clamp(0.3rem, 1.2vh, 0.7rem); color: var(--ink-2); }
-.role ul { list-style: none; margin-top: clamp(0.3rem, 1.2vh, 0.7rem); }
-.role li { font-size: var(--small-size); font-family: var(--font-mono); color: var(--ink); padding: 0.18em 0;
-           border-top: 1px solid var(--hair); line-height: 1.4; }
-
-/* ===========================================
-   SLIDE 4: the workflow, animated
-   =========================================== */
-.track { position: relative; display: flex; align-items: flex-start; margin-top: clamp(0.5rem, 2.4vh, 1.6rem);
-         padding-top: clamp(0.3rem, 1vh, 0.6rem); }
-.track::before { content: ""; position: absolute; left: 0; right: 0; top: calc(clamp(0.3rem, 1vh, 0.6rem) + var(--node) / 2);
-                 height: 1px; background: var(--line-strong); }
-.track { --node: clamp(1.5rem, 3vw, 2.5rem); }
-.step { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; cursor: pointer; position: relative;
-        background: none; border: 0; color: inherit; font: inherit; min-width: 0; }
-.step.gate { flex: 0 0 clamp(1.3rem, 2.6vw, 2.4rem); }
-.step .node { width: var(--node); height: var(--node); border: 1px solid var(--line-strong); background: var(--paper);
-              display: grid; place-items: center; font-family: var(--font-mono); font-size: var(--small-size);
-              color: var(--ink-2); transition: all 0.35s var(--ease); position: relative; z-index: 1; }
-.step.gate .node { width: calc(var(--node) * 0.56); height: calc(var(--node) * 0.56); transform: rotate(45deg);
-                   margin-top: calc(var(--node) * 0.22); border-color: var(--accent-border); }
-.step .lab { margin-top: clamp(0.25rem, 1vh, 0.55rem); font-size: var(--small-size); line-height: 1.2; text-align: center;
-             color: var(--ink-2); padding: 0 2px; transition: color 0.3s; }
+.track { position: relative; display: flex; justify-content: space-between; align-items: flex-start;
+         height: 132px; padding-top: 30px; }
+.track::before { content: ""; position: absolute; left: 30px; right: 30px; top: 60px; height: 2px; background: var(--line-strong); }
+.step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; width: 112px; }
+.step.gate { width: 40px; }
+.step .node { width: 60px; height: 60px; display: grid; place-items: center; background: var(--paper);
+              border: 2px solid var(--line-strong); font-family: var(--font-mono); font-size: 20px; color: var(--ink-2);
+              transition: all 0.35s var(--ease); position: relative; z-index: 1; }
+.step.gate .node { width: 30px; height: 30px; margin-top: 15px; transform: rotate(45deg); }
+.step .lab { font-size: 19px; color: var(--ink-3); white-space: nowrap; transition: color 0.35s; }
 .step.gate .lab { display: none; }
 .step.done .node { background: var(--ink); border-color: var(--ink); color: var(--paper); }
-.step.gate.done .node { background: var(--accent); border-color: var(--accent); }
-.step.on .node { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-tint); color: var(--accent); }
-.step.gate.on .node { background: var(--accent-tint); }
+.step.on .node { background: var(--accent); border-color: var(--accent); color: var(--paper); transform: scale(1.12); }
+.step.gate.on .node { transform: rotate(45deg) scale(1.25); }
 .step.on .lab { color: var(--ink); font-weight: 600; }
-.token { position: absolute; top: 0; left: 0; width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
-         z-index: 3; transition: transform 0.7s var(--ease); pointer-events: none; }
-.caption { margin-top: clamp(0.5rem, 2.4vh, 1.5rem); border-top: 1px solid var(--ink); }
-.caption-head { display: flex; align-items: baseline; gap: 0.8em; padding: clamp(0.3rem, 1.1vh, 0.6rem) 0; flex-wrap: wrap; }
-.caption-head .n { font-family: var(--font-mono); color: var(--ink-3); font-size: var(--small-size); }
-.caption-head h3 { font-size: clamp(1rem, 1.9vw, 1.6rem); }
-.caption .cols-3 { border-top: 1px solid var(--hair); }
-.lane { padding: clamp(0.35rem, 1.3vh, 0.8rem) clamp(0.5rem, 1.3vw, 1.2rem) 0 0; border-right: 1px solid var(--line);
-        margin-right: clamp(0.5rem, 1.3vw, 1.2rem); min-height: clamp(4.4rem, 15vh, 8rem); transition: opacity 0.4s; }
-.lane:last-child { border-right: 0; margin-right: 0; }
-.lane .eyebrow { display: block; margin-bottom: 0.3em; }
-.lane p { font-size: clamp(0.72rem, 1.12vw, 1.02rem); line-height: 1.42; }
-.lane.dim { opacity: 0.32; }
-.lane.hot .eyebrow { color: var(--accent); }
-.controls { display: flex; gap: 0.5em; align-items: center; margin-top: clamp(0.3rem, 1.2vh, 0.7rem); }
-.btn { font-family: var(--font-mono); font-size: var(--small-size); letter-spacing: 0.06em; text-transform: uppercase;
-       background: transparent; border: 1px solid var(--line-strong); color: var(--ink); padding: 0.35em 0.8em; border-radius: 2px;
-       cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+.step:hover .node { border-color: var(--accent); }
+.token { position: absolute; top: 0; left: 0; width: 14px; height: 14px; border-radius: 50%; background: var(--accent);
+         transition: transform 0.6s var(--ease); z-index: 2; }
+.caption { background: var(--raised); border: 1px solid var(--line); padding: 40px 48px 44px; display: flex; flex-direction: column; gap: 32px; }
+.caption-head { display: flex; align-items: center; gap: 28px; }
+.caption-head .n { font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.12em; color: var(--accent); width: 130px; }
+.caption-head h3 { font-family: var(--font-display); font-weight: 400; font-size: 46px; flex: 1; }
+.lanes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
+.lane { border-top: 3px solid var(--line); padding-top: 20px; display: flex; flex-direction: column; gap: 12px;
+        min-height: 230px; transition: opacity 0.35s, border-color 0.35s; }
+.lane p { font-size: 24px; line-height: 1.45; }
+.lane.hot { border-top-color: var(--accent); }
+.lane.dim { opacity: 0.38; }
+.controls { display: flex; align-items: center; gap: 14px; }
+.btn { height: 48px; padding: 0 24px; border: 1px solid var(--line-strong); font-family: var(--font-mono); font-size: 18px;
+       letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
 .btn:hover { border-color: var(--ink); }
-.btn.a { background: var(--accent); border-color: var(--accent); color: var(--paper); }
-.controls .hint { font-size: var(--small-size); color: var(--ink-3); margin-left: 0.6em; }
+.btn.a { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.hint { font-size: 20px; color: var(--ink-3); margin-left: 16px; }
 
 /* ===========================================
-   SLIDE 5: one stage, as a loop
+   5. INSIDE ONE STAGE
    =========================================== */
-.loop { display: grid; grid-template-columns: repeat(5, 1fr); gap: clamp(0.3rem, 1.2vw, 1.1rem); align-items: stretch;
-        margin-top: var(--content-gap); position: relative; }
-.cell { border-top: 2px solid var(--line-strong); padding: clamp(0.35rem, 1.4vh, 0.8rem) 0 0; transition: border-color 0.4s, opacity 0.4s;
-        opacity: 0.45; position: relative; }
-.cell .n { font-family: var(--font-mono); font-size: var(--small-size); color: var(--ink-3); }
-.cell h3 { margin: 0.15em 0 0.3em; }
-.cell p { font-size: var(--small-size); color: var(--ink-2); line-height: 1.45; }
-.cell.on { border-top-color: var(--accent); opacity: 1; }
+.loop { display: grid; grid-template-columns: repeat(5, 1fr); gap: 32px; }
+.cell { position: relative; background: var(--raised); border: 1px solid var(--line); padding: 32px 30px 36px;
+        display: flex; flex-direction: column; gap: 14px; min-height: 360px; opacity: 0.45;
+        transition: all 0.4s var(--ease); }
+.cell:not(:last-child)::after { content: "→"; position: absolute; right: -27px; top: 40px; font-size: 24px; color: var(--ink-3); }
+.cell .n { font-family: var(--font-mono); font-size: 17px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.cell h3 { font-family: var(--font-display); font-weight: 400; font-size: 42px; }
+.cell p { font-size: 25px; color: var(--ink-2); line-height: 1.45; }
+.cell.was { opacity: 1; }
+.cell.on { opacity: 1; border-color: var(--accent); background: var(--accent-tint); box-shadow: inset 0 4px 0 var(--accent); }
 .cell.on .n { color: var(--accent); }
-.cell.was { opacity: 0.8; border-top-color: var(--ink); }
-.retry { margin-top: clamp(0.4rem, 1.8vh, 1rem); font-size: var(--small-size); color: var(--ink-2); display: flex; gap: 0.7em;
-         align-items: center; opacity: 0.35; transition: opacity 0.4s; }
-.retry.on { opacity: 1; }
-.retry .arc { flex: 0 0 clamp(2rem, 6vw, 5rem); height: 1px; background: var(--accent); position: relative; }
-.retry .arc::after { content: ""; position: absolute; left: 0; top: -3px; border: 3.5px solid transparent;
-                     border-right-color: var(--accent); transform: translateX(-6px); }
+.retry { position: relative; height: 150px; }
+.retry .arc { position: absolute; left: 832px; width: 339px; top: 0; height: 56px;
+              border: 2px dashed var(--line-strong); border-top: 0; border-radius: 0 0 28px 28px; transition: border-color 0.3s; }
+.retry .arc::before { content: ""; position: absolute; left: -9px; top: -2px; border: 8px solid transparent;
+                      border-bottom: 12px solid var(--line-strong); border-top: 0; transition: border-color 0.3s; }
+.retry .txt { position: absolute; left: 600px; right: 0; top: 82px; font-size: 24px; color: var(--ink-3); transition: color 0.3s; }
+.retry.on .arc { border-color: var(--accent); }
+.retry.on .arc::before { border-bottom-color: var(--accent); }
+.retry.on .txt { color: var(--ink); }
 
 /* ===========================================
-   PRINCIPLE SLIDES: a statement and one small demonstration
+   6. NO LLM MATH
    =========================================== */
-.demo { border: 1px solid var(--line); border-top: 2px solid var(--ink); background: var(--raised);
-        padding: clamp(0.6rem, 2.2vh, 1.4rem) clamp(0.7rem, 1.8vw, 1.6rem); min-height: 0; }
-.demo .eyebrow { display: block; margin-bottom: clamp(0.3rem, 1.2vh, 0.7rem); }
-.sentence { font-family: var(--font-display); font-size: clamp(0.95rem, 1.7vw, 1.5rem); line-height: 1.5; }
-.slot { font-family: var(--font-mono); font-size: 0.82em; padding: 0.05em 0.35em; border-radius: 2px; background: var(--sunken);
-        color: var(--ink-2); transition: all 0.5s var(--ease); white-space: nowrap; }
-.slot.filled { background: var(--accent-tint); color: var(--accent); font-weight: 500; }
-.ledger-row { display: grid; grid-template-columns: 1fr auto; gap: 1em; padding: clamp(0.22rem, 0.9vh, 0.5rem) 0; border-bottom: 1px solid var(--hair);
-              font-size: var(--small-size); font-family: var(--font-mono); align-items: baseline; }
-.ledger-row:last-child { border-bottom: 0; }
+.sentence { font-family: var(--font-display); font-size: 38px; line-height: 1.6; }
+.slot { font-family: var(--font-mono); font-size: 25px; padding: 3px 10px; background: var(--sunken);
+        border: 1px dashed var(--line-strong); color: var(--ink-2); white-space: nowrap; transition: all 0.35s; }
+.slot.filled { font-family: var(--font-display); font-size: 38px; background: var(--accent-tint); border: 1px solid var(--accent-border);
+               color: var(--accent); font-weight: 600; }
+.ledger { border-top: 1px solid var(--line-strong); }
+.ledger-row { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--line);
+              font-family: var(--font-mono); font-size: 22px; }
 .ledger-row span:first-child { color: var(--ink-2); }
-.vault { display: grid; grid-template-columns: 4fr 1fr; gap: 0; height: clamp(2.6rem, 9vh, 4.6rem); border: 1px solid var(--line-strong); }
-.vault > div { display: grid; place-items: center; font-family: var(--font-mono); font-size: var(--small-size); color: var(--ink-2); }
-.vault .sealed { background: repeating-linear-gradient(135deg, var(--sunken) 0 6px, var(--paper) 6px 12px); border-left: 1px solid var(--ink);
-                 color: var(--ink); transition: background 0.5s; text-align: center; line-height: 1.25; }
-.vault .sealed.open { background: var(--accent-tint); color: var(--accent); }
-.steps-mini { list-style: none; margin-top: clamp(0.4rem, 1.6vh, 0.9rem); }
-.steps-mini li { font-size: var(--small-size); font-family: var(--font-mono); padding: clamp(0.18rem, 0.8vh, 0.42rem) 0;
-                 border-bottom: 1px solid var(--hair); color: var(--ink-3); transition: color 0.4s; display: flex; gap: 0.7em; }
+
+/* ===========================================
+   7. THE SEALED HOLDOUT
+   =========================================== */
+.vault { display: grid; grid-template-columns: 1fr 260px; height: 150px; border: 1px solid var(--line-strong); }
+.vault > div:first-child { display: flex; align-items: center; padding: 0 32px; font-family: var(--font-mono); font-size: 20px; color: var(--ink-2);
+  background: repeating-linear-gradient(135deg, var(--surface) 0 14px, var(--paper) 14px 28px); }
+.sealed { display: grid; place-items: center; text-align: center; background: var(--ink); color: var(--paper);
+          font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.4;
+          transition: all 0.5s var(--ease); }
+.sealed.open { background: var(--accent-tint); color: var(--accent); box-shadow: inset 0 0 0 3px var(--accent); }
+.steps-mini { list-style: none; border-top: 1px solid var(--line); }
+.steps-mini li { display: flex; gap: 24px; padding: 16px 0; border-bottom: 1px solid var(--line);
+                 font-family: var(--font-mono); font-size: 21px; color: var(--ink-3); transition: color 0.35s; }
 .steps-mini li.on { color: var(--ink); }
 .steps-mini li.on b { color: var(--accent); }
-.steps-mini b { font-weight: 500; min-width: 1.6em; }
-.two-eyes { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(0.5rem, 1.5vw, 1.2rem); }
-.eye h3 { font-size: var(--body-size); font-family: var(--font); font-weight: 600; margin-bottom: 0.3em; }
+.steps-mini b { font-weight: 500; }
+
+/* ===========================================
+   8. TWO VIEWS
+   =========================================== */
+.two-eyes { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+.eye h3 { font-family: var(--font-mono); font-weight: 500; font-size: 19px; letter-spacing: 0.12em; text-transform: uppercase;
+          padding-bottom: 14px; border-bottom: 2px solid var(--ink); }
+.eye:last-child h3 { border-bottom-color: var(--accent); color: var(--accent); }
 .eye ul { list-style: none; }
-.eye li { font-size: var(--small-size); font-family: var(--font-mono); padding: 0.22em 0; border-top: 1px solid var(--hair); line-height: 1.35; }
-.eye li.no { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--accent); }
-.ladder { display: grid; gap: 0; }
-.rung { display: grid; grid-template-columns: clamp(3.6rem, 7vw, 5.5rem) 1fr; gap: 1em; padding: clamp(0.3rem, 1.2vh, 0.65rem) 0;
-        border-bottom: 1px solid var(--hair); align-items: baseline; }
-.rung:last-child { border-bottom: 0; }
-.rung p { font-size: var(--small-size); line-height: 1.4; }
-.three-ways { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(0.4rem, 1.2vw, 1rem); }
-.way { border-top: 2px solid var(--line-strong); padding-top: clamp(0.3rem, 1.1vh, 0.6rem); cursor: pointer; opacity: 0.5;
-       transition: opacity 0.35s, border-color 0.35s; }
-.way.on { opacity: 1; border-top-color: var(--accent); }
-.way h3 { font-size: var(--body-size); }
-.way p { font-size: var(--small-size); color: var(--ink-2); margin-top: 0.25em; line-height: 1.4; }
-.outcome { margin-top: clamp(0.4rem, 1.6vh, 0.9rem); }
-.chain { display: flex; flex-wrap: wrap; gap: 0.35em 0.2em; align-items: center; margin-top: clamp(0.4rem, 1.6vh, 0.9rem); }
-.chain .link { font-family: var(--font-mono); font-size: var(--small-size); border: 1px solid var(--line-strong); padding: 0.25em 0.55em;
-               border-radius: 2px; color: var(--ink-3); transition: all 0.4s var(--ease); }
-.chain .link.on { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
-.chain .arrow { color: var(--ink-3); font-size: var(--small-size); }
-.mini-track { display: flex; gap: 3px; margin-top: clamp(0.4rem, 1.6vh, 0.9rem); }
-.mini-track div { flex: 1; height: clamp(1.7rem, 5.6vh, 2.8rem); border: 1px solid var(--line-strong); display: grid; place-items: center;
-                  font-family: var(--font-mono); font-size: clamp(0.5rem, 0.72vw, 0.72rem); color: var(--ink-2);
-                  transition: background 0.4s, color 0.4s, border-color 0.4s; text-align: center; line-height: 1.1; }
+.eye li { display: flex; gap: 16px; padding: 15px 0; border-bottom: 1px solid var(--line); font-size: 24px; }
+.eye li::before { content: "✓"; color: var(--good); font-weight: 600; width: 20px; }
+.eye li.no { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.eye li.no::before { content: "✕"; color: var(--bad); text-decoration: none; }
+
+/* ===========================================
+   9 / 11. THE LADDER
+   =========================================== */
+.ladder { border-top: 1px solid var(--line-strong); }
+.rung { display: grid; grid-template-columns: 150px 1fr; gap: 28px; align-items: start; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.rung .tag { width: 128px; }
+.rung p { font-size: 24px; line-height: 1.45; padding-top: 2px; }
+
+/* ===========================================
+   10. THREE WAYS
+   =========================================== */
+.three-ways { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.way { text-align: left; border: 1px solid var(--line-strong); padding: 26px 26px 30px; display: flex; flex-direction: column; gap: 8px;
+       transition: all 0.35s var(--ease); }
+.way h3 { font-family: var(--font-display); font-weight: 400; font-size: 38px; }
+.way p { font-size: 22px; color: var(--ink-2); }
+.way.on { border-color: var(--accent); background: var(--accent-tint); box-shadow: inset 0 4px 0 var(--accent); }
+.way.on h3 { color: var(--accent); }
+.outcome { min-height: 150px; padding: 26px 32px; background: var(--surface); border-left: 4px solid var(--accent);
+           font-size: 25px; color: var(--ink); line-height: 1.5; }
+.fixed4 { padding: 26px 32px; border: 1px dashed var(--line-strong); font-size: 22px; color: var(--ink-2); }
+.fixed4 b { color: var(--ink); }
+
+/* ===========================================
+   11. THE CHAIN
+   =========================================== */
+.chain { display: flex; flex-wrap: wrap; gap: 12px 10px; align-items: center; }
+.chain .link { font-family: var(--font-mono); font-size: 19px; padding: 10px 16px; border: 1px solid var(--line-strong);
+               color: var(--ink-3); transition: all 0.3s; }
+.chain .link.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.chain .arrow { color: var(--ink-3); font-size: 20px; }
+
+/* ===========================================
+   12. STALE
+   =========================================== */
+.mini-track { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; }
+.mini-track div { height: 96px; border: 1px solid var(--line-strong); display: grid; place-items: center; text-align: center;
+                  font-family: var(--font-mono); font-size: 15px; line-height: 1.2; padding: 0 4px; transition: all 0.35s; }
 .mini-track .ok { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .mini-track .stale { background: transparent; color: var(--warn); border-color: var(--warn); border-style: dashed; }
 .mini-track .run { background: var(--accent-tint); color: var(--accent); border-color: var(--accent); }
-.why { font-family: var(--font-mono); font-size: var(--small-size); color: var(--ink-2); margin-top: clamp(0.3rem, 1.2vh, 0.7rem); min-height: 2.9em;
-       line-height: 1.45; }
+.legend { display: flex; gap: 32px; font-family: var(--font-mono); font-size: 17px; color: var(--ink-2); }
+.legend span::before { content: ""; display: inline-block; width: 16px; height: 16px; margin-right: 10px; vertical-align: -2px; }
+.legend .l-ok::before { background: var(--ink); }
+.legend .l-stale::before { border: 1px dashed var(--warn); }
+.legend .l-run::before { background: var(--accent-tint); border: 1px solid var(--accent); }
+.why { min-height: 120px; font-size: 25px; line-height: 1.5; padding: 24px 30px; background: var(--surface); border-left: 4px solid var(--accent); }
 
 /* ===========================================
-   FIGURES and the edition log
+   13. OFFLINE
    =========================================== */
-.figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(clamp(6rem, 13vw, 11rem), 1fr));
-           border-top: 1px solid var(--ink); border-bottom: 1px solid var(--hair); margin-top: var(--content-gap); }
-.figure { padding: clamp(0.5rem, 2vh, 1.2rem) clamp(0.5rem, 1.4vw, 1.2rem) clamp(0.5rem, 2vh, 1.2rem) 0; border-right: 1px solid var(--line);
-          margin-right: clamp(0.5rem, 1.4vw, 1.2rem); }
-.figure:last-child { border-right: 0; margin-right: 0; }
-.figure .v { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.6rem, 4.2vw, 3.6rem); line-height: 1;
-             font-variant-numeric: tabular-nums lining-nums; }
-.figure .k { font-size: var(--small-size); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 0.4em; }
-.figure .h { font-family: var(--font-mono); font-size: var(--small-size); color: var(--ink-3); margin-top: 0.35em; line-height: 1.35; }
-table.log { width: 100%; border-collapse: collapse; margin-top: var(--content-gap); }
-table.log th { text-align: left; font-size: var(--small-size); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2);
-               font-weight: 500; border-bottom: 1px solid var(--line-strong); padding: 0.4em 1em 0.5em 0; }
-table.log td { font-size: var(--small-size); padding: 0.5em 1em 0.5em 0; border-bottom: 1px solid var(--hair); vertical-align: top; line-height: 1.45; }
-table.log td.mono { white-space: nowrap; color: var(--ink-2); }
+.twin { display: grid; grid-template-columns: 1fr 120px 1fr; align-items: center; }
+.twin .box { border: 1px solid var(--line-strong); padding: 18px 24px; display: flex; flex-direction: column; gap: 6px; }
+.twin .box b { font-family: var(--font-display); font-weight: 400; font-size: 30px; }
+.twin .box span { font-size: 21px; color: var(--ink-2); }
+.twin .box.dashed { border-style: dashed; }
+.twin .eq { text-align: center; font-family: var(--font-mono); font-size: 17px; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.4; }
+
+/* ===========================================
+   15. FIGURES
+   =========================================== */
+.figures { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--line-strong); }
+.figure { padding: 36px 32px 40px; display: flex; flex-direction: column; gap: 8px; }
+.figure + .figure { border-left: 1px solid var(--line); }
+.figure .k { font-family: var(--font-mono); font-size: 18px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); }
+.figure .v { font-family: var(--font-display); font-size: 180px; line-height: 1; letter-spacing: -0.04em; font-weight: 300; margin: 8px 0 4px; }
+.figure:first-child .v { color: var(--accent); }
+.figure .h { font-size: 22px; color: var(--ink-2); line-height: 1.35; }
+.stack { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
+.stack div { display: flex; flex-direction: column; gap: 10px; }
+.stack p { font-size: 25px; color: var(--ink-2); }
+
+/* ===========================================
+   16. EDITION LOG
+   =========================================== */
+table.log { width: 100%; border-collapse: collapse; }
+.log th { text-align: left; font-family: var(--font-mono); font-weight: 500; font-size: 17px; letter-spacing: 0.12em; text-transform: uppercase;
+          color: var(--ink-2); padding: 0 24px 16px 0; border-bottom: 2px solid var(--ink); }
+.log td { padding: 24px 24px 24px 0; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 24px; line-height: 1.45; }
+.log td.mono { font-size: 21px; white-space: nowrap; }
+.repo { display: inline-block; font-family: var(--font-mono); font-size: 22px; padding: 4px 12px; background: var(--sunken); color: var(--ink); }
+
+/* ===========================================
+   CHROME: quiet controls that appear when the mouse moves
+   =========================================== */
+.chrome { position: fixed; right: 20px; bottom: 16px; display: flex; gap: 6px; opacity: 0; transition: opacity 0.4s; z-index: 10; }
+body.moving .chrome { opacity: 1; }
+.chrome button { width: 40px; height: 40px; border: 1px solid var(--line-strong); background: var(--raised); color: var(--ink-2);
+                 font-family: var(--font-mono); font-size: 15px; }
+.chrome button:hover { color: var(--ink); border-color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; transition-delay: 0s !important; animation: none !important; }
+  .reveal { opacity: 1; transform: none; } .draw { transform: none; }
+}
+
+/* printing gives one slide per page */
+@media print {
+  @page { size: 1920px 1080px; margin: 0; }
+  html, body { height: auto; overflow: visible; }
+  .stage { position: static; transform: none; width: 1920px; height: auto; }
+  .slide { position: relative; opacity: 1; visibility: visible; break-after: page; }
+  .reveal { opacity: 1; transform: none; } .draw { transform: none; }
+  .chrome, .progress { display: none; }
+}
 </style>
 </head>
 <body>
-<div class="progress" id="progress"></div>
-<nav class="nav-dots" id="dots" aria-label="Slides"></nav>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
 <script type="application/json" id="edition">{"edition": 1, "system_version": "1.0.0", "date": "2026-10-11"}</script>
 
+<div class="stage" id="stage">
+
 <!-- ===================== 1. TITLE ===================== -->
 <section class="slide title-slide" data-title="COGNOS">
   <div class="folio"><span>Model development workbench</span><span class="ed"></span></div>
-  <div class="slide-content">
-    <div class="kicker reveal d1">How it works, and why it is built this way</div>
-    <h1 class="reveal d2">COGNOS</h1>
-    <div class="title-rule draw"></div>
-    <div class="creed">
-      <span class="reveal d3">Agents <em class="a">recommend</em>.</span>
-      <span class="reveal d4">People <em class="a">decide</em>.</span>
-      <span class="reveal d5">The engine <em class="a">disposes</em>.</span>
+  <div class="title-grid">
+    <div>
+      <div class="kicker reveal d1">How it works, and why it is built this way</div>
+      <h1 class="reveal d2">COGNOS</h1>
+      <div class="title-rule draw"></div>
+      <p class="lede reveal d3">A multi-agent workbench for developing models that have to stand up to validation, audit and a regulator.</p>
     </div>
-    <p class="lede reveal d6">A multi-agent workbench for developing models that have to stand up to validation, audit and a regulator.</p>
+    <div class="creed">
+      <div class="reveal d3"><span class="who">Agents</span><em>recommend.</em></div>
+      <div class="reveal d4"><span class="who">People</span><em>decide.</em></div>
+      <div class="reveal d5"><span class="who">The engine</span><em>disposes.</em></div>
+    </div>
   </div>
-  <div class="foot"><span class="keys">→ or Space to advance · D for dark</span><span class="pg"></span></div>
+  <div class="foot"><span>→ or Space to advance · D for dark</span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== 2. THE PROBLEM ===================== -->
 <section class="slide" data-title="The problem">
   <div class="folio"><span>The problem</span><b>COGNOS</b></div>
   <div class="slide-content">
-    <div class="kicker reveal d1">Where we started</div>
-    <h2 class="reveal d1">A language model can build a credit model in an afternoon. Nobody could sign it.</h2>
-    <div class="body cols">
-      <ul class="rule-list reveal d2">
-        <li><span>01</span><span><b>The numbers cannot be reproduced.</b> A model that writes its own figures can write a different figure tomorrow.</span></li>
-        <li><span>02</span><span><b>The judgment cannot be traced.</b> Why this target, this segment, this champion? The reasoning is gone when the chat closes.</span></li>
-        <li><span>03</span><span><b>The challenge is not independent.</b> The same agent that built the model is asked whether it is any good.</span></li>
-        <li><span>04</span><span><b>Nobody is accountable.</b> A decision that no person made is a decision no person can defend.</span></li>
-      </ul>
-      <div class="reveal d3">
-        <p>Model risk rules (SR 11-7 and its relatives) ask for the opposite of all four: reproducible results, documented choices, effective challenge and named owners.</p>
-        <p class="note" style="margin-top: var(--content-gap)">COGNOS keeps the speed of agents and removes those four failures by <b>construction</b>, not by asking the agents to behave.</p>
-      </div>
+    <div class="head">
+      <div class="kicker reveal d1">Where we started</div>
+      <h2 class="reveal d1">A language model can build a credit model in an afternoon. Nobody could sign it.</h2>
+    </div>
+    <div class="grid-2x2 reveal d2">
+      <div class="item"><span class="n">01</span><p><b>The numbers cannot be reproduced.</b>A model that writes its own figures can write a different figure tomorrow.</p></div>
+      <div class="item"><span class="n">02</span><p><b>The judgment cannot be traced.</b>Why this target, this segment, this champion? The reasoning is gone when the chat closes.</p></div>
+      <div class="item"><span class="n">03</span><p><b>The challenge is not independent.</b>The same agent that built the model is asked whether it is any good.</p></div>
+      <div class="item"><span class="n">04</span><p><b>Nobody is accountable.</b>A decision that no person made is a decision no person can defend.</p></div>
+    </div>
+    <div class="callout reveal d3">
+      <p>Model risk rules (SR 11-7 and its relatives) ask for the opposite of all four: reproducible results, documented choices, effective challenge and named owners.</p>
+      <p class="strong">COGNOS keeps the speed of agents and removes those four failures by <b class="a">construction</b>, not by asking the agents to behave.</p>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
@@ -381,9 +439,11 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <section class="slide" data-title="Three roles">
   <div class="folio"><span>The idea</span><b>COGNOS</b></div>
   <div class="slide-content">
-    <div class="kicker reveal d1">One sentence holds the whole design</div>
-    <h2 class="reveal d1">Three kinds of work, and each one goes to whoever can be trusted with it.</h2>
-    <div class="body cols-3">
+    <div class="head">
+      <div class="kicker reveal d1">One sentence holds the whole design</div>
+      <h2 class="reveal d1">Three kinds of work, and each one goes to whoever can be trusted with it.</h2>
+    </div>
+    <div class="roles">
       <div class="role reveal d2">
         <div class="who">Agents</div><div class="verb">recommend</div>
         <p>Judgment: reading a business intent, naming a target, ranking designs, picking a champion, challenging a model, writing prose.</p>
@@ -407,12 +467,12 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 4. THE WORKFLOW (animated) ===================== -->
 <section class="slide" data-title="The workflow" data-anim="flow">
   <div class="folio"><span>How a run moves</span><b>COGNOS</b></div>
-  <div class="slide-content">
+  <div class="slide-content" style="gap: 36px">
     <h2 class="reveal d1">Nine stages. Six gates where the run stops for a person.</h2>
     <div class="track reveal d2" id="track"><div class="token" id="token"></div></div>
     <div class="caption reveal d3">
       <div class="caption-head"><span class="n" id="cap-n"></span><h3 id="cap-title"></h3><span class="tag" id="cap-kind"></span></div>
-      <div class="cols-3">
+      <div class="lanes">
         <div class="lane" id="lane-engine"><span class="eyebrow">The engine</span><p id="cap-engine"></p></div>
         <div class="lane" id="lane-agent"><span class="eyebrow" id="cap-agent-name">The agent</span><p id="cap-agent"></p></div>
         <div class="lane" id="lane-person"><span class="eyebrow" id="cap-person-name">A person</span><p id="cap-person"></p></div>
@@ -422,7 +482,7 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
       <button class="btn a" id="flow-play">Pause</button>
       <button class="btn" id="flow-prev">Back</button>
       <button class="btn" id="flow-next">Step</button>
-      <span class="hint optional">Squares are stages, diamonds are gates. Click any of them.</span>
+      <span class="hint">Squares are stages, diamonds are gates. Click any of them.</span>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
@@ -431,17 +491,21 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 5. ONE STAGE ===================== -->
 <section class="slide" data-title="Inside one stage" data-anim="loop">
   <div class="folio"><span>Inside one stage</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="kicker reveal d1">The same five moves, nine times</div>
-    <h2 class="reveal d1">The agent only ever sees what it is allowed to see, and only ever answers in a form the engine can check.</h2>
-    <div class="loop reveal d2" id="loop">
-      <div class="cell"><span class="n">01 · engine</span><h3>Compute</h3><p>Run the stage's mechanics. Every result becomes a fact with an id.</p></div>
-      <div class="cell"><span class="n">02 · engine</span><h3>Slice</h3><p>Hand the agent only the facts in its scope. Nothing else exists for it.</p></div>
-      <div class="cell"><span class="n">03 · agent</span><h3>Recommend</h3><p>Answer in a strict contract, citing facts by id.</p></div>
-      <div class="cell"><span class="n">04 · engine</span><h3>Check</h3><p>Unknown fact, typed number, option outside the allowed set: rejected.</p></div>
-      <div class="cell"><span class="n">05 · person</span><h3>Decide</h3><p>The gate shows evidence beside the recommendation. The decision is recorded with a name.</p></div>
+  <div class="slide-content center" style="gap: 64px">
+    <div class="head">
+      <div class="kicker reveal d1">The same five moves, nine times</div>
+      <h2 class="reveal d1">The agent only sees what it is allowed to see, and only answers in a form the engine can check.</h2>
     </div>
-    <div class="retry reveal d3" id="retry"><span class="arc"></span><span>A rejected answer goes back to the agent with the reasons. Every attempt is kept in the audit trail.</span></div>
+    <div>
+      <div class="loop reveal d2" id="loop">
+        <div class="cell"><span class="n">01 · engine</span><h3>Compute</h3><p>Run the stage's mechanics. Every result becomes a fact with an id.</p></div>
+        <div class="cell"><span class="n">02 · engine</span><h3>Slice</h3><p>Hand the agent only the facts in its scope. Nothing else exists for it.</p></div>
+        <div class="cell"><span class="n">03 · agent</span><h3>Recommend</h3><p>Answer in a strict contract, citing facts by id.</p></div>
+        <div class="cell"><span class="n">04 · engine</span><h3>Check</h3><p>Unknown fact, typed number, option outside the allowed set: rejected.</p></div>
+        <div class="cell"><span class="n">05 · person</span><h3>Decide</h3><p>The gate shows evidence beside the recommendation. The decision is recorded with a name.</p></div>
+      </div>
+      <div class="retry reveal d3" id="retry"><span class="arc"></span><span class="txt">A rejected answer goes back to the agent with the reasons. Every attempt is kept in the audit trail.</span></div>
+    </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
@@ -449,21 +513,20 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 6. NO LLM MATH ===================== -->
 <section class="slide" data-title="No LLM math" data-anim="facts">
   <div class="folio"><span>Principle 1 of 8</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="split">
-      <div>
-        <div class="kicker reveal d1">No LLM math</div>
-        <h2 class="reveal d1">An agent never writes a number. It points at one.</h2>
-        <p class="lede reveal d2">Every recorded figure comes from the engine. The writer leaves a placeholder; the engine fills it from the fact it names. An unknown fact id, or a bare metric typed into prose, is rejected.</p>
-      </div>
-      <div class="demo reveal d3">
-        <span class="eyebrow">What the writer writes, and what is printed (figures from the demo run)</span>
-        <p class="sentence">The champion reaches a cross-validated AUC of <span class="slot" data-fill="0.8487" data-raw="{{fact:model.cv_mean}}">{{fact:model.cv_mean}}</span> on <span class="slot" data-fill="1,940" data-raw="{{fact:explore.n_rows}}">{{fact:explore.n_rows}}</span> loans with <span class="slot" data-fill="91" data-raw="{{fact:explore.n_events}}">{{fact:explore.n_events}}</span> defaults.</p>
-        <div style="margin-top: var(--content-gap)">
-          <div class="ledger-row"><span>model.cv_mean</span><span>0.8487</span></div>
-          <div class="ledger-row"><span>explore.n_rows</span><span>1,940</span></div>
-          <div class="ledger-row"><span>explore.n_events</span><span>91</span></div>
-        </div>
+  <div class="split">
+    <div class="argue">
+      <div class="pips reveal d1"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><span>01 / 08</span></div>
+      <div class="kicker reveal d1">No LLM math</div>
+      <h2 class="reveal d1">An agent never writes a number. It points at one.</h2>
+      <p class="lede reveal d2">Every recorded figure comes from the engine. The writer leaves a placeholder; the engine fills it from the fact it names. An unknown fact id, or a bare metric typed into prose, is rejected.</p>
+    </div>
+    <div class="panel reveal d3">
+      <span class="eyebrow">What the writer writes, and what is printed · demo run</span>
+      <p class="sentence">The champion reaches a cross-validated AUC of <span class="slot" data-fill="0.8487" data-raw="{{fact:model.cv_mean}}">{{fact:model.cv_mean}}</span> on <span class="slot" data-fill="1,940" data-raw="{{fact:explore.n_rows}}">{{fact:explore.n_rows}}</span> loans with <span class="slot" data-fill="91" data-raw="{{fact:explore.n_events}}">{{fact:explore.n_events}}</span> defaults.</p>
+      <div class="ledger">
+        <div class="ledger-row"><span>model.cv_mean</span><span>0.8487</span></div>
+        <div class="ledger-row"><span>explore.n_rows</span><span>1,940</span></div>
+        <div class="ledger-row"><span>explore.n_events</span><span>91</span></div>
       </div>
     </div>
   </div>
@@ -473,23 +536,22 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 7. THE FROZEN SUBSTRATE ===================== -->
 <section class="slide" data-title="The sealed holdout" data-anim="vault">
   <div class="folio"><span>Principle 2 of 8</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="split">
-      <div>
-        <div class="kicker reveal d1">The frozen substrate stays frozen</div>
-        <h2 class="reveal d1">The modeler chooses blind. The test is opened once, and counted.</h2>
-        <p class="lede reveal d2">The holdout and the metric definitions are not editable by any agent. The champion is picked from the admissible set before the holdout is scored, and the modeler never sees a holdout fact. Exports never carry the data.</p>
-      </div>
-      <div class="demo reveal d3">
-        <span class="eyebrow">The data, through one run</span>
-        <div class="vault"><div>training and cross-validation</div><div class="sealed" id="sealed">sealed<br>holdout</div></div>
-        <ul class="steps-mini" id="vault-steps">
-          <li><b>01</b><span>Search candidates under a frozen metric</span></li>
-          <li><b>02</b><span>Modeler picks the champion, holdout unseen</span></li>
-          <li><b>03</b><span>A person confirms the champion at the gate</span></li>
-          <li><b>04</b><span>Holdout scored · holdout_evaluations = 1</span></li>
-        </ul>
-      </div>
+  <div class="split">
+    <div class="argue">
+      <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><span>02 / 08</span></div>
+      <div class="kicker reveal d1">The frozen substrate stays frozen</div>
+      <h2 class="reveal d1">The modeler chooses blind. The test is opened once, and counted.</h2>
+      <p class="lede reveal d2">The holdout and the metric definitions are not editable by any agent. The champion is picked from the admissible set before the holdout is scored, and the modeler never sees a holdout fact. Exports never carry the data.</p>
+    </div>
+    <div class="panel reveal d3">
+      <span class="eyebrow">The data, through one run</span>
+      <div class="vault"><div>training and cross-validation</div><div class="sealed" id="sealed">sealed<br>holdout</div></div>
+      <ul class="steps-mini" id="vault-steps">
+        <li><b>01</b><span>Search candidates under a frozen metric</span></li>
+        <li><b>02</b><span>Modeler picks the champion, holdout unseen</span></li>
+        <li><b>03</b><span>A person confirms the champion at the gate</span></li>
+        <li><b>04</b><span>Holdout scored · holdout_evaluations = 1</span></li>
+      </ul>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
@@ -498,19 +560,18 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 8. INDEPENDENT CHALLENGE ===================== -->
 <section class="slide" data-title="Independent challenge">
   <div class="folio"><span>Principle 3 of 8</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="split">
-      <div>
-        <div class="kicker reveal d1">Independent challenge</div>
-        <h2 class="reveal d1">The validator is never told why the modeler liked the model.</h2>
-        <p class="lede reveal d2">Validation, readiness and review re-derive risk from the artifacts themselves. Independence is a property of what each agent is handed, so it does not depend on an instruction being obeyed.</p>
-      </div>
-      <div class="demo reveal d3">
-        <span class="eyebrow">Two agents, two views of the same run</span>
-        <div class="two-eyes">
-          <div class="eye"><h3>Modeler sees</h3><ul><li>the admissible set</li><li>cross-validation scores</li><li>coefficient signs</li><li class="no">holdout results</li><li class="no">the earlier model's scores</li></ul></div>
-          <div class="eye"><h3>Validator sees</h3><ul><li>the champion and its features</li><li>the engine's rubric and findings</li><li>holdout results</li><li>every analysis script, re-run</li><li class="no">the modeler's rationale</li></ul></div>
-        </div>
+  <div class="split">
+    <div class="argue">
+      <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><span>03 / 08</span></div>
+      <div class="kicker reveal d1">Independent challenge</div>
+      <h2 class="reveal d1">The validator is never told why the modeler liked the model.</h2>
+      <p class="lede reveal d2">Validation, readiness and review re-derive risk from the artifacts themselves. Independence is a property of what each agent is handed, so it does not depend on an instruction being obeyed.</p>
+    </div>
+    <div class="panel reveal d3">
+      <span class="eyebrow">Two agents, two views of the same run</span>
+      <div class="two-eyes">
+        <div class="eye"><h3>Modeler sees</h3><ul><li>the admissible set</li><li>cross-validation scores</li><li>coefficient signs</li><li class="no">holdout results</li><li class="no">the earlier model's scores</li></ul></div>
+        <div class="eye"><h3>Validator sees</h3><ul><li>the champion and its features</li><li>the engine's rubric and findings</li><li>holdout results</li><li>every analysis script, re-run</li><li class="no">the modeler's rationale</li></ul></div>
       </div>
     </div>
   </div>
@@ -520,21 +581,20 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 9. GATES BLOCK RARELY ===================== -->
 <section class="slide" data-title="When a run is blocked">
   <div class="folio"><span>Principle 4 of 8</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="split">
-      <div>
-        <div class="kicker reveal d1">Block only on high-confidence harm</div>
-        <h2 class="reveal d1">A system that blocks on noise teaches people to ignore it.</h2>
-        <p class="lede reveal d2">Only the engine can block, and only on two things it can prove. An agent can warn or fail, never block. A person can accept a fail with a recorded reason. Nobody can accept a block.</p>
-      </div>
-      <div class="demo reveal d3">
-        <span class="eyebrow">The verdict ladder</span>
-        <div class="ladder">
-          <div class="rung"><span class="tag good">Pass</span><p>Nothing to raise.</p></div>
-          <div class="rung"><span class="tag warn">Warn</span><p>Something a reviewer should read: a noisy overfitting signal, an unconfirmed assumption, a recorded limitation.</p></div>
-          <div class="rung"><span class="tag bad">Fail</span><p>A high-severity finding. A person may accept it, in writing, or send the work back.</p></div>
-          <div class="rung"><span class="tag a">Block</span><p>Confirmed target leakage, or documents that no longer match the code. Fix it or reject the run.</p></div>
-        </div>
+  <div class="split">
+    <div class="argue">
+      <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><span>04 / 08</span></div>
+      <div class="kicker reveal d1">Block only on high-confidence harm</div>
+      <h2 class="reveal d1">A system that blocks on noise teaches people to ignore it.</h2>
+      <p class="lede reveal d2">Only the engine can block, and only on two things it can prove. An agent can warn or fail, never block. A person can accept a fail with a recorded reason. Nobody can accept a block.</p>
+    </div>
+    <div class="panel reveal d3">
+      <span class="eyebrow">The verdict ladder</span>
+      <div class="ladder">
+        <div class="rung"><span class="tag good">Pass</span><p>Nothing to raise.</p></div>
+        <div class="rung"><span class="tag warn">Warn</span><p>Something a reviewer should read: a noisy overfitting signal, an unconfirmed assumption, a recorded limitation.</p></div>
+        <div class="rung"><span class="tag bad">Fail</span><p>A high-severity finding. A person may accept it, in writing, or send the work back.</p></div>
+        <div class="rung"><span class="tag a">Block</span><p>Confirmed target leakage, or documents that no longer match the code. Fix it or reject the run.</p></div>
       </div>
     </div>
   </div>
@@ -544,22 +604,22 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 10. NOTHING SILENTLY ASSUMED ===================== -->
 <section class="slide" data-title="Nothing silently assumed" data-anim="ways">
   <div class="folio"><span>Principle 5 of 8</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="split">
-      <div>
-        <div class="kicker reveal d1">Nothing is silently assumed</div>
-        <h2 class="reveal d1">What the sponsor has not decided is a question on the record, not a guess in the model.</h2>
-        <p class="lede reveal d2">Agents raise questions for the business sponsor at the stage where they arise. Four of them (use, horizon, default definition, segment) can only be answered. The rest close one of three ways, and each way has a consequence.</p>
+  <div class="split">
+    <div class="argue">
+      <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><span>05 / 08</span></div>
+      <div class="kicker reveal d1">Nothing is silently assumed</div>
+      <h2 class="reveal d1">What the sponsor has not decided is a question on the record, not a guess in the model.</h2>
+      <p class="lede reveal d2">Agents raise questions for the business sponsor at the stage where they arise. Each one closes in one of three ways, and each way has a consequence.</p>
+    </div>
+    <div class="panel reveal d3">
+      <span class="eyebrow">Three ways to close a question</span>
+      <div class="three-ways" id="ways">
+        <button class="way" data-out="The answer fills the design brief. The stage that asked runs again with it, and so does everything after."><h3>Answer</h3><p>The sponsor's own position.</p></button>
+        <button class="way" data-out="Nothing re-runs. The white paper lists it under assumptions. Validation asks: how much does the result move if this is wrong?"><h3>Assumption</h3><p>The model rests on it.</p></button>
+        <button class="way" data-out="Nothing re-runs. The white paper lists it under limitations. Validation asks: how is this mitigated or monitored?"><h3>Limitation</h3><p>The model does not cover it.</p></button>
       </div>
-      <div class="demo reveal d3">
-        <span class="eyebrow">Three ways to close a question</span>
-        <div class="three-ways" id="ways">
-          <div class="way" data-out="The answer fills the design brief. The stage that asked runs again with it, and so does everything after."><h3>Answer</h3><p>The sponsor's own position.</p></div>
-          <div class="way" data-out="Nothing re-runs. The white paper lists it under assumptions. Validation asks: how much does the result move if this is wrong?"><h3>Assumption</h3><p>The model rests on it.</p></div>
-          <div class="way" data-out="Nothing re-runs. The white paper lists it under limitations. Validation asks: how is this mitigated or monitored?"><h3>Limitation</h3><p>The model does not cover it.</p></div>
-        </div>
-        <p class="note outcome" id="ways-out"></p>
-      </div>
+      <p class="outcome" id="ways-out"></p>
+      <p class="fixed4"><b>Four can only be answered:</b> use, horizon, default definition and segment.</p>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
@@ -568,23 +628,22 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 11. AGENTS HAVE NO HANDS ===================== -->
 <section class="slide" data-title="Agents have no tools" data-anim="chain">
   <div class="folio"><span>Principle 6 of 8</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="split">
-      <div>
-        <div class="kicker reveal d1">Agents ask, the engine runs</div>
-        <h2 class="reveal d1">An agent cannot execute anything. Even its own code is an artifact someone reads.</h2>
-        <p class="lede reveal d2">An agent asks for an analysis by naming a reviewed tool, or by writing a short script. The engine runs it, in a restricted process, and keeps the result. Every chart says which of the three it came from.</p>
+  <div class="split">
+    <div class="argue">
+      <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><span>06 / 08</span></div>
+      <div class="kicker reveal d1">Agents ask, the engine runs</div>
+      <h2 class="reveal d1">An agent cannot execute anything. Even its own code is an artifact someone reads.</h2>
+      <p class="lede reveal d2">An agent asks for an analysis by naming a reviewed tool, or by writing a short script. The engine runs it, in a restricted process, and keeps the result. Every chart says which of the three it came from.</p>
+    </div>
+    <div class="panel reveal d3">
+      <span class="eyebrow">Where an analysis comes from</span>
+      <div class="ladder">
+        <div class="rung"><span class="tag">Built-in</span><p>Reviewed COGNOS code: <span data-fact="n_explore_tools">14</span> exploration tools, from a data overview to weight of evidence and drift.</p></div>
+        <div class="rung"><span class="tag">Plugin</span><p>Reviewed code a team adds. A plugin brings tools and data sources, never prompt text.</p></div>
+        <div class="rung"><span class="tag a">Script</span><p>Written by the agent for this run. It follows a chain:</p></div>
       </div>
-      <div class="demo reveal d3">
-        <span class="eyebrow">Where an analysis comes from</span>
-        <div class="ladder">
-          <div class="rung"><span class="tag">Built-in</span><p>Reviewed COGNOS code: <span data-fact="n_explore_tools">14</span> exploration tools, from a data overview to weight of evidence and drift.</p></div>
-          <div class="rung"><span class="tag">Plugin</span><p>Reviewed code a team adds. A plugin brings tools and data sources, never prompt text.</p></div>
-          <div class="rung"><span class="tag a">Script</span><p>Written by the agent for this run. It follows a chain:</p></div>
-        </div>
-        <div class="chain" id="chain">
-          <span class="link">checked</span><span class="arrow">→</span><span class="link">saved with hash</span><span class="arrow">→</span><span class="link">run restricted</span><span class="arrow">→</span><span class="link">read at the gate</span><span class="arrow">→</span><span class="link">re-run at validation</span><span class="arrow">→</span><span class="link">printed in the paper</span>
-        </div>
+      <div class="chain" id="chain">
+        <span class="link">checked</span><span class="arrow">→</span><span class="link">saved with hash</span><span class="arrow">→</span><span class="link">run restricted</span><span class="arrow">→</span><span class="link">read at the gate</span><span class="arrow">→</span><span class="link">re-run at validation</span><span class="arrow">→</span><span class="link">printed in the paper</span>
       </div>
     </div>
   </div>
@@ -594,19 +653,19 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 12. CHANGE IS TRACEABLE ===================== -->
 <section class="slide" data-title="A changed decision" data-anim="stale">
   <div class="folio"><span>Principle 7 of 8</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="split">
-      <div>
-        <div class="kicker reveal d1">A change always says why</div>
-        <h2 class="reveal d1">Change your mind at any gate. The run works out what is now out of date, and tells you the reason.</h2>
-        <p class="lede reveal d2">A person's decision never edits the project profile. It is stored as an override, everything downstream is marked stale with the reason, and the engine re-runs it. The previous result is kept so the two can be compared.</p>
-      </div>
-      <div class="demo reveal d3">
-        <span class="eyebrow">The developer excludes a column at the data gate</span>
-        <div class="mini-track" id="mini"></div>
-        <p class="why" id="why"></p>
-        <div class="controls"><button class="btn" id="stale-go">Replay</button></div>
-      </div>
+  <div class="split">
+    <div class="argue">
+      <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><span>07 / 08</span></div>
+      <div class="kicker reveal d1">A change always says why</div>
+      <h2 class="reveal d1">Change your mind at any gate. The run works out what is now out of date, and why.</h2>
+      <p class="lede reveal d2">A person's decision never edits the project profile. It is stored as an override, everything downstream is marked stale with the reason, and the engine re-runs it. The previous result is kept so the two can be compared.</p>
+    </div>
+    <div class="panel reveal d3">
+      <span class="eyebrow">The developer excludes a column at the data gate</span>
+      <div class="mini-track" id="mini"></div>
+      <div class="legend"><span class="l-ok">up to date</span><span class="l-stale">out of date</span><span class="l-run">re-running</span></div>
+      <p class="why" id="why"></p>
+      <div class="controls"><button class="btn" id="stale-go">Replay</button></div>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
@@ -615,20 +674,26 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 13. OFFLINE AND REPRODUCIBLE ===================== -->
 <section class="slide" data-title="Offline and reproducible">
   <div class="folio"><span>Principle 8 of 8</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="kicker reveal d1">Always runnable with no model at all</div>
-    <h2 class="reveal d1">Take the language model away and the system still runs end to end.</h2>
-    <div class="body cols">
-      <div class="reveal d2">
-        <p>Every agent has a deterministic twin: a plain function of the same slice that must pass the same checks. A missing key or network makes a provider unavailable. It never makes a run crash.</p>
-        <p style="margin-top: var(--content-gap)">That is what makes the system testable, and it is why the language model is an accelerator here and not a dependency.</p>
+  <div class="split">
+    <div class="argue">
+      <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><span>08 / 08</span></div>
+      <div class="kicker reveal d1">Always runnable with no model at all</div>
+      <h2 class="reveal d1">Take the language model away and the system still runs end to end.</h2>
+      <p class="lede reveal d2">A missing key or network makes a provider unavailable. It never makes a run crash. That is what makes the system testable, and why the language model is an accelerator here, not a dependency.</p>
+      <div class="reveal d3" style="display:flex;flex-direction:column;gap:16px">
+        <span class="eyebrow">Every agent has a deterministic twin</span>
+        <div class="twin">
+          <div class="box"><b>Agent</b><span>a language model, given the slice</span></div>
+          <div class="eq">same slice<br>same checks</div>
+          <div class="box dashed"><b>Twin</b><span>a plain function of the same slice</span></div>
+        </div>
       </div>
-      <div class="reveal d3">
-        <ul class="rule-list">
-          <li><span>A</span><span><b>The result reproduces exactly.</b> Data snapshot, seed, frozen metric and the recorded decisions give the same model, with no language model involved.</span></li>
-          <li><span>B</span><span><b>The reasoning is recorded.</b> What each agent was shown and what it answered is kept for every attempt, and can be replayed offline.</span></li>
-          <li><span>C</span><span><b>The run survives a restart.</b> All state is on disk. Any process can pick a run up from its files.</span></li>
-        </ul>
+    </div>
+    <div class="panel reveal d3">
+      <div>
+        <div class="item"><span class="n">A</span><p><b>The result reproduces exactly.</b>Data snapshot, seed, frozen metric and the recorded decisions give the same model.</p></div>
+        <div class="item"><span class="n">B</span><p><b>The reasoning is recorded.</b>What each agent was shown and answered is kept for every attempt, and replays offline.</p></div>
+        <div class="item"><span class="n">C</span><p><b>The run survives a restart.</b>All state is on disk. Any process can pick a run up from its files.</p></div>
       </div>
     </div>
   </div>
@@ -638,20 +703,18 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 14. WHAT A RUN LEAVES BEHIND ===================== -->
 <section class="slide" data-title="What a run leaves behind">
   <div class="folio"><span>The output</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="kicker reveal d1">The model is half of the deliverable</div>
-    <h2 class="reveal d1">A run ends with a model and with the file a validator would otherwise have to ask for.</h2>
-    <div class="body cols">
-      <ul class="rule-list reveal d2">
-        <li><span>01</span><span><b>The white paper.</b> Methodology, model card, limitations and assumptions, every number rendered from a recorded fact.</span></li>
-        <li><span>02</span><span><b>The run record.</b> Who did what and when: each recommendation, decision, question and challenge, with names.</span></li>
-        <li><span>03</span><span><b>The agent calls.</b> The full input and raw output of every attempt by every agent.</span></li>
-      </ul>
-      <ul class="rule-list reveal d3">
-        <li><span>04</span><span><b>The analysis code.</b> Every script an agent wrote, with its hash, as it was run.</span></li>
-        <li><span>05</span><span><b>The readiness report.</b> Evidence organised against model-risk expectations, with the human-only steps listed.</span></li>
-        <li><span>06</span><span><b>The sealed package.</b> Written once at sign-off. A later change supersedes it and never rewrites it.</span></li>
-      </ul>
+  <div class="slide-content center" style="gap: 64px">
+    <div class="head">
+      <div class="kicker reveal d1">The model is half of the deliverable</div>
+      <h2 class="reveal d1">A run ends with a model and with the file a validator would otherwise have to ask for.</h2>
+    </div>
+    <div class="grid-3x2">
+      <div class="item reveal d2"><span class="n">01</span><p><b>The white paper.</b>Methodology, model card, limitations and assumptions, every number rendered from a recorded fact.</p></div>
+      <div class="item reveal d2"><span class="n">02</span><p><b>The run record.</b>Who did what and when: each recommendation, decision, question and challenge, with names.</p></div>
+      <div class="item reveal d2"><span class="n">03</span><p><b>The agent calls.</b>The full input and raw output of every attempt by every agent.</p></div>
+      <div class="item reveal d3"><span class="n">04</span><p><b>The analysis code.</b>Every script an agent wrote, with its hash, as it was run.</p></div>
+      <div class="item reveal d3"><span class="n">05</span><p><b>The readiness report.</b>Evidence organised against model-risk expectations, with the human-only steps listed.</p></div>
+      <div class="item reveal d3"><span class="n">06</span><p><b>The sealed package.</b>Written once at sign-off. A later change supersedes it and never rewrites it.</p></div>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
@@ -660,9 +723,11 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 15. BY THE NUMBERS ===================== -->
 <section class="slide" data-title="The system today">
   <div class="folio"><span>The system today</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="kicker reveal d1">Version <span class="ver"></span></div>
-    <h2 class="reveal d1">Small on purpose.</h2>
+  <div class="slide-content center" style="gap: 72px">
+    <div class="head">
+      <div class="kicker reveal d1">Version <span class="ver"></span></div>
+      <h2 class="reveal d1">Small on purpose.</h2>
+    </div>
     <div class="figures reveal d2">
       <div class="figure"><div class="k">Stages</div><div class="v" data-fact="n_stages">9</div><div class="h">2 of them can block a run</div></div>
       <div class="figure"><div class="k">Human gates</div><div class="v" data-fact="n_gates">6</div><div class="h">the run stops at each</div></div>
@@ -670,7 +735,10 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
       <div class="figure"><div class="k">Seats</div><div class="v" data-fact="n_seats">3</div><div class="h">developer, reviewer, approver</div></div>
       <div class="figure"><div class="k">Exploration tools</div><div class="v" data-fact="n_explore_tools">14</div><div class="h">plus plugins and scripts</div></div>
     </div>
-    <p class="lede reveal d3">Front ends: a Dash workbench and a command line, over one service boundary. Agent backends: Claude through the local CLI or the API, OpenAI-compatible endpoints, recorded replays, or none.</p>
+    <div class="stack reveal d3">
+      <div><span class="eyebrow">Front ends</span><p>A Dash workbench and a command line, over one service boundary.</p></div>
+      <div><span class="eyebrow">Agent backends</span><p>Claude through the local CLI or the API, OpenAI-compatible endpoints, recorded replays, or none.</p></div>
+    </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
@@ -678,12 +746,14 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
 <!-- ===================== 16. THE DECK IS PART OF THE SYSTEM ===================== -->
 <section class="slide" data-title="Editions">
   <div class="folio"><span>This deck</span><b>COGNOS</b></div>
-  <div class="slide-content">
-    <div class="kicker reveal d1">Kept with the code</div>
-    <h2 class="reveal d1">This deck changes when the system does.</h2>
-    <p class="lede reveal d2">It lives in the repository at <span class="mono">docs/deck/index.html</span>. A test compares its workflow, its figures and its version with the code, so a change to the system that the deck does not describe fails the build.</p>
+  <div class="slide-content center" style="gap: 64px">
+    <div class="head">
+      <div class="kicker reveal d1">Kept with the code</div>
+      <h2 class="reveal d1">This deck changes when the system does.</h2>
+      <p class="lede reveal d2">It lives in the repository at <span class="repo">docs/deck/index.html</span>. A test compares its workflow, its figures and its version with the code, so a change to the system that the deck does not describe fails the build.</p>
+    </div>
     <table class="log reveal d3" id="edition-log">
-      <thead><tr><th>Edition</th><th>System</th><th>Date</th><th>What changed</th></tr></thead>
+      <thead><tr><th style="width: 150px">Edition</th><th style="width: 170px">System</th><th style="width: 220px">Date</th><th>What changed</th></tr></thead>
       <tbody>
         <tr><td class="mono">1</td><td class="mono">v1.0.0</td><td class="mono">2026-10-11</td><td>First edition. The three roles, the animated workflow, eight principles. Covers intake, linked sources, stage tools, the standard exploration tools, run-wide views, and limitations beside assumptions.</td></tr>
       </tbody>
@@ -691,6 +761,16 @@ table.log td.mono { white-space: nowrap; color: var(--ink-2); }
   </div>
   <div class="foot"><span>Agents recommend. People decide. The engine disposes.</span><span class="pg"></span></div>
 </section>
+
+<div class="progress" id="progress"></div>
+</div>
+
+<div class="chrome" aria-label="Slide controls">
+  <button id="nav-prev" title="Previous (←)">←</button>
+  <button id="nav-next" title="Next (→)">→</button>
+  <button id="nav-theme" title="Dark theme (D)">D</button>
+  <button id="nav-full" title="Full screen (F)">F</button>
+</div>
 
 <script>
 /* ===========================================
@@ -751,59 +831,80 @@ const FLOW = [
 /* FLOW:END */
 
 /* ===========================================
-   SLIDE CONTROLLER: visibility, keyboard, dots, progress, per-slide animations
+   SLIDE CONTROLLER: scale-to-fit, one slide at a time, keyboard, touch, hash
    =========================================== */
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const slides = $$(".slide");
 const edition = JSON.parse($("#edition").textContent);
 const anims = {};   // name -> { start(), stop() }
-let current = 0;
+let current = -1;
 
 $$(".ed").forEach(e => e.textContent = `Edition ${edition.edition} · v${edition.system_version} · ${edition.date}`);
 $$(".ver").forEach(e => e.textContent = edition.system_version);
 slides.forEach((s, i) => $(".pg", s).textContent =
   `${String(i + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}`);
 
-const dots = $("#dots");
-dots.innerHTML = "";
-slides.forEach((s, i) => {
-  const b = document.createElement("button");
-  b.title = s.dataset.title || `Slide ${i + 1}`;
-  b.setAttribute("aria-label", b.title);
-  b.onclick = () => go(i);
-  dots.appendChild(b);
-});
+/* the canvas is 1920 x 1080; scale it to the largest size that fits the window */
+const stage = $("#stage");
+function fit() {
+  const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+  stage.style.setProperty("--scale", s);
+}
+window.addEventListener("resize", fit);
+fit();
 
 function go(i) {
   i = Math.max(0, Math.min(slides.length - 1, i));
-  slides[i].scrollIntoView({ behavior: "smooth" });
-}
-function arrived(i) {
+  if (i === current) return;
+  const prev = slides[current];
+  if (prev) { prev.classList.remove("active"); const a = anims[prev.dataset.anim]; if (a) a.stop(); }
   current = i;
-  $$("button", dots).forEach((b, j) => b.classList.toggle("on", j === i));
+  const s = slides[i];
+  s.classList.add("active");
+  const a = anims[s.dataset.anim]; if (a) a.start();
   $("#progress").style.width = `${((i + 1) / slides.length) * 100}%`;
+  history.replaceState(null, "", `#${i + 1}`);
+  document.title = `${s.dataset.title} · COGNOS`;
 }
-const io = new IntersectionObserver(entries => entries.forEach(e => {
-  const name = e.target.dataset.anim;
-  if (e.isIntersecting) {
-    e.target.classList.add("visible");
-    arrived(slides.indexOf(e.target));
-    if (name && anims[name]) anims[name].start();
-  } else if (name && anims[name]) anims[name].stop();
-}), { threshold: 0.55 });
-slides.forEach(s => io.observe(s));
+function toggleTheme() {
+  const root = document.documentElement;
+  root.dataset.theme = root.dataset.theme === "dark" ? "" : "dark";
+}
+function toggleFull() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen?.();
+}
 
 document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.target.closest("button") && (e.key === " " || e.key === "Enter")) return;
   if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(e.key)) { e.preventDefault(); go(current + 1); }
   else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key)) { e.preventDefault(); go(current - 1); }
   else if (e.key === "Home") go(0);
   else if (e.key === "End") go(slides.length - 1);
-  else if (e.key === "d" || e.key === "D") {
-    const root = document.documentElement;
-    root.dataset.theme = root.dataset.theme === "dark" ? "" : "dark";
-  }
+  else if (e.key === "d" || e.key === "D") toggleTheme();
+  else if (e.key === "f" || e.key === "F") toggleFull();
+});
+$("#nav-prev").onclick = () => go(current - 1);
+$("#nav-next").onclick = () => go(current + 1);
+$("#nav-theme").onclick = toggleTheme;
+$("#nav-full").onclick = toggleFull;
+
+/* swipe on touch screens */
+let touchX = null;
+document.addEventListener("touchstart", e => { touchX = e.touches[0].clientX; }, { passive: true });
+document.addEventListener("touchend", e => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX; touchX = null;
+  if (Math.abs(dx) > 50) go(current + (dx < 0 ? 1 : -1));
+});
+
+/* the controls show while the mouse moves */
+let idle = null;
+document.addEventListener("mousemove", () => {
+  document.body.classList.add("moving"); clearTimeout(idle);
+  idle = setTimeout(() => document.body.classList.remove("moving"), 1800);
 });
 
 /* a repeating step: calls fn(i) for i = 0..n-1, every ms, and loops */
@@ -837,8 +938,9 @@ function cycle(n, ms, fn, pause = 0) {
     at = (i + FLOW.length) % FLOW.length;
     const step = FLOW[at], gate = step.id.startsWith("gate_");
     els.forEach((el, j) => { el.classList.toggle("done", j < at); el.classList.toggle("on", j === at); });
-    const node = $(".node", els[at]).getBoundingClientRect(), box = track.getBoundingClientRect();
-    token.style.transform = `translate(${node.left + node.width / 2 - box.left - 4.5}px, ${node.top - box.top - 14}px)`;
+    /* canvas pixels: offsets are unaffected by the stage's scale */
+    const el = els[at];
+    token.style.transform = `translate(${el.offsetLeft + el.offsetWidth / 2 - 7}px, 0px)`;
     $("#cap-n").textContent = gate ? "GATE" : `STAGE ${step.n}`;
     $("#cap-title").textContent = step.label;
     $("#cap-kind").textContent = gate ? `${step.seat} decides` : (step.agentName === "No agent" ? "engine only" : step.agentName);
@@ -865,9 +967,8 @@ function cycle(n, ms, fn, pause = 0) {
   $("#flow-play").onclick = () => (playing ? pause() : play());
   $("#flow-next").onclick = () => { pause(); show(at + 1); };
   $("#flow-prev").onclick = () => { pause(); show(at - 1); };
-  window.addEventListener("resize", () => show(at));
   show(0);
-  anims.flow = { start() { show(0); setTimeout(() => show(0), 900); play(); }, stop: pause };
+  anims.flow = { start() { show(0); play(); }, stop: pause };
 })();
 
 /* ===========================================
@@ -961,7 +1062,13 @@ function cycle(n, ms, fn, pause = 0) {
   anims.stale = { start: run, stop() { timers.forEach(clearTimeout); timers = []; } };
 })();
 
-slides[0].classList.add("visible"); arrived(0);
+/* open at the slide in the address (#5), else the first */
+const startAt = parseInt(location.hash.slice(1), 10);
+go(Number.isFinite(startAt) ? startAt - 1 : 0);
+window.addEventListener("hashchange", () => {
+  const n = parseInt(location.hash.slice(1), 10);
+  if (Number.isFinite(n)) go(n - 1);
+});
 </script>
 </body>
 </html>

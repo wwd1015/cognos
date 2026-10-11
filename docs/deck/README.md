@@ -13,9 +13,10 @@ open docs/deck/index.html
 | `←` `↑` `PageUp` | previous slide |
 | `Home` / `End` | first / last slide |
 | `D` | dark theme |
+| `F` | full screen |
 
 The workflow slide plays by itself; Pause, Back and Step (or a click on any stage or gate)
-take it over. Printing from the browser gives one slide per page.
+take it over. `#5` in the address opens slide 5. Printing from the browser gives one slide per page.
 
 ## Keeping it current
 
@@ -29,7 +30,8 @@ The deck is documentation, and `tests/unit/test_deck.py` holds it to the code:
 When the system changes:
 
 1. Change the slide that describes it. A new principle or stage gets its own slide; keep one
-   idea per slide and keep every slide inside one screen (check at 1280 × 720).
+   idea per slide. Every slide is a fixed 1920 × 1080 canvas that the page scales to the
+   window, so lay out in canvas pixels and keep everything inside it.
 2. If the workflow, a label, a count or the version changed, the test says which.
 3. Raise `edition` and `date` in the edition block and add a row to the edition log on the
    last slide saying what changed.
