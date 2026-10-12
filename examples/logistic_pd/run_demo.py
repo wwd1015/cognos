@@ -19,7 +19,12 @@ every step, because the data are different:
      sample, each with a name. The developer adds a smaller one and names it.
   5. THE CHAMPION, ON OUTCOMES. Each candidate is scored on the out-of-time vintages: Gini, KS,
      calibration, population stability, and the PD under an adverse scenario.
-  6. THE SEALED HOLDOUT. Opened once, at validation, for the champion only.
+  6. A TRIAL RUN (ADR-0017). The developer would rather carry the scorecard that led on the
+     development sample. They do not overwrite the recommended choice: they make a trial run
+     from the champion gate, choose differently there, and read the two side by side. Then
+     they make the trial run the main run; the run it replaces stays on record.
+  7. THE SEALED HOLDOUT. Opened once, at validation, for the champion of the main run only.
+     The trial run could not open it while it was a trial.
 
 Run:  python examples/logistic_pd/run_demo.py [--save-sample]
 (Requires `pip install -e .`. Runs offline with the deterministic agents; LLM agents recommend
@@ -38,7 +43,7 @@ import tempfile
 import warnings
 from pathlib import Path
 
-from cognos import service, synth
+from cognos import service, synth, trials
 from cognos.config import CognosConfig
 
 warnings.filterwarnings("ignore")
@@ -224,21 +229,58 @@ def main(save: bool = False) -> int:
     say(f"  Outcomes Analyst: {backtest['champion_rationale']}")
     say(f"  The test sample has been looked at {backtest['test_evaluations']} times. "
         f"Sealed holdout kept: {backtest['sealed_holdout']} (not opened yet)")
-    service.submit_gate(run_id, "gate_champion", "accept", reason="agreed", root=root,
-                        background=False)
 
-    # --- 6. the sealed holdout ---------------------------------------------------------------
+    # --- 6. a trial run ----------------------------------------------------------------------
+    banner("6. A TRIAL RUN — the champion decided differently, the first choice kept")
+    recommended = backtest["champion_id"]
+    leader = max((c for c in backtest["candidates"] if c["id"] != recommended),
+                 key=lambda c: c["development_score"])
+    say(f"  The developer would rather carry {leader['name']}, the leader on the development "
+        "sample.")
+    say("  They do not overwrite the recommendation: a trial run copies this run and waits at")
+    say("  “Choose the champion”. Nothing before that gate is run again.")
+    trial = service.trial_run(run_id, "gate_champion",
+                              f"carry {leader['name']}, the development leader", root=root)
+    service.submit_gate(trial, "gate_champion", "override", {"champion": leader["id"]},
+                        root=root, reason="the scorecard credit officers already read",
+                        background=False)
+    assert _next_gate(trial, root) == "gate_champion"  # re-opens on the champion in force
+    service.submit_gate(trial, "gate_champion", "accept", reason="confirmed", root=root,
+                        background=False)
+    ended = service.run_until_idle(trial, root)
+    record = service.trial_record(run_id, root)
+    say(f"\n  {'run':10s} {'champion':15s} {'test AUC':>9s} {'test sample used':>17s}   holdout")
+    for r in record["lines"]:
+        say(f"  {r['role'] + ' run':10s} {r['champion']:15s} {r['test_metric']:9.4f} "
+            f"{r['test_evaluations']:>11d} time(s)   "
+            + ("opened" if r["holdout_scored"] else "not opened"))
+    say(f"  The trial run ends here ({ended.status}; validation: {ended.status_of('validate')}): "
+        "a trial run cannot open the sealed holdout.")
+    say(f"  Across both runs the test sample has been used {record['test_evaluations']} times.")
+    service.promote_trial(trial, "the scorecard credit officers already read", root=root,
+                          background=False)
+    assert _next_gate(trial, root) == "gate_validation"  # it goes on to validation now
+    record = service.trial_record(trial, root)
+    say("\n  The developer makes the trial run the main run. The model's record now reads:")
+    for r in record["lines"]:
+        say("    " + trials.describe(r).replace(run_id, "<first run>").replace(trial, "<run_id>"))
+    first_run, run_id = run_id, trial
+    backtest = service.results(run_id, root)["backtest"].payload
+
+    # --- 7. the sealed holdout ---------------------------------------------------------------
     assert _next_gate(run_id, root) == "gate_validation"
     validate = service.results(run_id, root)["validate"]
-    banner(f"6. THE SEALED HOLDOUT — opened once, at validation ({validate.verdict.value})")
+    banner(f"7. THE SEALED HOLDOUT — opened once, at validation ({validate.verdict.value})")
     vp = validate.payload
-    champion = next(c for c in backtest["candidates"] if c["id"] == backtest["champion_id"])
+    champion = next(c for c in backtest["candidates"] if c["id"] == vp["champion_id"])
     say(f"  Champion {vp['champion_id']}: validation AUC {champion['development_score']:.4f} → "
         f"test AUC {champion['metrics']['roc_auc']:.4f} → sealed-holdout AUC "
         f"{vp['holdout_metric']:.4f}")
     say(f"  Holdout scored for: {vp['holdout_scored']} ({vp['holdout_evaluations']} evaluation)")
     for f in validate.findings:
         say(f"  [{f.severity.value}] {f.message}")
+    say(f"  The run it replaced (<first run>) is still there to read: "
+        f"{trials.stands(service.state(first_run, root))}.")
     say(f"\n  Run directory: {root / run_id}")
     say("  Open it in the workbench:  cognos ui --runs-dir " + str(root))
 
@@ -251,7 +293,10 @@ def main(save: bool = False) -> int:
         service.run_until_idle(run_id, root)
         text = "\n".join(LINES).replace(str(work), "<workdir>").replace(run_id, "<run_id>")
         (out / "walkthrough.txt").write_text(text + "\n", encoding="utf-8")
-        shutil.copy(root / run_id / "docs" / "methodology.md", out / "methodology.md")
+        paper = (root / run_id / "docs" / "methodology.md").read_text(encoding="utf-8")
+        (out / "methodology.md").write_text(
+            paper.replace(run_id, "<run_id>").replace(first_run, "<first run>"),
+            encoding="utf-8")
         shutil.copy(root / run_id / "stages" / "model" / "single_factor.json",
                     out / "single_factor.json")
         print(f"\n  Sample output refreshed: {out}")

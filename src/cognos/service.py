@@ -20,7 +20,8 @@ from typing import Any
 from .artifacts import StageResult
 from .config import CognosConfig
 from .engine import Engine, RunState, events
-from .engine.graph import STAGES
+from .engine.gates import GateError
+from .engine.graph import LABELS, STAGES
 
 _engines: dict[str, Engine] = {}
 _guard = threading.Lock()
@@ -358,6 +359,109 @@ def reopen(run_id: str, gate: str, root: str | Path | None = None,
     return engine(run_id, root).reopen(gate, seat=seat)
 
 
+# --- trial runs (ADR-0017) ---------------------------------------------------------------------
+def _developer(seat: str | None, what: str) -> None:
+    if seat not in (None, "", "developer"):
+        from .engine.process import seat_label
+
+        raise GateError(f"{what} is the model developer's. You are acting as the "
+                        f"{seat_label(seat)}.")
+
+
+def trial_gates(run_id: str, root: str | Path | None = None) -> list[str]:
+    """The decisions of this run a trial run can be made from now."""
+    from . import trials
+
+    return trials.branch_gates(state(run_id, root))
+
+
+def trial_run(run_id: str, gate: str, note: str, *, root: str | Path | None = None,
+              seat: str | None = None, by: str | None = None) -> str:
+    """Make a trial run: a copy of ``run_id`` that waits at ``gate`` to be decided
+    differently. The run it was made from is not touched. Returns the trial run's id."""
+    from . import trials
+
+    _developer(seat, "A trial run")
+    if is_busy(run_id, root):
+        raise GateError("A step is running; wait for the run to pause.")
+    by = by or whoami()
+    try:
+        new_id = trials.branch(runs_root(root), run_id, gate, note=note, by=by)
+    except trials.TrialError as exc:
+        raise GateError(str(exc)) from None
+    eng = engine(new_id, root)
+    with eng.lock:
+        eng._save(eng.state)  # the run's status, by the engine's own rule
+    events.publish(eng.run_dir, "run_created",
+                   f"Trial run made from {run_id} by {by}, to decide "
+                   f"“{LABELS[gate]}” differently: {note}", by=by)
+    events.publish(runs_root(root) / run_id, "trial",
+                   f"Trial run {new_id} made from “{LABELS[gate]}” by {by}: {note}", by=by)
+    return new_id
+
+
+def promote_trial(run_id: str, note: str = "", *, root: str | Path | None = None,
+                  seat: str | None = None, by: str | None = None,
+                  background: bool = True) -> RunState:
+    """Make a trial run the main run of its model. It then goes on to validation; the run it
+    replaces stays on record as a trial run."""
+    from . import trials
+
+    _developer(seat, "Choosing the main run")
+    by = by or whoami()
+    base = runs_root(root)
+    main = next((m.run_id for m in trials.members(base, trials.model_of(state(run_id, root)))
+                 if not m.is_trial), None)
+    if is_busy(run_id, root) or (main and is_busy(main, root)):
+        raise GateError("A step is running; wait for the run to pause.")
+    try:
+        replaced = trials.promote(base, run_id, note=note, by=by)
+    except trials.TrialError as exc:
+        raise GateError(str(exc)) from None
+    eng = engine(run_id, root)
+    events.publish(eng.run_dir, "trial", f"Made the main run by {by}"
+                   + (f", replacing {replaced}" if replaced else "")
+                   + (f": {note}" if note else "."), by=by)
+    if replaced:
+        events.publish(base / replaced, "trial",
+                       f"No longer the main run: {run_id} was made the main run by {by}.", by=by)
+        old = engine(replaced, root)
+        with old.lock:
+            old._save(old.state)
+    with eng.lock:
+        eng._save(eng.state)
+    if background:
+        eng.start()
+    return eng.state
+
+
+def trial_record(run_id: str, root: str | Path | None = None) -> dict[str, Any]:
+    """Every run of the model this run belongs to, deleted ones included, with how often the
+    test sample was used across them. Computed on read."""
+    from . import trials
+
+    return trials.record_for(runs_root(root) / run_id)
+
+
+def model_record(model: str, root: str | Path | None = None) -> dict[str, Any]:
+    """The record of a model by its id (the first run of it), whether or not that run's files
+    are still there."""
+    from . import trials
+
+    return trials.record(runs_root(root), model)
+
+
+def trial_stamp(run_id: str, root: str | Path | None = None) -> int:
+    """Changes whenever the record of this run's model does (a page re-reads it then)."""
+    from . import trials
+
+    try:
+        st = state(run_id, root)
+        return trials.record_path(runs_root(root), trials.model_of(st)).stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
 def whoami() -> str:
     """The person this process acts for (``COGNOS_USER``, else the login name)."""
     from . import identity
@@ -512,8 +616,15 @@ def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
                     encoding="utf-8"))["payload"].get("kind") or "new"
             except Exception:
                 pass
+            lin = st.lineage
             rows.append({"run_id": d.name, "project": st.project, "status": st.status,
                          "kind": kind,
+                         "model": lin.model if lin else d.name,
+                         "role": ("trial" if lin.trial else "main") if lin else "",
+                         "trial_of": lin.parent if lin else None,
+                         "trial_gate": lin.gate if lin else None,
+                         "trial_note": lin.note if lin else "",
+                         "trial_ended": bool(lin and lin.trial and st.status == "completed"),
                          "mode": st.mode, "provider": st.provider, "updated_at": st.updated_at,
                          "champion": champ, "waiting_on": waiting[0] if waiting else None,
                          "spend_usd": st.spend_usd, "legacy": False})
@@ -547,16 +658,27 @@ def _run_dir(run_id: str, root: str | Path | None = None) -> Path:
 def deletion_preview(run_ids: list[str], root: str | Path | None = None) -> list[dict[str, Any]]:
     """What deleting these runs would remove: shown to the person before they confirm.
     ``blocked`` says why a run cannot be deleted now (this process is still working on it)."""
+    from . import trials
+
+    base = runs_root(root)
     out = []
     for run_id in run_ids:
         d = _run_dir(run_id, root)
         size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
         row = {"run_id": d.name, "project": "", "status": "legacy", "size_bytes": size,
-               "packages": len(list((d / "packages").glob("v*.json"))), "blocked": ""}
+               "packages": len(list((d / "packages").glob("v*.json"))), "blocked": "",
+               "keeps_line": False}
         if RunState.exists(d):
             try:
                 st = RunState.load(d)
-                row.update(project=st.project, status=st.status)
+                row.update(project=st.project, status=st.status,
+                           keeps_line=st.lineage is not None)
+                # The main run of a model with trial runs goes last: its trial runs are
+                # read against it. Deleting it together with all of them is allowed.
+                held = trials.can_delete(base, st)
+                others = {m.run_id for m in trials.members(base, trials.model_of(st))} - {d.name}
+                if held and not others <= set(run_ids):
+                    row["blocked"] = held
             except Exception:
                 row["status"] = "unreadable"
             if is_busy(d.name, root):
@@ -565,17 +687,24 @@ def deletion_preview(run_ids: list[str], root: str | Path | None = None) -> list
     return out
 
 
-def delete_runs(run_ids: list[str], root: str | Path | None = None) -> list[dict[str, Any]]:
+def delete_runs(run_ids: list[str], root: str | Path | None = None, *,
+                by: str | None = None) -> list[dict[str, Any]]:
     """Delete runs from disk, for good: results, documents, decisions, the audit log and any
     signed package. The caller confirms first (``deletion_preview``); a run this process is
-    still working on is refused. Returns what was removed."""
+    still working on is refused. A run of a model with trial runs keeps one line in the
+    model's record (what it tried, how far it went, how often it used the test sample):
+    its files go, the fact that it was run does not. Returns what was removed."""
+    from . import trials
+
     rows = deletion_preview(run_ids, root)
     busy = [r for r in rows if r["blocked"]]
     if busy:
-        raise RuntimeError("still running, wait for it to pause or finish: "
-                           + ", ".join(r["run_id"] for r in busy))
+        raise RuntimeError("cannot be deleted now: "
+                           + "; ".join(f"{r['run_id']} ({r['blocked']})" for r in busy))
+    by = by or whoami()
     for r in rows:
         d = _run_dir(r["run_id"], root)
+        trials.keep_line(d.parent, d.name, by=by)
         with _guard:
             _engines.pop(str(d.resolve()), None)
         shutil.rmtree(d)

@@ -390,7 +390,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 2, "system_version": "1.0.0", "date": "2026-10-11"}</script>
+<script type="application/json" id="edition">{"edition": 3, "system_version": "1.0.0", "date": "2026-10-12"}</script>
 
 <div class="stage" id="stage">
 
@@ -671,6 +671,28 @@ body.moving .chrome { opacity: 1; }
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
+<!-- ===================== TRIAL RUNS ===================== -->
+<section class="slide" data-title="A decision taken differently">
+  <div class="folio"><span>Principles 2 and 7, together</span><b>COGNOS</b></div>
+  <div class="split">
+    <div class="argue">
+      <div class="kicker reveal d1">Trial runs</div>
+      <h2 class="reveal d1">Try a decision another way. Lose nothing, hide nothing.</h2>
+      <p class="lede reveal d2">A developer copies a run at any of their gates and decides it differently. The first result stays as it was, and the two are compared side by side. What would make this dangerous is a quiet best-of-many, so every run of a model is on one record that validation reads.</p>
+    </div>
+    <div class="panel reveal d3">
+      <span class="eyebrow">Three rules for a trial run</span>
+      <div class="ladder">
+        <div class="rung"><span class="tag good">Stops</span><p>It ends once a champion is chosen. Only the main run goes to validation, so a trial run can never open the sealed holdout.</p></div>
+        <div class="rung"><span class="tag warn">Counted</span><p>Every look at the test sample is added up for the model, across all of its runs. Validation and the white paper report the total.</p></div>
+        <div class="rung"><span class="tag bad">Kept</span><p>Deleting a trial run removes its files. Its line stays: what it tried, how far it went, what it found.</p></div>
+        <div class="rung"><span class="tag a">Main</span><p>To carry a trial run forward, the developer makes it the main run. The run it replaces stays on record.</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span></span><span class="pg"></span></div>
+</section>
+
 <!-- ===================== 13. OFFLINE AND REPRODUCIBLE ===================== -->
 <section class="slide" data-title="Offline and reproducible">
   <div class="folio"><span>Principle 8 of 8</span><b>COGNOS</b></div>
@@ -757,6 +779,7 @@ body.moving .chrome { opacity: 1; }
       <tbody>
         <tr><td class="mono">1</td><td class="mono">v1.0.0</td><td class="mono">2026-10-11</td><td>First edition. The three roles, the animated workflow, eight principles. Covers intake, linked sources, stage tools, the standard exploration tools, run-wide views, and limitations beside assumptions.</td></tr>
         <tr><td class="mono">2</td><td class="mono">v1.0.0</td><td class="mono">2026-10-11</td><td>Seven gates. The search ends on a candidate pool, the champion is chosen on outcomes analysis, and the sealed holdout is scored once at validation (ADR-0016).</td></tr>
+        <tr><td class="mono">3</td><td class="mono">v1.0.0</td><td class="mono">2026-10-12</td><td>Trial runs: a decision taken differently in a copy of the run. A trial run stops before validation, every look at the test sample is counted for the model, and a deleted trial run keeps its line (ADR-0017).</td></tr>
       </tbody>
     </table>
   </div>

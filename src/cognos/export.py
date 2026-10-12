@@ -62,6 +62,14 @@ def export_run(run_dir: str | Path, dest: str | Path | None = None, *, agent_io:
                 rel = p.relative_to(run_dir).as_posix()
                 z.writestr(f"{run_dir.name}/{rel}", data)
                 listing.append({"path": rel, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+            from . import trials
+
+            rec = trials.record_for(run_dir)
+            if rec["n_runs"] > 1:  # the other runs of this model, one line each
+                data = json.dumps(rec, indent=1, ensure_ascii=False, default=str).encode("utf-8")
+                z.writestr(f"{run_dir.name}/MODEL_RECORD.json", data)
+                listing.append({"path": "MODEL_RECORD.json", "bytes": len(data),
+                                "sha256": hashlib.sha256(data).hexdigest()})
             manifest = {"run_id": run_dir.name, "exported_at": datetime.now(UTC).isoformat(timespec="seconds"),
                         "cognos_version": __version__, "agent_io_included": agent_io,
                         "not_included": list(NOT_INCLUDED), "files": listing}

@@ -1249,6 +1249,8 @@ def backtest_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
                 description=f"Every pool member scored on the {sample} sample, best first on "
                             f"{metric}. The test sample has been used "
                             f"{fmt(p.get('test_evaluations'))} time(s) in this run"
+                            + (" (trial runs of this model are counted on the Run record)"
+                               if state.lineage is not None else "")
                             + ("; a sealed holdout is scored at validation."
                                if p.get("sealed_holdout") else
                                ", and no sealed holdout was reserved: the champion's result here "
@@ -1314,10 +1316,34 @@ def validate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
         recommendation_card(_rec(res), extra=rec_extra),
         gate,
         section("Rubric", graph(charts.rubric(p.get("rubric") or {}, scheme))),
+        trials_section(p.get("trials")),
         section("Findings", findings_table(_findings(res)),
                 description="Engine findings re-derive risk from artifacts; agent findings "
                             "(val-*) are the validator's challenge."),
     ]
+
+
+def trials_section(tried: dict | None) -> Any:
+    """The runs of this model as validation read them: every trial run looked at the test
+    sample, so the count that matters is the model's."""
+    from ..trials import describe
+
+    tried = tried or {}
+    if not tried.get("n_other_runs"):
+        return None
+    opened = len(tried.get("holdout_scored") or [])
+    return section(
+        f"Runs of this model ({tried['n_runs']})",
+        kpis([("Other runs", fmt(tried["n_other_runs"]),
+               f"{tried['n_deleted']} deleted, kept on record" if tried.get("n_deleted") else
+               "each tried a decision differently"),
+              ("Test sample used", fmt(tried["test_evaluations"]),
+               f"times across all runs, {fmt(tried['test_evaluations_this_run'])} in this one"),
+              ("Sealed holdout", f"scored for {opened}" if opened else "none",
+               "champion(s); a trial run cannot open it")]),
+        dmc.List([dmc.ListItem(describe(r)) for r in tried.get("lines") or []], size="sm",
+                 spacing=6),
+        description="Recorded when this validation ran. The live list is on the Run record.")
 
 
 # --- comply / document / review ------------------------------------------------------------

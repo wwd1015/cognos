@@ -326,10 +326,16 @@ def deletion_warning(run_ids: list[str] | None) -> Any:
     if elsewhere:
         lines.append("Marked as running, another process may still be working on: "
                      + ", ".join(r["run_id"] for r in elsewhere) + ".")
+    kept = [r for r in rows if r.get("keeps_line")]
+    if kept:
+        lines.append("One line stays in the model's record for each run of a model with trial "
+                     "runs (" + ", ".join(r["run_id"] for r in kept) + "): what it tried, how "
+                     "far it went and how often it used the test sample.")
     blocked = [r for r in rows if r["blocked"]]
     if blocked:
-        lines.append("Cannot be deleted while a step is running: "
-                     + ", ".join(r["run_id"] for r in blocked) + ". Remove them from the list.")
+        lines.append("Cannot be deleted now: "
+                     + "; ".join(f"{r['run_id']} ({r['blocked']})" for r in blocked)
+                     + ". Remove them from the list.")
     return dmc.Alert(dmc.Stack([dmc.Text(t, size="sm") for t in lines], gap=4),
                      title="This cannot be undone", color="red" if signed or blocked else "yellow",
                      variant="light", icon=icon("tabler:alert-triangle"))
@@ -371,9 +377,11 @@ def runs_table() -> Any:
                                 dmc.Text(f"{len(runs)} runs of this model", size="xs", c="dimmed")
                                 if len(runs) > 1 else None], gap=0)
                      if i == 0 else dmc.Text("same model", size="xs", c="dimmed"))
+            role = run_role(r)
             body.append([
                 model,
-                dmc.Stack([link, dmc.Text(r["run_id"], size="xs", ff="monospace", c="dimmed")],
+                dmc.Stack([link, dmc.Text(r["run_id"], size="xs", ff="monospace", c="dimmed"),
+                           dmc.Text(role, size="xs", c="dimmed") if role else None],
                           gap=0),
                 dmc.Group([run_badge(r["status"], "sm"),
                            dmc.Text(where_it_stands(r), size="sm")], gap="xs", wrap="nowrap"),
@@ -385,12 +393,42 @@ def runs_table() -> Any:
                 dmc.Text((r["updated_at"] or "")[:16].replace("T", " "), size="xs", ff="monospace",
                          c="dimmed"),
             ])
+        # A deleted trial run keeps its line: its files are gone, the fact that it ran is not.
+        for model_id in dict.fromkeys(r["model"] for r in runs if r.get("role")):
+            for gone in service.model_record(model_id)["lines"]:
+                if gone.get("deleted_at"):
+                    body.append([
+                        dmc.Text("same model", size="xs", c="dimmed"),
+                        dmc.Stack([dmc.Text("Deleted trial run", size="sm", c="dimmed"),
+                                   dmc.Text(gone["run_id"], size="xs", ff="monospace", c="dimmed"),
+                                   dmc.Text(gone.get("note") or "", size="xs", c="dimmed")], gap=0),
+                        dmc.Text(f"files deleted; it had {gone['stands']} and used the test "
+                                 f"sample {gone.get('test_evaluations') or 0} time(s)",
+                                 size="sm", c="dimmed"),
+                        "", "", dmc.Text(gone.get("champion") or "—", size="xs", ff="monospace",
+                                         c="dimmed"), "",
+                        dmc.Text((gone["deleted_at"] or "")[:16].replace("T", " "), size="xs",
+                                 ff="monospace", c="dimmed"),
+                    ])
     return table(["Model", "Run", "Where it stands", "Mode", "Agents", "Champion", "Spend",
                   "Updated"], body)
 
 
+def run_role(r: dict) -> str:
+    """A run's place among the runs of its model, once the model has a trial run."""
+    if r.get("role") == "main":
+        return "Main run"
+    if r.get("role") == "trial":
+        gate = r.get("trial_gate")
+        return ("Trial run" + (f" from “{LABELS.get(gate, gate)}”" if gate else "")
+                + (f": {r['trial_note']}" if r.get("trial_note") else ""))
+    return ""
+
+
 def where_it_stands(r: dict) -> str:
     """One run is at one place: the gate it is waiting at, or how it ended."""
+    if r.get("trial_ended"):
+        return "trial finished at the champion; it does not go to validation"
     if r.get("waiting_on"):
         return f"waiting at “{LABELS.get(r['waiting_on'], r['waiting_on'])}”"
     return {"completed": "finished, not signed off", "approved": "signed off",
@@ -428,15 +466,82 @@ def workspace_page(run_id: str) -> Any:
                         span={"base": 24, "md": 5}),
         ], gutter="lg", columns=24),
         dmc.Modal(id="io-modal", size="80%", title="Agent call", children=html.Div(id="io-body")),
+        trial_modal(), promote_modal(),
         dcc.Download(id="export-download"),
     ])
 
 
 # --- workspace fragments ---------------------------------------------------------------------
+def trial_modal() -> Any:
+    """Copy this run at a decision and take the decision differently. The run stays as it is."""
+    return dmc.Modal(id="trial-modal", title=dmc.Text("Try a different decision", fw=650),
+                     size="lg", children=dmc.Stack([
+        dmc.Text("This makes a trial run: a copy of this run that waits at the decision you "
+                 "pick, so you can decide it differently and compare. This run is not changed "
+                 "and nothing is lost.", size="sm"),
+        dmc.List([
+            dmc.ListItem("A trial run stops after the champion is chosen. It does not go to "
+                         "validation, so it cannot open the sealed holdout."),
+            dmc.ListItem("Every use of the test sample is counted for the model, across all of "
+                         "its runs. Validation reports the total."),
+            dmc.ListItem("A trial run can be deleted. One line stays in the model's record."),
+        ], size="sm", spacing=4),
+        dmc.Select(id="trial-gate", label="Decision to take differently", data=[],
+                   allowDeselect=False, comboboxProps={"withinPortal": True}),
+        dmc.Textarea(id="trial-note", label="What do you want to try?", autosize=True, minRows=2,
+                     placeholder="For example: best subset instead of forward selection",
+                     description="Kept as this trial run's line in the model's record."),
+        html.Div(id="trial-feedback"),
+        dmc.Group([
+            dmc.Button("Cancel", id="trial-cancel", variant="default", n_clicks=0),
+            dmc.Button("Make the trial run", id="trial-go", n_clicks=0,
+                       leftSection=icon("tabler:git-branch", 16)),
+        ], justify="flex-end"),
+    ], gap="md"))
+
+
+def promote_modal() -> Any:
+    return dmc.Modal(id="promote-modal", title=dmc.Text("Make this the main run", fw=650),
+                     size="lg", children=dmc.Stack([
+        dmc.Text("This trial run becomes the main run of the model and goes on to validation. "
+                 "The run it replaces is kept on record as a trial run, with everything it "
+                 "found; a package it had signed off is no longer in force.", size="sm"),
+        dmc.Textarea(id="promote-note", label="Why this run?", autosize=True, minRows=2,
+                     placeholder="For example: lower test error with one factor fewer"),
+        html.Div(id="promote-feedback"),
+        dmc.Group([
+            dmc.Button("Cancel", id="promote-cancel", variant="default", n_clicks=0),
+            dmc.Button("Make it the main run", id="promote-go", n_clicks=0,
+                       leftSection=icon("tabler:arrow-up-circle", 16)),
+        ], justify="flex-end"),
+    ], gap="md"))
+
+
+def trial_gate_options(run_id: str) -> list[dict[str, str]]:
+    return [{"value": g, "label": LABELS[g]} for g in service.trial_gates(run_id)]
+
+
+def role_fact(st) -> tuple[str, str] | None:
+    """The run's place in its model, for the run header (None for a model with one run)."""
+    lin = st.lineage
+    if lin is None:
+        return None
+    if lin.trial and lin.parent:
+        return ("Trial run", f"of {lin.parent}, from “{LABELS.get(lin.gate or '', lin.gate)}”"
+                             + (f": {lin.note}" if lin.note else ""))
+    if lin.trial:
+        return ("Trial run", f"was the main run until {lin.replaced_by} replaced it")
+    others = service.trial_record(st.run_id)["n_trials"]
+    return ("Main run", f"{others} trial run{'s' if others != 1 else ''} on record")
+
+
 def run_header(st) -> Any:
     res = service.results(st.run_id)
     model = res.get("model")
     facts = [("Mode", st.mode), ("Agents", st.provider)]
+    role = role_fact(st)
+    if role is not None:
+        facts.insert(0, role)
     if st.created_by:
         facts.append(("Started by", st.created_by))
     backtest = res.get("backtest")
@@ -464,13 +569,27 @@ def run_header(st) -> Any:
 
 
 def run_actions(run_id: str) -> Any:
-    prev = service.previous_run(run_id)
+    st = service.state(run_id)
+    lin = st.lineage
+    # A trial run is read against the run it was made from; any other run against the one before.
+    against, label = service.previous_run(run_id), "Compare with previous run"
+    if lin is not None and lin.parent:
+        against, label = lin.parent, "Compare with the run it was made from"
+        try:
+            service.state(against)
+        except (FileNotFoundError, ValueError):
+            against = None  # its files were deleted; its line is in the run record
     return dmc.Group([
+        dmc.Button("Try a different decision", id="trial-open", variant="default",
+                   size="compact-sm", n_clicks=0, leftSection=icon("tabler:git-branch", 14))
+        if service.trial_gates(run_id) else None,
+        dmc.Button("Make this the main run", id="promote-open", size="compact-sm", n_clicks=0,
+                   leftSection=icon("tabler:arrow-up-circle", 14)) if st.is_trial else None,
         dmc.Button("Export", id="export-btn", variant="default", size="compact-sm", n_clicks=0,
                    leftSection=icon("tabler:package-export", 14)),
-        dcc.Link(dmc.Button("Compare with previous run", variant="subtle", size="compact-sm",
+        dcc.Link(dmc.Button(label, variant="subtle", size="compact-sm",
                             leftSection=icon("tabler:git-compare", 14)),
-                 href=f"/compare/{prev}/{run_id}") if prev else None,
+                 href=f"/compare/{against}/{run_id}") if against else None,
     ], gap="xs", mt="sm")
 
 
@@ -542,6 +661,7 @@ def questions_tab(st, seat: str = "developer") -> Any:
     record = journal(st, service.results(st.run_id))
     r_rows = [[stamp(row["at"]), row["who"], row["name"],
                dmc.Text(row["what"], size="sm")] for row in record]
+    trials_section = model_runs_section(st)
     return dmc.Stack([
         view_lede("Run record", "The whole run, every stage: who did what and when, every "
                   "question asked of the sponsor, every challenge and every decision. A "
@@ -550,6 +670,7 @@ def questions_tab(st, seat: str = "developer") -> Any:
                 if r_rows else empty("Nothing stamped yet."),
                 description="People, agents and the engine, in order. Computed from the stamps "
                             "already on the run."),
+        trials_section,
         section(f"Questions for the business sponsor ({len(st.gaps)})",
                 dmc.Text(questions_summary(list(st.gaps)), size="sm", mb="xs") if q_rows else None,
                 gap_outcomes() if q_rows else None,
@@ -567,6 +688,58 @@ def questions_tab(st, seat: str = "developer") -> Any:
                 if d_rows else empty("No decisions yet."),
                 description="What a person (or express preparation) decided at each gate."),
     ], gap="md")
+
+
+def model_runs_section(st) -> Any:
+    """Every run of this model on one line each, deleted trial runs included, with how often
+    the test sample was used across them. The same list validation and the white paper read."""
+    from ..trials import CHANGE_LABELS
+
+    rec = service.trial_record(st.run_id)
+    if rec["n_runs"] < 2:
+        return section("Runs of this model",
+                       empty("This is the only run of this model. Use “Try a different "
+                             "decision” to take a decision another way without losing this "
+                             "result."),
+                       description="A trial run is a copy of a run made at a decision. It stops "
+                                   "before validation and it stays on record.")
+    rows = []
+    for r in rec["lines"]:
+        gone = bool(r.get("deleted_at"))
+        name = (dmc.Text(r["run_id"], size="xs", ff="monospace", c="dimmed") if gone or
+                r["run_id"] == st.run_id else
+                dcc.Link(dmc.Text(r["run_id"], size="xs", ff="monospace"),
+                         href=f"/run/{r['run_id']}"))
+        what = ("Main run" if r["role"] == "main" else "Trial run") + (
+            " (this run)" if r["run_id"] == st.run_id else "") + (
+            ", the main run before" if r.get("replaced_at") and r["role"] == "trial" else "") + (
+            ", files deleted" if gone else "")
+        tried = "; ".join(x for x in (
+            f"from “{LABELS.get(r['gate'], r['gate'])}”" if r.get("gate") else "",
+            r.get("note") or "",
+            "changed " + ", ".join(CHANGE_LABELS.get(k, k) for k in r["changed"])
+            if r.get("changed") else "") if x) or "—"
+        found = "—"
+        if r.get("champion"):
+            found = r["champion"] + (f" · {r['metric']} {fmt(r['test_metric'])}"
+                                     if r.get("test_metric") is not None else "")
+        rows.append([dmc.Stack([dmc.Text(what, size="sm", fw=600), name], gap=0),
+                     dmc.Text(tried, size="sm"), dmc.Text(r["stands"], size="sm"),
+                     dmc.Text(found, size="sm"),
+                     dmc.Text(fmt(r.get("test_evaluations")), size="sm", ff="monospace"),
+                     dmc.Text(r.get("by") or "—", size="sm"), stamp(r.get("at"))])
+    opened = len(rec["holdout_scored"])
+    return section(
+        f"Runs of this model ({rec['n_runs']})",
+        kpis([("Runs", fmt(rec["n_runs"]), f"{rec['n_trials']} besides the main run"),
+              ("Test sample used", fmt(rec["test_evaluations"]), "times, across all runs"),
+              ("Sealed holdout", "not opened" if not opened else f"opened for {opened}",
+               "only the main run can open it" if not opened else "champion(s) of this model")]),
+        table(["Run", "What it tried", "Where it stands", "Champion (test sample)",
+               "Test uses", "By", "Made"], rows),
+        description="One line for each run of this model. A trial run copies a run at a "
+                    "decision so the decision can be taken differently; it stops before "
+                    "validation. Deleting a trial run removes its files and keeps its line.")
 
 
 def view_lede(title: str, text: str) -> Any:
@@ -834,7 +1007,7 @@ def register_callbacks(app: Dash) -> None:
                            f"{scheme}|{seat}|{pkg}|{asked}|{sent}")
         elif tab == "questions":
             content_key = "q|" + "|".join(f"{g.id}:{g.status}" for g in st.gaps) + "|" + "|".join(
-                f"{c.id}:{c.status}" for c in st.challenges) + f"|{len(st.decisions)}|{scheme}|{seat}|{pkg}"
+                f"{c.id}:{c.status}" for c in st.challenges) + f"|{len(st.decisions)}|{scheme}|{seat}|{pkg}|{service.trial_stamp(run_id)}"
         else:
             content_key = f"a|{len(service.audit(run_id))}|{scheme}"
         full_key = f"{st.version}|{content_key}"
@@ -938,6 +1111,67 @@ def register_callbacks(app: Dash) -> None:
                 "Recorded as an assumption. Validation will ask how sensitive the result is "
                 "to it." if assume else "The stage that raised it will re-run.")
         return [notice("Recorded", said, "oxblood")], None
+
+    @app.callback(Output("trial-modal", "opened"), Output("trial-gate", "data"),
+                  Output("trial-gate", "value"), Output("trial-note", "value"),
+                  Output("trial-feedback", "children"),
+                  Input("trial-open", "n_clicks"), Input("trial-cancel", "n_clicks"),
+                  State("ws-run", "data"), State("ws-step", "data"), prevent_initial_call=True)
+    def open_trial(opened, cancelled, run_id, step):
+        if ctx.triggered_id == "trial-open" and opened:
+            options = trial_gate_options(run_id)
+            values = [o["value"] for o in options]
+            # Start on the decision of the page being read, else the latest one reached.
+            here = GATE_OF_STAGE.get(step or "")
+            return (True, options, here if here in values else (values[-1] if values else None),
+                    "", None)
+        if ctx.triggered_id == "trial-cancel" and cancelled:
+            return False, no_update, no_update, no_update, None
+        return (no_update,) * 5
+
+    @app.callback(Output("url", "pathname", allow_duplicate=True),
+                  Output("trial-feedback", "children", allow_duplicate=True),
+                  Output("notify", "sendNotifications", allow_duplicate=True),
+                  Input("trial-go", "n_clicks"), State("trial-gate", "value"),
+                  State("trial-note", "value"), State("ws-run", "data"), State("ws-seat", "data"),
+                  prevent_initial_call=True)
+    def make_trial(clicks, gate, note, run_id, seat):
+        if not clicks:
+            return no_update, no_update, no_update
+        try:
+            new_id = service.trial_run(run_id, gate or "", note or "", seat=seat)
+        except (GateError, OSError) as exc:
+            return no_update, dmc.Alert(str(exc), color="red", variant="light"), no_update
+        return f"/run/{new_id}", None, [notice(
+            "Trial run made", f"Decide “{LABELS[gate]}” differently here. The run you came "
+            "from is unchanged.", "oxblood")]
+
+    @app.callback(Output("promote-modal", "opened"), Output("promote-note", "value"),
+                  Output("promote-feedback", "children"),
+                  Input("promote-open", "n_clicks"), Input("promote-cancel", "n_clicks"),
+                  prevent_initial_call=True)
+    def open_promote(opened, cancelled):
+        if ctx.triggered_id == "promote-open" and opened:
+            return True, "", None
+        if ctx.triggered_id == "promote-cancel" and cancelled:
+            return False, no_update, None
+        return no_update, no_update, no_update
+
+    @app.callback(Output("promote-modal", "opened", allow_duplicate=True),
+                  Output("promote-feedback", "children", allow_duplicate=True),
+                  Output("notify", "sendNotifications", allow_duplicate=True),
+                  Output("ws-key", "data", allow_duplicate=True),
+                  Input("promote-go", "n_clicks"), State("promote-note", "value"),
+                  State("ws-run", "data"), State("ws-seat", "data"), prevent_initial_call=True)
+    def promote(clicks, note, run_id, seat):
+        if not clicks:
+            return (no_update,) * 4
+        try:
+            service.promote_trial(run_id, note or "", seat=seat)
+        except (GateError, OSError) as exc:
+            return no_update, dmc.Alert(str(exc), color="red", variant="light"), no_update, no_update
+        return False, None, [notice("This is now the main run",
+                                    "It goes on to independent validation.", "oxblood")], None
 
     @app.callback(Output("io-modal", "opened"), Output("io-body", "children"),
                   Input({"type": "audit-row", "call": ALL}, "n_clicks"), State("ws-run", "data"),

@@ -57,6 +57,27 @@ def _oos_lines(mp: dict, bp: dict, metric_name: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _trials_body(tried: dict | None) -> str:
+    """The other runs of this model: what each tried and what it found. Mechanical: the lines
+    of the model's record as validation read them (ADR-0017)."""
+    from .. import trials
+
+    tried = tried or {}
+    if not tried.get("n_other_runs"):
+        return ""
+    lines = [
+        "## Alternatives tried\n",
+        f"This model was developed in {tried['n_runs']} runs. A developer may copy a run at a "
+        "decision and take it differently in a *trial run* "
+        "({@code:src/cognos/trials.py#branch}); a trial run stops before validation, so it "
+        "never opens the sealed holdout, and it stays on record when its files are deleted. "
+        f"Across all runs the test sample was used {tried['test_evaluations']} time(s), "
+        f"{tried['test_evaluations_this_run']} of them in the run documented here.\n",
+    ]
+    lines += [f"- {trials.describe(r)}" for r in tried.get("lines") or []]
+    return "\n".join(lines) + "\n\n"
+
+
 def _selection_body(mp: dict, bp: dict, metric_name: str) -> str:
     """The record of the selection: the plan, the screen, each method's path, the pool and the
     comparison the champion was chosen on. Mechanical: every number is the engine's."""
@@ -289,6 +310,7 @@ class DocumentStage(Stage):
                 f"- **Candidates tried:** {mp.get('n_candidates_tried', 'n/a')}\n"
                 f"- **Hypothesis families considered:** {', '.join(ip.get('families', []) or []) or 'n/a'}\n"
                 f"{challenger_line}"
+                + _trials_body(vp.get("trials")) +
                 "## Statistical battery\n\n"
                 f"A battery of {diagnostics.get('n_run', 0)} statistical tests is run on the champion "
                 f"({diagnostics.get('n_passed', 0)} passed, {diagnostics.get('n_failed', 0)} failed). "

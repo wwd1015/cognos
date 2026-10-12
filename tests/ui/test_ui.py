@@ -517,3 +517,54 @@ def test_assumptions_and_limitations_reach_validation_and_the_white_paper(root):
     assert "Assumptions accepted" in page and "Taken as known." in page
     assert page.index("Limitations recorded") < page.index("Not covered.")
     assert "limitation" in _serialize(ui.questions_tab(st))
+
+
+def test_trial_runs_are_made_listed_and_kept_on_the_pages(root):
+    """ADR-0017: the control is on the run, the runs page says which run is which, the run
+    record lists every run of the model, and a deleted trial run keeps its line."""
+    from cognos.engine.graph import GATES
+
+    def to(run_id, until=None):
+        for _ in range(24):
+            st = service.run_until_idle(run_id)
+            waiting = [g for g in GATES if st.status_of(g) == "awaiting"]
+            if not waiting or waiting[0] == until:
+                return st
+            service.submit_gate(run_id, waiting[0], "accept", reason="ok", background=False)
+
+    cfg = service.demo_config("regression", root, n=220, search_budget=4)
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic")
+    to(run_id, "gate_champion")
+    actions = _serialize(ui.run_actions(run_id))
+    assert "Try a different decision" in actions and "Make this the main run" not in actions
+    assert "only run of this model" in _serialize(ui.model_runs_section(service.state(run_id)))
+    modal = _serialize(ui.trial_modal())
+    assert "cannot open the sealed holdout" in modal and "One line stays" in modal
+    assert [o["value"] for o in ui.trial_gate_options(run_id)][-1] == "gate_champion"
+
+    trial = service.trial_run(run_id, "gate_champion", "another champion")
+    runs = _serialize(ui.runs_table())
+    assert "Main run" in runs and "Trial run from" in runs and "another champion" in runs
+    header = _serialize(ui.run_header(service.state(trial)))
+    assert "Make this the main run" in header and f"/compare/{run_id}/{trial}" in header
+    assert "Compare with the run it was made from" in header and f"of {run_id}" in header
+    assert "1 trial run on record" in _serialize(ui.run_header(service.state(run_id)))
+
+    to(trial)
+    assert "This trial run ends here" in _serialize(ui.run_header(service.state(trial)))
+    assert "does not go to validation" in _serialize(ui.runs_table())
+    record = _serialize(ui.questions_tab(service.state(run_id)))
+    assert "Runs of this model (2)" in record and trial in record and "Test sample used" in record
+    assert "Made as a trial run of" in _serialize(ui.questions_tab(service.state(trial)))
+
+    to(run_id, "gate_validation")
+    res = service.results(run_id)["validate"]
+    page = _serialize(stage_panel("validate", res, service.state(run_id), "light"))
+    assert "Runs of this model (2)" in page and "another champion" in page
+
+    assert "One line stays" in _serialize(ui.deletion_warning([trial]))
+    assert "Cannot be deleted now" in _serialize(ui.deletion_warning([run_id]))
+    service.delete_runs([trial])
+    assert "Deleted trial run" in _serialize(ui.runs_table())
+    assert "files deleted" in _serialize(ui.questions_tab(service.state(run_id)))
+    assert "Make this the main run" in _serialize(ui.promote_modal())

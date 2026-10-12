@@ -20,6 +20,11 @@ the drivers act through lags and changes, so the build is the classic one (ADR-0
      leaders, adds more than the engine proposed, and gives one a name of their own.
   5. THE CHAMPION, ON OUTCOMES. Every pool member forecasts the held-back quarters and each
      scenario. Models that ranked together part ways here, and the choice is made on that page.
+  6. A TRIAL RUN (ADR-0017). "What if the search had ranked on the test sample?" The developer
+     does not re-open the design gate, which would replace steps 2 to 5. They make a trial
+     run: a copy that waits at that gate. It costs a few hundred looks at the test sample
+     and finds nothing better. The trial run cannot go to validation; its files are
+     deleted, its line and its count stay, and validation reports the total.
 
 Run:  python examples/loss_forecast/run_demo.py [--save-sample]
 (Requires `pip install -e .`. Runs offline with the deterministic agents; LLM agents recommend
@@ -38,7 +43,7 @@ import tempfile
 import warnings
 from pathlib import Path
 
-from cognos import service
+from cognos import service, trials
 
 warnings.filterwarnings("ignore")
 
@@ -185,6 +190,42 @@ def main(save: bool = False) -> int:
     say(f"  Outcomes Analyst: {backtest['champion_rationale']}")
     say("  The test sample was the only out-of-sample evidence and it was used to choose: "
           f"sealed holdout = {backtest['sealed_holdout']}")
+
+    # --- 6. a trial run ----------------------------------------------------------------------
+    banner("6. A TRIAL RUN — a decision taken differently, nothing lost and nothing hidden")
+    say("  The developer wonders: what if the search ranked models on the test sample itself?")
+    say("  Re-opening “Review the design” would replace steps 2 to 5. A trial run copies this")
+    say("  run and waits at that gate; this run is not touched.")
+    trial = service.trial_run(run_id, "gate_design", "rank the search on the test sample",
+                              root=root)
+    service.submit_gate(trial, "gate_design", "edit",
+                        {"plan": {"evaluation": {"rank_by": [{"metric": "rmse",
+                                                              "sample": "test"}]}}},
+                        root=root, reason="rank on the test sample", background=False)
+    for gate in ("gate_design", "gate_candidates", "gate_champion"):
+        assert _next_gate(trial, root) == gate
+        service.submit_gate(trial, gate, "accept", reason="as proposed", root=root,
+                            background=False)
+    ended = service.run_until_idle(trial, root)
+    record = service.trial_record(run_id, root)
+    say(f"\n  {'run':10s} {'what it tried':36s} {'champion':12s} {'test rmse':>9s} "
+        f"{'test sample used':>17s}")
+    for r in record["lines"]:
+        say(f"  {r['role'] + ' run':10s} {(r['note'] or 'the plan confirmed in step 1'):36s} "
+            f"{r['champion']:12s} {r['test_metric']:9.4f} {r['test_evaluations']:>11d} time(s)")
+    best = min(c["metrics"]["rmse"]
+               for c in service.results(trial, root)["backtest"].payload["candidates"])
+    say(f"  Ranked on the test sample, the best pool member reaches {best:.4f} on it. Finding it")
+    say(f"  took {record['lines'][-1]['test_evaluations']} looks at the test sample; the main run "
+        f"took {record['lines'][0]['test_evaluations']}.")
+    say(f"  The trial run ends here ({ended.status}; validation: "
+        f"{ended.status_of('validate')}). Only the main run goes to validation.")
+    service.delete_runs([trial], root, by="the developer")
+    record = service.trial_record(run_id, root)
+    say("\n  The developer keeps the main run and deletes the trial run. Its files go; its line stays:")
+    say("    " + trials.describe(record["lines"][-1]).replace(trial, "<trial run>"))
+    say(f"  The model's record: {record['n_runs']} runs, the test sample used "
+        f"{record['test_evaluations']} times across them.")
     service.submit_gate(run_id, "gate_champion", "accept", reason="agreed", root=root,
                         background=False)
 
@@ -192,7 +233,7 @@ def main(save: bool = False) -> int:
     validate = service.results(run_id, root)["validate"]
     banner(f"VALIDATION — {validate.verdict.value}")
     for f in validate.findings:
-        say(f"  [{f.severity.value}] {f.message}")
+        say(f"  [{f.severity.value}] {f.message.replace(trial, '<trial run>')}")
     say(f"\n  Run directory: {root / run_id}")
     say("  Open it in the workbench:  cognos ui --runs-dir " + str(root))
     if save:
@@ -203,7 +244,9 @@ def main(save: bool = False) -> int:
         service.run_until_idle(run_id, root)  # the white paper is written after validation
         text = "\n".join(LINES).replace(str(root), "<workdir>").replace(run_id, "<run_id>")
         (out / "walkthrough.txt").write_text(text + "\n", encoding="utf-8")
-        shutil.copy(root / run_id / "docs" / "methodology.md", out / "methodology.md")
+        paper = (root / run_id / "docs" / "methodology.md").read_text(encoding="utf-8")
+        (out / "methodology.md").write_text(
+            paper.replace(run_id, "<run_id>").replace(trial, "<trial run>"), encoding="utf-8")
         shutil.copy(root / run_id / "stages" / "model" / "single_factor.json",
                     out / "single_factor.json")
         print(f"\n  Sample output refreshed: {out}")

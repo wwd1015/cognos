@@ -4,7 +4,7 @@ title: Methodology
 description: Search procedure and statistical battery.
 tags:
 - method
-timestamp: '2026-10-11T21:25:40.003294+00:00'
+timestamp: '2026-10-12T23:43:38.519999+00:00'
 ---
 
 # Methodology
@@ -72,6 +72,13 @@ Compared on the out of time sample (rmse first). Champion chosen by the engine: 
 
 - **Candidates tried:** 221
 - **Hypothesis families considered:** ols, lasso, ridge
+
+## Alternatives tried
+
+This model was developed in 2 runs. A developer may copy a run at a decision and take it differently in a *trial run* ({@code:src/cognos/trials.py#branch}); a trial run stops before validation, so it never opens the sealed holdout, and it stays on record when its files are deleted. Across all runs the test sample was used 235 time(s), 7 of them in the run documented here.
+
+- <run_id> (main run); the run validated here; champion OLS 3F-C, rmse 0.1046 on the out_of_time sample; test sample used 7 time(s).
+- <trial run> (trial run, from “Review the design”); to try: rank the search on the test sample; changed the plan; trial finished at the champion; champion OLS 3F-C, rmse 0.1046 on the out_of_time sample; test sample used 228 time(s); files deleted 2026-10-12 by the developer.
 
 ## Statistical battery
 

@@ -194,6 +194,9 @@ def collect(ctx, *, fresh: dict | None = None,
         # The sealed holdout: scored once, for the champion, after the choice.
         _put(f, "validate.holdout_metric", p.get("holdout_metric"))
         _put(f, "validate.holdout_evaluations", p.get("holdout_evaluations"))
+        # Every run of the model counts: trial runs looked at the test sample too.
+        _put(f, "validate.runs_of_this_model", (p.get("trials") or {}).get("n_runs"))
+        _put(f, "validate.test_evaluations_model", (p.get("trials") or {}).get("test_evaluations"))
     co = get("comply")
     if co is not None and co.payload:
         p = co.payload

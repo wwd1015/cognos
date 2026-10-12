@@ -108,6 +108,28 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
   sealed holdout appends to `holdout_scored`. Nothing reads `data/holdout.parquet` before
   `validate` (tools included: `analysis/consult.py::_out_of_sample`).
 
+## Trial runs (ADR-0017)
+- **One main run per model; a trial run stops before validation.** A trial run
+  (`trials.branch`, `state.lineage.trial`) is a copy made at a developer gate to decide it
+  differently. The engine never schedules `graph.TRIAL_STOPS_BEFORE` (`validate`) or anything
+  after it on a trial run. Do not add a path that lets a trial run read
+  `data/holdout.parquet`, seal a package or reach sign-off; the way forward is
+  `trials.promote`, which leaves at most one main run.
+- **Counts belong to the model.** `trials.record` sums looks at the test sample over every
+  run of the model, deleted ones included, and unions `holdout_scored`. Anything that reports
+  how often the test sample was used after `backtest` reports the model's total
+  (`payload["trials"]` at validate), not the run's alone.
+- **A deleted run keeps its line.** `service.delete_runs` calls `trials.keep_line` before it
+  removes anything. A new way to remove or archive a run must do the same.
+- **Computed on read, stored only when it cannot be.** A live run's line is read from its own
+  state and results (`trials.line`). The model's record (`<runs>/_models/<model>.json`,
+  written under its own lock) holds events and the lines of deleted runs, nothing else.
+- **One record, read everywhere.** The run record page, validation, the white paper, the
+  package and the export all read `trials.record` / `trials.summary`. Do not build a second
+  list of a model's runs.
+- Making a trial run and choosing the main run are developer actions and take `by`.
+- Say "trial run" and "main run". "Run" alone is one development of one model at one place.
+
 ## Development modes and intake (ADR-0011)
 `engagement.kind` is `new` (from a business intent document) or `update` (from the existing
 model's artifacts plus an update request). Say "development mode"; "mode" alone means autonomous /
@@ -255,6 +277,9 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 - **New stage** → single-responsibility; wire `requires`, a graph node, and (optionally) an agent.
 - **New stage metric** → if it has a good direction, add it to `compare._HIGHER` / `_LOWER` and give it a
   label in `compare.METRIC_LABELS`; otherwise comparisons report it as a difference without a verdict.
+- **New thing a trial run must not carry** (a signature, a result from validation on) →
+  `trials._NOT_COPIED` / `trials.BEYOND`. **New override** → a label in
+  `trials.CHANGE_LABELS`, so a trial run's line can say what it changed.
 - **New demo** → a generator in `synth.GENERATORS`, a preset in `service.DEMO_PRESETS` (+
   `DEMO_LABELS`), the `cognos demo --task` choices.
 

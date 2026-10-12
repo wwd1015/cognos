@@ -66,6 +66,10 @@ LABELS = {
     "gate_signoff": "Sign off",
 }
 
+# A trial run (trials.py) stops before this step: the sealed holdout is scored there, and only
+# the main run of a model may open it.
+TRIAL_STOPS_BEFORE = "validate"
+
 # Statuses that satisfy a dependency.
 SATISFIED = {"done", "skipped"}
 # Statuses a step can be invalidated from (it has produced, or is producing, output).

@@ -145,6 +145,26 @@
 - Demo `loss_forecast`: a quarterly net charge-off rate on macro drivers that act through lags
   and changes (`cognos demo --task loss_forecast`).
 
+## Trial runs (v1.6, ADR-0017)
+- **Try a different decision**: from any developer gate a run has reached, make a trial run
+  (workbench button, `cognos trial`). It is a copy that waits at that gate; results, data and
+  the search cache before it come across, and the original run is not touched. The developer
+  writes what the trial is for.
+- **Stops before validation**: a trial run ends once its champion is chosen. It cannot open
+  the sealed holdout, seal a package or be signed off.
+- **Make it the main run** (`cognos promote`): the trial run goes on to validation; the run it
+  replaces becomes a trial run and keeps its results. A holdout opened for an earlier main
+  run is counted for the model.
+- **The model's record** (`cognos trials`, the "Runs of this model" section of the run
+  record): one line per run with what it changed, where it stands, its champion and test
+  result, and its own looks at the test sample; the total across runs.
+- **Counted at validation**: validation reports the runs of the model and the total use of
+  the test sample (a note when a sealed holdout exists, a finding when it does not), saves
+  `stages/validate/trials.json`, and the white paper lists "Alternatives tried".
+- **Deletion keeps the line**: a deleted trial run stays in the record and on the runs page.
+  The main run cannot be deleted while trial runs of it remain.
+- The export carries `MODEL_RECORD.json`; a sealed package names the trial runs.
+
 ## Human decisions
 - **Gate actions**: accept, edit (interview answers, exclusions, slate, the development plan,
   design answers, the candidate pool), override (champion, from the pool compared at outcomes
@@ -222,7 +242,7 @@
 ## CLI
 - `cognos ui | run [--interactive] [--provider] [--kind --intent --support --prior --prior-run] |
   intent-template | demo | status | gate | answer | retry | run-stage | providers | agents | init |
-  explain | report | list-runs | compare | export`.
+  explain | report | list-runs | compare | export | trial | trials | promote`.
 - Terminal gate review for `run --interactive` (the intake interview, accept / send back),
   auto-accept on non-tty stdin (never past a BLOCK).
 

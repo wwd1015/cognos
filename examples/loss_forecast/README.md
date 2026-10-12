@@ -19,6 +19,14 @@ cognos demo --task loss_forecast --interactive # the same data in the workbench:
 | Multi-factor selection | forward selection, one factor at a time, every step on record | the method (one, or several ranked together), the step criterion, the constraints |
 | Candidate pool | ranks and names every model evaluated; proposes a pool of different models | carries as many as they want to compare, from anything in the ranking; renames |
 | Champion | scores every pool member on the held-back quarters and under each scenario | accepts the recommendation or chooses another member |
+| A trial run | copies the run at the design gate, re-runs only what the changed plan changes, counts its looks at the test sample, and stops before validation | what to try ("rank the search on the test sample"), and whether to keep the main run or make the trial run the main run |
+
+Step 6 is a trial run ([ADR-0017](../../docs/adr/0017-trial-runs-a-decision-taken-differently.md)).
+The developer asks what the search would find if it ranked on the test sample. Re-opening the
+design gate would replace steps 2 to 5, so they make a trial run instead. In the captured run
+it finds nothing better and costs 228 looks at the test sample against the main run's 7. The
+developer deletes it. Its line stays in the model's record, validation reports 235 looks
+across the two runs, and the white paper lists it under "Alternatives tried".
 
 The synthetic series (`cognos.synth.make_loss_forecast_dataset`) is driven by the change in
 unemployment over a year (two quarters back), the credit spread (one quarter back) and

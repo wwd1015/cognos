@@ -73,9 +73,28 @@
   The test sample was the only out-of-sample evidence and it was used to choose: sealed holdout = False
 
 ==============================================================================
+  6. A TRIAL RUN — a decision taken differently, nothing lost and nothing hidden
+==============================================================================
+  The developer wonders: what if the search ranked models on the test sample itself?
+  Re-opening “Review the design” would replace steps 2 to 5. A trial run copies this
+  run and waits at that gate; this run is not touched.
+
+  run        what it tried                        champion     test rmse  test sample used
+  main run   the plan confirmed in step 1         OLS 3F-C        0.1046           7 time(s)
+  trial run  rank the search on the test sample   OLS 3F-C        0.1046         228 time(s)
+  Ranked on the test sample, the best pool member reaches 0.1046 on it. Finding it
+  took 228 looks at the test sample; the main run took 7.
+  The trial run ends here (completed; validation: pending). Only the main run goes to validation.
+
+  The developer keeps the main run and deletes the trial run. Its files go; its line stays:
+    <trial run> (trial run, from “Review the design”); to try: rank the search on the test sample; changed the plan; trial finished at the champion; champion OLS 3F-C, rmse 0.1046 on the out_of_time sample; test sample used 228 time(s); files deleted 2026-10-12 by the developer.
+  The model's record: 2 runs, the test sample used 235 times across them.
+
+==============================================================================
   VALIDATION — WARN
 ==============================================================================
   [LOW] No sealed holdout was reserved: the champion was chosen from 7 candidate(s) compared on the test sample, so its test result is also what it was chosen on.
+  [LOW] This model was developed in 2 runs: 1 other run(s) tried a decision differently (1 since deleted, kept on record). Across all of them the test sample was used 235 time(s), 7 in this run. No sealed holdout was reserved, so the champion's test result was reached with every one of those looks in view.
 
   Run directory: <workdir>/<run_id>
   Open it in the workbench:  cognos ui --runs-dir <workdir>

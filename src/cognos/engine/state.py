@@ -131,6 +131,30 @@ class Overrides(BaseModel):
     champion: str | None = None  # the pool member chosen at gate_champion
 
 
+class Lineage(BaseModel):
+    """Where a run stands among the runs of one model (ADR-0017). A model has one main run
+    and any number of trial runs: copies made at a developer gate to decide it differently
+    without losing the result that was there. Only the main run goes to validation."""
+
+    model: str  # the first run of this model: the key of the model's record (trials.py)
+    trial: bool = True  # False on the main run
+    parent: str | None = None  # the run this one was copied from
+    gate: str | None = None  # the decision it was made to take differently
+    note: str = ""  # what the developer set out to try
+    by: str = ""
+    at: str = Field(default_factory=utcnow)
+    # The overrides and the test-sample counts copied from the parent: what this run changed
+    # and how often it looked itself are read against them.
+    base: dict[str, Any] = Field(default_factory=dict)
+    inherited: dict[str, int] = Field(default_factory=dict)
+    # Stamps of a change of role: a trial run made the main run, a main run replaced by one.
+    promoted_at: str = ""
+    promoted_by: str = ""
+    promoted_note: str = ""
+    replaced_at: str = ""
+    replaced_by: str = ""  # the run that became the main run
+
+
 class RunState(BaseModel):
     run_id: str
     project: str = ""
@@ -148,6 +172,7 @@ class RunState(BaseModel):
     gaps: list[Gap] = Field(default_factory=list)
     overrides: Overrides = Field(default_factory=Overrides)
     package: PackageSeal | None = None  # set only by an approver's approve
+    lineage: Lineage | None = None  # set once the model has a trial run (trials.py)
     loops: dict[str, int] = Field(default_factory=dict)
     spend_usd: float = 0.0
 
@@ -213,6 +238,10 @@ class RunState(BaseModel):
             from .process import supersede
             supersede(self, why)
         return marked
+
+    @property
+    def is_trial(self) -> bool:
+        return self.lineage is not None and self.lineage.trial
 
     # --- challenges & gaps ----------------------------------------------------------
     def open_challenges(self, stage: str) -> list[Challenge]:

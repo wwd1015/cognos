@@ -231,6 +231,35 @@ class ValidateStage(Stage):
                            "or seal a holdout in the plan when the data can spare the rows.",
             ))
 
+        # --- the other runs of this model (ADR-0017) -------------------------------
+        # A developer may try a decision differently in a trial run. Each one looked at the
+        # test sample, so the count that matters is the model's, not this run's alone.
+        from .. import trials
+
+        tried = trials.summary(trials.record_for(ctx.run_dir), ctx.run_id)
+        if tried["n_other_runs"]:
+            n_other, n_gone = tried["n_other_runs"], tried["n_deleted"]
+            res.add_finding(Finding(
+                id="trial-runs",
+                severity=Severity.INFO if n_holdout > 0 else Severity.LOW, category="overfitting",
+                message=f"This model was developed in {tried['n_runs']} runs: {n_other} other "
+                        f"run(s) tried a decision differently"
+                        + (f" ({n_gone} since deleted, kept on record)" if n_gone else "")
+                        + f". Across all of them the test sample was used "
+                        f"{tried['test_evaluations']} time(s), "
+                        f"{tried['test_evaluations_this_run']} in this run."
+                        + (" No trial run can open the sealed holdout, so nobody chose on "
+                           "the holdout result." if n_holdout > 0 else
+                           " No sealed holdout was reserved, so the champion's test result was "
+                           "reached with every one of those looks in view."),
+                confidence=0.95,
+                suggestion="Read the trial runs in the model's record (stages/validate/"
+                           "trials.json): what each changed and what it found."
+                           + ("" if n_holdout > 0 else
+                              " Treat the test metric as the best of several tries; confirm on "
+                              "fresh out-of-time data."),
+            ))
+
         # --- rubric aggregation --------------------------------------------------
         overall_score = sum(rubric.values()) / len(rubric) if rubric else 1.0
 
@@ -251,8 +280,8 @@ class ValidateStage(Stage):
             verdict = Verdict.BLOCK
         elif has_high:
             verdict = Verdict.FAIL
-        elif res.findings:
-            verdict = Verdict.WARN
+        elif any(f.severity != Severity.INFO for f in res.findings):
+            verdict = Verdict.WARN  # a note for the record (INFO) does not lower the verdict
         else:
             verdict = Verdict.PASS
         res.verdict = verdict
@@ -262,8 +291,8 @@ class ValidateStage(Stage):
         if n_eval > 1:
             res.add_finding(Finding(
                 id="holdout-reuse", severity=Severity.LOW, category="overfitting",
-                message=f"The sealed holdout has been scored for {n_eval} different champions in "
-                        "this run; a choice revised after seeing it is no longer a single-shot "
+                message=f"The sealed holdout has been scored for {n_eval} different champions of "
+                        "this model; a choice revised after seeing it is no longer a single-shot "
                         "estimate.",
                 confidence=0.9,
                 suggestion="Report the holdout metric as indicative; confirm on fresh out-of-time data.",
@@ -349,6 +378,8 @@ class ValidateStage(Stage):
             "pool_size": len(model.get("pool") or []),
             "candidates_compared_on_test": n_compared,
             "test_evaluations": backtest.get("test_evaluations"),
+            "runs_of_this_model": tried["n_runs"],
+            "test_evaluations_model": tried["test_evaluations"],
             "sealed_holdout": n_holdout > 0,
             "plan": {k: (model.get("plan") or {}).get(k) for k in ("evaluation", "selection")},
             "champion_source": model.get("champion_source"),
@@ -386,6 +417,8 @@ class ValidateStage(Stage):
             "champion_id": model.get("champion_id"),
             "holdout_metric": holdout, "holdout_metric_name": metric,
             "holdout_scored": holdout_scored, "holdout_evaluations": n_eval,
+            # The runs of this model as they stood when it was validated: one line each.
+            "trials": tried,
         }
         payload["routed_findings"] = routed
         payload["analysis_code"] = [{k: c[k] for k in ("id", "sha256", "ran", "reproduced", "note")}
@@ -396,6 +429,8 @@ class ValidateStage(Stage):
 
         ref = ctx.save_json("stages/validate/validation.json", payload)
         res.add_artifact(ref)
+        if tried["n_other_runs"]:
+            res.add_artifact(ctx.save_json("stages/validate/trials.json", tried))
         res.payload = payload
         res.metrics = {
             "overall_score": round(overall_score, 4),
@@ -414,12 +449,16 @@ class ValidateStage(Stage):
         """Score the champion on the sealed holdout. Returns the metric (None when the plan
         sealed nothing) and the champions scored on it so far in this run, this one included:
         every different champion the holdout has been opened for is on record."""
+        from .. import trials
         from ..datautil import coerce_target
         from ..modeling.metrics import score
         from ..runtime.score import score_frame
 
         prev = ctx.get("validate")
         scored = list(((prev.payload or {}).get("holdout_scored") or []) if prev else [])
+        # ... and for a run that was the main run of this model before this one (a trial run
+        # made the main run does not get a fresh holdout).
+        scored += [c for c in trials.record_for(ctx.run_dir)["holdout_scored"] if c not in scored]
         path = ctx.run_dir / "data/holdout.parquet"
         cfg = ctx.config
         if not path.exists() or not model.get("scorer_path"):

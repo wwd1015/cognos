@@ -560,6 +560,11 @@ def _cmd_delete_run(args) -> int:
               f"{r['size_bytes'] / 1e6:.1f} MB{signed}")
     print("This removes each run's results, documents, decisions and audit log for good. "
           "Export first (cognos export <run_id>) to keep a copy.")
+    if any(r.get("keeps_line") for r in rows):
+        print("A run of a model with trial runs keeps one line in the model's record.")
+    for r in rows:
+        if r["blocked"]:
+            print(f"Cannot be deleted now: {r['run_id']} ({r['blocked']}).")
     if not args.yes and input(f"Delete {len(rows)} run(s)? Type 'delete' to confirm: ") != "delete":
         print("Nothing deleted.")
         return 1
@@ -569,6 +574,51 @@ def _cmd_delete_run(args) -> int:
         print(exc)
         return 1
     print(f"Deleted {len(rows)} run(s).")
+    return 0
+
+
+def _cmd_trial(args) -> int:
+    from . import service
+    from .engine import GateError
+
+    try:
+        new_id = service.trial_run(args.run, args.gate, args.note, root=args.runs_dir)
+    except (GateError, FileNotFoundError) as exc:
+        print(exc)
+        return 1
+    print(f"Trial run {new_id}: a copy of {args.run} waiting at {args.gate}.")
+    print("Decide the gate differently (cognos gate ...). It stops before validation; "
+          f"`cognos promote --run {new_id}` makes it the main run.")
+    return 0
+
+
+def _cmd_promote(args) -> int:
+    from . import service
+    from .engine import GateError
+
+    try:
+        service.promote_trial(args.run, args.reason, root=args.runs_dir, background=False)
+    except (GateError, FileNotFoundError) as exc:
+        print(exc)
+        return 1
+    print(f"{args.run} is now the main run of its model. The run it replaced stays on record.")
+    return _drive(args.run, args.runs_dir, interactive=False)
+
+
+def _cmd_trials(args) -> int:
+    from . import service, trials
+
+    try:
+        rec = service.trial_record(args.run, args.runs_dir)
+    except FileNotFoundError as exc:
+        print(exc)
+        return 1
+    for r in rec["lines"]:
+        print("  " + trials.describe(r))
+    opened = len(rec["holdout_scored"])
+    print(f"{rec['n_runs']} run(s) of this model; the test sample was used "
+          f"{rec['test_evaluations']} time(s) across them; sealed holdout "
+          + (f"scored for {opened} champion(s)." if opened else "not opened."))
     return 0
 
 
@@ -746,6 +796,28 @@ def build_parser() -> argparse.ArgumentParser:
                     help="who is acting; omit to act as the seat that owns the gate")
     runs(pg)
     pg.set_defaults(func=_cmd_gate)
+
+    ptr = sub.add_parser("trial", help="copy a run at a developer gate to decide it "
+                                       "differently (the run itself is not changed)")
+    ptr.add_argument("--run", required=True)
+    ptr.add_argument("--gate", required=True,
+                     choices=["gate_intent", "gate_data", "gate_design", "gate_candidates",
+                              "gate_champion"])
+    ptr.add_argument("--note", required=True, help="what the trial run is for (kept on record)")
+    runs(ptr)
+    ptr.set_defaults(func=_cmd_trial)
+
+    ppm = sub.add_parser("promote", help="make a trial run the main run of its model")
+    ppm.add_argument("--run", required=True)
+    ppm.add_argument("--reason", default="")
+    runs(ppm)
+    ppm.set_defaults(func=_cmd_promote)
+
+    ptl = sub.add_parser("trials", help="list every run of a run's model, deleted trial runs "
+                                        "included")
+    ptl.add_argument("--run", required=True)
+    runs(ptl)
+    ptl.set_defaults(func=_cmd_trials)
 
     pa = sub.add_parser("answer", help="answer (or accept as an assumption) a sponsor question")
     pa.add_argument("--run", required=True)

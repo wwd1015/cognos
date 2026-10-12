@@ -4,7 +4,7 @@ title: Methodology
 description: Search procedure and statistical battery.
 tags:
 - method
-timestamp: '2026-10-11T21:25:44.453029+00:00'
+timestamp: '2026-10-12T23:43:15.499002+00:00'
 ---
 
 # Methodology
@@ -61,18 +61,25 @@ Shortlist (5): debt_to_ebitda, gdp_growth, interest_coverage, current_ratio, ope
 
 | candidate | specification | factors | development | gini | ks | expected_calibration_error | psi | champion |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| cc59646 | logit(3f;random_state=42) | debt_to_ebitda, interest_coverage, current_ratio | 0.7497 | 0.5423 | 0.4119 | 0.0332 | 0.0219 | yes |
+| cc59646 | logit(3f;random_state=42) | debt_to_ebitda, interest_coverage, current_ratio | 0.7497 | 0.5423 | 0.4119 | 0.0332 | 0.0219 |  |
 | c5482c3 | probit(3f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage | 0.7781 | 0.4815 | 0.4268 | 0.0136 | 0.1811 |  |
-| c46d7e4 | probit(4f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7899 | 0.4428 | 0.3949 | 0.0175 | 0.1390 |  |
+| c46d7e4 | probit(4f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7899 | 0.4428 | 0.3949 | 0.0175 | 0.1390 | yes |
 | cfc227e | logit(4f;random_state=42) | debt_to_ebitda, gdp_growth, interest_coverage, current_ratio | 0.7895 | 0.4338 | 0.3999 | 0.0173 | 0.1441 |  |
 | c0cd73f | probit(2f;random_state=42) | debt_to_ebitda, gdp_growth | 0.7450 | 0.3687 | 0.4579 | 0.0175 | 0.3028 |  |
 | cfde806 | logit(2f;random_state=42) | debt_to_ebitda, gdp_growth | 0.7445 | 0.3654 | 0.4579 | 0.0172 | 0.3206 |  |
 | ccb8810 | logit(3f;random_state=42) | debt_to_ebitda, gdp_growth, current_ratio | 0.7647 | 0.3607 | 0.4289 | 0.0169 | 0.2067 |  |
 
-Compared on the out of time sample (roc_auc first). Champion chosen by the engine: Logit 3F-C has the best roc_auc on the out of time sample among the 7 pool member(s); Probit 3F-A is next.
+Compared on the out of time sample (roc_auc first). Champion chosen by the human: Logit 3F-C has the best roc_auc on the out of time sample among the 7 pool member(s); Probit 3F-A is next.
 
 - **Candidates tried:** 33
 - **Hypothesis families considered:** logit, probit
+
+## Alternatives tried
+
+This model was developed in 2 runs. A developer may copy a run at a decision and take it differently in a *trial run* ({@code:src/cognos/trials.py#branch}); a trial run stops before validation, so it never opens the sealed holdout, and it stays on record when its files are deleted. Across all runs the test sample was used 14 time(s), 7 of them in the run documented here.
+
+- <first run> (trial run, the main run until 2026-10-12); waiting at “Choose the champion”; champion Logit 3F-C, roc_auc 0.7712 on the out_of_time sample; test sample used 7 time(s).
+- <run_id> (main run, from “Choose the champion”); to try: carry Probit 4F-A, the development leader; changed champion; the run validated here; champion Probit 4F-A, roc_auc 0.7214 on the out_of_time sample; test sample used 7 time(s).
 
 ## Statistical battery
 

@@ -23,7 +23,16 @@ from ..context import RunContext, new_run_id
 from ..fsutil import atomic_write
 from ..identity import stamp, whoami
 from . import events, gates, process
-from .graph import GATE_OF_STAGE, GATES, LABELS, STAGE_OF_GATE, STAGES, STEPS, descendants
+from .graph import (
+    GATE_OF_STAGE,
+    GATES,
+    LABELS,
+    STAGE_OF_GATE,
+    STAGES,
+    STEPS,
+    TRIAL_STOPS_BEFORE,
+    descendants,
+)
 from .state import Challenge, Gap, GateDecision, RunState, run_lock
 
 _SEVERITY_ORDER = {
@@ -141,6 +150,8 @@ class Engine:
         for step in STEPS:
             if state.status_of(step) not in ("pending", "stale") or step in self._inflight:
                 continue
+            if step == TRIAL_STOPS_BEFORE and state.is_trial:
+                continue  # a trial run never opens the sealed holdout (ADR-0017)
             if step in GATES:
                 if self._gate_ready(state, step):
                     out.append(step)
@@ -491,6 +502,9 @@ class Engine:
     def run_stage(self, stage: str) -> StageResult:
         with self.lock:
             state = self.state
+            if state.is_trial and STEPS.index(stage) >= STEPS.index(TRIAL_STOPS_BEFORE):
+                raise gates.GateError(
+                    f"{LABELS[stage]} does not run on a trial run: make it the main run first.")
             open_ids = [c.id for c in state.open_challenges(stage)]
             state.set_step(stage, "running", by=stamp())
             self._save(state)
@@ -514,10 +528,16 @@ class Engine:
             state.status = "blocked"
             blocked = next(s for s in STEPS if statuses[s] == "blocked")
             state.halted_reason = f"{blocked} BLOCKed"
-        elif vals <= {"done", "skipped"}:
+        elif vals <= {"done", "skipped"} or (state.is_trial and self._trial_ended(statuses)):
             state.status = "completed"
         else:
             state.status = "running" if vals & {"done"} else "created"
+
+    @staticmethod
+    def _trial_ended(statuses: dict[str, str]) -> bool:
+        """A trial run is finished once every step before validation is settled."""
+        before = STEPS[:STEPS.index(TRIAL_STOPS_BEFORE)]
+        return all(statuses[s] in ("done", "skipped") for s in before)
 
     def summary(self) -> RunSummary:
         state = self.state

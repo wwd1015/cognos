@@ -26,6 +26,18 @@ versioning is SemVer.
   needs re-recording, and its replay test is skipped until then.
 
 ### Added
+- **Trial runs** ([ADR-0017](docs/adr/0017-trial-runs-a-decision-taken-differently.md)): copy
+  a run at a developer gate and decide it differently without losing the result that was
+  there (`cognos trial`, "Try a different decision" in the workbench). A trial run stops
+  before validation and cannot open the sealed holdout; `cognos promote` makes it the main
+  run. Looks at the test sample are counted across every run of a model and reported at
+  validation (`trial-runs`, `stages/validate/trials.json`) and in the white paper
+  ("Alternatives tried"). A deleted trial run keeps one line in the model's record
+  (`<runs>/_models/`, `cognos trials`). New: `RunState.lineage`, `cognos.trials`,
+  `service.trial_run` / `promote_trial` / `trial_record`, `MODEL_RECORD.json` in exports.
+- Validation: a finding of severity INFO is a note for the record and no longer lowers a
+  PASS to WARN.
+- `service.delete_runs` refuses the main run of a model while trial runs of it remain.
 - **Development plan** (ADR-0016): the split, the validation scheme, the ranking, the factor
   screen and the selection methods are recommended from the shape of the data and the intent
   (`modeling/plan.py`), proposed by the Design Lead and confirmed or edited at the design gate.

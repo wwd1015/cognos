@@ -75,11 +75,30 @@
   The test sample has been looked at 7 times. Sealed holdout kept: True (not opened yet)
 
 ==============================================================================
-  6. THE SEALED HOLDOUT — opened once, at validation (FAIL)
+  6. A TRIAL RUN — the champion decided differently, the first choice kept
 ==============================================================================
-  Champion cc59646: validation AUC 0.7497 → test AUC 0.7712 → sealed-holdout AUC 0.6145
-  Holdout scored for: ['cc59646'] (1 evaluation)
-  [HIGH] The validation roc_auc (0.7497) and the sealed-holdout roc_auc (0.6145) differ by 18% (> 15%): the development estimate is likely over-optimistic.
+  The developer would rather carry Probit 4F-A, the leader on the development sample.
+  They do not overwrite the recommendation: a trial run copies this run and waits at
+  “Choose the champion”. Nothing before that gate is run again.
+
+  run        champion         test AUC  test sample used   holdout
+  main run   Logit 3F-C         0.7712           7 time(s)   not opened
+  trial run  Probit 4F-A        0.7214           7 time(s)   not opened
+  The trial run ends here (completed; validation: pending): a trial run cannot open the sealed holdout.
+  Across both runs the test sample has been used 14 times.
+
+  The developer makes the trial run the main run. The model's record now reads:
+    <first run> (trial run, the main run until 2026-10-12); waiting at “Choose the champion”; champion Logit 3F-C, roc_auc 0.7712 on the out_of_time sample; test sample used 7 time(s).
+    <run_id> (main run, from “Choose the champion”); to try: carry Probit 4F-A, the development leader; changed champion; waiting at “Review validation”; champion Probit 4F-A, roc_auc 0.7214 on the out_of_time sample; test sample used 7 time(s).
+
+==============================================================================
+  7. THE SEALED HOLDOUT — opened once, at validation (FAIL)
+==============================================================================
+  Champion c46d7e4: validation AUC 0.7899 → test AUC 0.7214 → sealed-holdout AUC 0.6353
+  Holdout scored for: ['c46d7e4'] (1 evaluation)
+  [HIGH] The validation roc_auc (0.7899) and the sealed-holdout roc_auc (0.6353) differ by 20% (> 15%): the development estimate is likely over-optimistic.
+  [INFO] This model was developed in 2 runs: 1 other run(s) tried a decision differently. Across all of them the test sample was used 14 time(s), 7 in this run. No trial run can open the sealed holdout, so nobody chose on the holdout result.
+  The run it replaced (<first run>) is still there to read: waiting at “Choose the champion”.
 
   Run directory: <workdir>/runs/<run_id>
   Open it in the workbench:  cognos ui --runs-dir <workdir>/runs

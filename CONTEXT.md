@@ -178,6 +178,21 @@ _Avoid_: "admissible set" (the earlier one-standard-error set a champion was pic
 The pool member in force: the developer's choice at the champion gate, else the Outcomes
 Analyst's recommendation. It exists only once outcomes analysis has compared the pool.
 
+**Run**:
+One development of one model. It stands at one place in the workflow at a time.
+
+**Main run / trial run**:
+A model has one *main run*, the one that goes to validation and sign-off. A *trial run* is a
+copy of a run made at a developer gate to decide that gate differently; it stops once its
+champion is chosen and never opens the sealed holdout. A trial run can be *made the main
+run*; the run it replaces becomes a trial run.
+_Avoid_: "branch", "fork", "shadow run", "duplicate" (a trial run is on the record, and it is
+not a second main run).
+
+**The model's record**:
+Every run of one model on one line each: what it tried, where it stands, what it found, how
+often it used the test sample. Deleted trial runs keep their line.
+
 **Seat**:
 Who may act on a gate. `developer`, `reviewer`, `approver`. The engine refuses a seat acting on
 another seat's gate. Express is the seat autonomous mode records; a person does not pick it.

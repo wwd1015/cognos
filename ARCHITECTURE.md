@@ -244,7 +244,17 @@ runs/<run_id>/
   stages/<stage>/result.json + artifacts (profile.json, hypotheses.json, design_brief.md,
                                           ledger.tsv/json, search_cache.joblib, diagnostics.json, …)
   stages/<stage>/result.prev.json          # the result a re-run replaced (kept for comparison)
+  stages/validate/trials.json              # the runs of this model as validation read them
+
+runs/_models/<model>.json                  # a model with trial runs: its events (made, made the
+                                           # main run, deleted) and the lines of deleted runs
 ```
+
+`trials.py` copies a run into a trial run at a developer gate, makes a trial run the main
+run, and reads the model's record: one line per run, computed from each run's own state and
+results, plus the kept lines of deleted runs. `state.lineage` says which model a run belongs
+to and whether it is the main run; the engine reads only that, to stop a trial run before
+`validate`.
 
 Three mechanical readers sit beside the engine. `engine/process.py` maps each gate to a seat
 (developer, reviewer, approver), refuses a seat on another seat's gate, and seals `packages/vN.json`
@@ -294,6 +304,11 @@ enforces a per-call time limit and a per-run spend budget. Provider resolution:
   `factors.py`, `selection.py`). The model stage ends on a pool of candidates; outcomes analysis
   compares them on the test sample and under scenarios, and the champion is chosen there. A
   sealed holdout, when the data can spare one, is scored once at validation, after the choice.
+- **Trial runs** ([ADR-0017](docs/adr/0017-trial-runs-a-decision-taken-differently.md)): a
+  developer decision can be taken differently in a copy of the run (`trials.py`). A model has
+  one main run; a trial run stops before validation, so it cannot open the holdout. Looks at
+  the test sample are summed over every run of the model, and a deleted run keeps its line
+  in the model's record.
 - **Primary domain is commercial** model development under SR 11-7
   ([ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md)). Fair-lending scans
   are an optional, off-by-default module (`compliance.fair_lending: false`) — out of scope for a

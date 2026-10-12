@@ -130,6 +130,6 @@ def test_delete_refuses_a_run_that_is_working(tmp_path, monkeypatch):
     cfg = service.demo_config("regression", root, n=150, search_budget=4)
     run_id = service.create_run(cfg, mode="autonomous", provider="heuristic", root=root)
     monkeypatch.setattr(service, "is_busy", lambda *a, **k: True)
-    with pytest.raises(RuntimeError, match="still running"):
+    with pytest.raises(RuntimeError, match="a step is running"):
         service.delete_runs([run_id], root)
     assert (root / run_id).exists()

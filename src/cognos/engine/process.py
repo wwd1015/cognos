@@ -114,7 +114,13 @@ def material(config: Any, state: RunState, results: dict[str, Any]) -> dict[str,
         res = results.get(stage)
         return res.verdict.value if res is not None else None
 
+    trials = validate.get("trials") or {}
+    tried = ({"trial_runs": sorted(r["run_id"] for r in trials.get("lines") or []
+                                   if r["run_id"] != state.run_id),
+              "test_evaluations_model": trials.get("test_evaluations")}
+             if trials.get("n_other_runs") else {})
     return {
+        **tried,
         "design": effective_design(config, state),
         "exclude_columns": sorted(state.overrides.exclude_columns),
         "slate": state.overrides.slate,
@@ -191,6 +197,10 @@ def next_action(state: RunState) -> dict[str, str]:
             who = f" — waiting for the {seat_label(seat)}" if seat else ""
             return {"kind": "decision", "step": step, "seat": seat,
                     "text": f"{LABELS.get(step, step)}{who}."}
+    if state.is_trial and state.status == "completed":
+        return {"kind": "trial_end", "step": "", "seat": "developer",
+                "text": ("This trial run ends here: it does not go to validation. Compare it "
+                         "with the main run, then make it the main run or leave it on record.")}
     if state.package is not None and state.package.status == "sealed" and state.status == "approved":
         prep = " Express prepared the analysis." if state.package.preparation == "express" else ""
         return {"kind": "sealed", "step": "gate_signoff", "seat": "approver",
@@ -240,6 +250,20 @@ def journal(state: RunState, results: dict[str, Any]) -> list[dict[str, str]]:
                      else decision.seat or decision.actor),
             "what": what,
         })
+    lin = state.lineage
+    if lin is not None and lin.parent:
+        what = (f"Made as a trial run of {lin.parent}, to decide "
+                f"“{LABELS.get(lin.gate or '', lin.gate)}” differently")
+        rows.append({"at": lin.at, "who": "person", "name": f"{lin.by} (developer)",
+                     "what": what + (f" — {lin.note}" if lin.note else "")})
+    if lin is not None and lin.promoted_at:
+        rows.append({"at": lin.promoted_at, "who": "person",
+                     "name": f"{lin.promoted_by} (developer)",
+                     "what": "Made the main run of the model"
+                             + (f" — {lin.promoted_note}" if lin.promoted_note else "")})
+    if lin is not None and lin.replaced_at:
+        rows.append({"at": lin.replaced_at, "who": "system", "name": "engine",
+                     "what": f"No longer the main run: {lin.replaced_by} was made the main run"})
     if state.package is not None:
         pkg = state.package
         what = f"Sealed package v{pkg.version}"

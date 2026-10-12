@@ -200,6 +200,10 @@ cognos status --run <run_id>                 # steps, questions, challenges
 cognos compare <run_a> <run_b>               # what was decided differently, and what it changed
 cognos export <run_id>                       # one zip: documents, results, decisions, audit (never the data)
 cognos delete-run <run_id> [<run_id> ...]    # remove runs for good; shows what is lost and asks first
+cognos trial --run <run_id> --gate gate_design --note "best subset instead of forward"
+                                             # a trial run: a copy that waits at that gate
+cognos trials --run <run_id>                 # every run of the model, deleted trial runs included
+cognos promote --run <trial_run_id>          # make a trial run the main run; it goes on to validation
 cognos gate gate_design --run <run_id> --action edit --payload '{"plan": {"selection": {"methods": ["forward", "best_subset"]}}}'
 cognos gate gate_candidates --run <run_id> --action edit --payload '{"pool": ["c1a2b3c", "c4d5e6f"]}' --reason "..."
 cognos gate gate_champion --run <run_id> --action override --payload '{"champion": "c4d5e6f"}' --reason "..."
@@ -250,6 +254,22 @@ every question, challenge and decision) and the agent calls, where every call's 
 slice and raw output can be inspected. Light and
 dark themes; all state is on disk, so a refresh or restart loses nothing.
 
+### Trying a decision differently
+
+"Try a different decision" on a run makes a **trial run**: a copy that waits at the gate you
+pick, with everything before it already done. Decide the gate another way and compare the two
+runs side by side; the run you came from is not changed
+([ADR-0017](docs/adr/0017-trial-runs-a-decision-taken-differently.md)). Three rules keep this
+from becoming a quiet best-of-many:
+
+- a trial run stops once its champion is chosen. Only the main run of a model goes to
+  validation, so a trial run cannot open the sealed holdout. "Make this the main run" carries
+  a trial run forward, and the run it replaces stays on record;
+- every look at the test sample is counted for the model, across all of its runs. Validation
+  and the white paper report the total;
+- deleting a trial run removes its files and keeps its line: what it tried, how far it went,
+  what it found.
+
 ### Working as a team without a server
 
 Each person runs the workbench locally against one shared network folder:
@@ -276,6 +296,9 @@ are chosen. Use a real network share, not a syncing folder
   writer's prose is rendered from placeholders.
 - **Frozen substrate.** Metric definitions and the sealed holdout are not agent-editable; the
   modeler chooses before the holdout is scored, and every holdout evaluation is counted.
+- **Alternatives are on the record.** A decision can be tried another way in a trial run. It
+  cannot reach the holdout, its looks at the test sample count for the model, and its line
+  survives deletion.
 - **Independent challenge.** The validator's context never contains the modeler's rationale; its
   high findings loop back to the responsible stage (bounded) and the rest reach you.
 - **BLOCK is load-bearing.** Only the engine BLOCKs (confirmed leakage, stale docs↔code references);
@@ -307,7 +330,7 @@ src/cognos/
   cli.py  config.py  context.py  artifacts.py  orchestrator.py (compat)  okf.py  synth.py
   integrations/  impact_adapter, autoforge_loop
   runtime/       deployment scorer (IMPACT derived-field entry point)
-projects/  examples/  evals/  tests/  docs/adr/ (0001–0016)  docs/templates/  CONTEXT.md (glossary)
+projects/  examples/  evals/  tests/  docs/adr/ (0001–0017)  docs/templates/  CONTEXT.md (glossary)
 ```
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`FEATURES.md`](FEATURES.md), [`CONTEXT.md`](CONTEXT.md),
