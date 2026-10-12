@@ -196,7 +196,8 @@ def runs_page() -> Any:
                        html.Div(id="runs-tools", children=runs_tools())],
                       justify="space-between", align="center", mb="xs", wrap="nowrap"),
             html.Div("A run is one development of one model, and it stands at one place in the "
-                     "workflow at a time. Runs of the same model are listed together.",
+                     "workflow at a time. A model has one main run; trial runs that try a "
+                     "decision differently are listed under it.",
                      className="ledger-desc"),
             html.Div(id="runs-table", children=runs_table()),
         ], mt="xl"),
@@ -358,43 +359,55 @@ def runs_table() -> Any:
                          html.Div("Start a run with “New run”: upload a business intent document, "
                                   "or try a synthetic demo.", className="ledger-desc")],
                         style={"padding": "28px 0"})
-    # A run is one development of one model, and it is at one place at a time. Several runs
-    # of the same model (a re-start, an update, a comparison) are listed together under the
-    # model's name, each numbered and saying where it stands.
-    groups: dict[str, list[dict]] = {}
+    # A model has one main run; a trial run tries one of its decisions differently and is
+    # listed under it. Runs are named for that role, not numbered: a number says nothing
+    # about which run counts. Two runs started separately from the same profile are two
+    # developments, each with its own main run.
+    projects: dict[str, dict[str, list[dict]]] = {}
     for r in rows:
-        groups.setdefault(r["project"], []).append(r)
+        projects.setdefault(r["project"], {}).setdefault(r["model"], []).append(r)
     body = []
-    for project, runs in groups.items():
-        oldest_first = sorted(runs, key=lambda r: r["run_id"])
-        number = {r["run_id"]: i for i, r in enumerate(oldest_first, 1)}
-        for i, r in enumerate(runs):
-            label = f"Run {number[r['run_id']]}" + (f" of {len(runs)}" if len(runs) > 1 else "")
-            link = (dcc.Link(label, href=f"/run/{r['run_id']}",
-                             style={"fontWeight": 600, "color": "var(--ink)"})
-                    if not r["legacy"] else dmc.Text(label, c="dimmed", size="sm"))
-            model = (dmc.Stack([dmc.Text(project, size="sm", fw=650),
-                                dmc.Text(f"{len(runs)} runs of this model", size="xs", c="dimmed")
-                                if len(runs) > 1 else None], gap=0)
-                     if i == 0 else dmc.Text("same model", size="xs", c="dimmed"))
-            role = run_role(r)
-            body.append([
-                model,
-                dmc.Stack([link, dmc.Text(r["run_id"], size="xs", ff="monospace", c="dimmed"),
-                           dmc.Text(role, size="xs", c="dimmed") if role else None],
-                          gap=0),
-                dmc.Group([run_badge(r["status"], "sm"),
-                           dmc.Text(where_it_stands(r), size="sm")], gap="xs", wrap="nowrap"),
-                dmc.Text(r["mode"] + (" · update" if r.get("kind") == "update" else ""), size="sm"),
-                dmc.Text(r["provider"], size="xs", ff="monospace"),
-                dmc.Text(r["champion"] or "—", size="xs", ff="monospace"),
-                dmc.Text(f"${r['spend_usd']:.2f}" if r["spend_usd"] else "—", size="xs",
-                         ff="monospace"),
-                dmc.Text((r["updated_at"] or "")[:16].replace("T", " "), size="xs", ff="monospace",
-                         c="dimmed"),
-            ])
-        # A deleted trial run keeps its line: its files are gone, the fact that it ran is not.
-        for model_id in dict.fromkeys(r["model"] for r in runs if r.get("role")):
+    for project, models in projects.items():
+        for m, (model_id, runs) in enumerate(models.items()):
+            # the main run first, then its trial runs in the order they were made
+            runs = sorted(runs, key=lambda r: (r.get("role") == "trial", r["run_id"]))
+            trials_n = sum(1 for r in runs if r.get("role") == "trial")
+            for i, r in enumerate(runs):
+                label = "Trial run" if r.get("role") == "trial" else "Main run"
+                link = (dcc.Link(label, href=f"/run/{r['run_id']}",
+                                 style={"fontWeight": 600, "color": "var(--ink)"})
+                        if not r["legacy"] else dmc.Text(label, c="dimmed", size="sm"))
+                if i == 0 and m == 0:
+                    note = (f"{len(models)} separate developments" if len(models) > 1 else
+                            f"{trials_n} trial run{'s' if trials_n != 1 else ''}" if trials_n
+                            else "")
+                    model = dmc.Stack([dmc.Text(project, size="sm", fw=650),
+                                       dmc.Text(note, size="xs", c="dimmed") if note else None],
+                                      gap=0)
+                elif i == 0:
+                    model = dmc.Text("same profile, started separately", size="xs", c="dimmed")
+                else:
+                    model = dmc.Text("same model", size="xs", c="dimmed")
+                role = run_role(r)
+                body.append([
+                    model,
+                    dmc.Stack([link,
+                               dmc.Text(r["run_id"], size="xs", ff="monospace", c="dimmed"),
+                               dmc.Text(role, size="xs", c="dimmed") if role else None], gap=0),
+                    dmc.Group([run_badge(r["status"], "sm"),
+                               dmc.Text(where_it_stands(r), size="sm")], gap="xs", wrap="nowrap"),
+                    dmc.Text(r["mode"] + (" · update" if r.get("kind") == "update" else ""),
+                             size="sm"),
+                    dmc.Text(r["provider"], size="xs", ff="monospace"),
+                    dmc.Text(r["champion"] or "—", size="xs", ff="monospace"),
+                    dmc.Text(f"${r['spend_usd']:.2f}" if r["spend_usd"] else "—", size="xs",
+                             ff="monospace"),
+                    dmc.Text((r["updated_at"] or "")[:16].replace("T", " "), size="xs",
+                             ff="monospace", c="dimmed"),
+                ])
+            if not any(r.get("role") for r in runs):
+                continue
+            # A deleted trial run keeps its line: its files are gone, the fact that it ran is not.
             for gone in service.model_record(model_id)["lines"]:
                 if gone.get("deleted_at"):
                     body.append([
@@ -415,14 +428,14 @@ def runs_table() -> Any:
 
 
 def run_role(r: dict) -> str:
-    """A run's place among the runs of its model, once the model has a trial run."""
-    if r.get("role") == "main":
-        return "Main run"
-    if r.get("role") == "trial":
-        gate = r.get("trial_gate")
-        return ("Trial run" + (f" from “{LABELS.get(gate, gate)}”" if gate else "")
-                + (f": {r['trial_note']}" if r.get("trial_note") else ""))
-    return ""
+    """What a trial run is for, under its name (a main run needs no more than its name)."""
+    if r.get("role") != "trial":
+        return ""
+    gate = r.get("trial_gate")
+    if not gate:
+        return "was the main run before another run replaced it"
+    return (f"from “{LABELS.get(gate, gate)}”"
+            + (f": {r['trial_note']}" if r.get("trial_note") else ""))
 
 
 def where_it_stands(r: dict) -> str:
