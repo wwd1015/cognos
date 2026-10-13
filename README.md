@@ -241,7 +241,8 @@ update = service.create_run(cfg, engagement={          # a model update of that 
 
 ## The workbench
 
-`cognos ui` opens a Dash + Mantine app built for model developers: a runs list with a new-run drawer
+`cognos ui` opens a Dash + Mantine app built for model developers: a runs list (each model's
+main run with its trial runs under it) with a new-run drawer
 (new model or model update, demo presets or `projects/*.yaml`, upload of the intent document and
 the existing model's artifacts, a button to download the template, interactive or autonomous, agent
 backend), and a run workspace with the stage rail, each stage's engine evidence (the engagement

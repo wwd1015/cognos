@@ -61,4 +61,4 @@
 | h9 | lasso_logit | all | reduced_form_pd | candidate | 0.88 | Regularized linear (lasso_logit) using all features to control variance/collinearity. |
 | h10 | ridge_logit | all | reduced_form_pd | candidate | 0.85 | Regularized linear (ridge_logit) using all features to control variance/collinearity. |
 
-_Notes: 5 model families x feature strategies = 10 hypotheses. Strongest clean signals: debt_to_ebitda, interest_coverage, operating_margin, log_total_assets, unemployment_rate. Design Lead: Primary framework: reduced_form_pd. Ranked 10 engine-fittable specifications, interpretable families first when interpretability is required._
+_Notes: 5 model families x feature strategies = 10 hypotheses. Strongest clean signals: debt_to_ebitda, interest_coverage, operating_margin, log_total_assets, unemployment_rate. Plan: test: out of time 20%; validation: stratified kfold ×5; sealed holdout: 20%; rank by roc_auc (validation); selection: stepwise. Design Lead: Primary framework: reduced_form_pd. Ranked 10 engine-fittable specifications, interpretable families first when interpretability is required._

@@ -1,11 +1,12 @@
 === COGNOS RUN SUMMARY ===
-run_id: 20260930T024000Z-465ebd4
+run_id: 20261013T000155Z-38bd731
 project: corporate_migration_loss
 mode: autonomous
 final_verdict: WARN
-stages_run: explore ideate model backtest validate comply document review
-champion_metric: roc_auc=0.9378193755135703
-n_findings: 7
+stages_run: intake explore ideate model backtest validate comply document review
+champion_metric: roc_auc=0.9289450957274011
+n_findings: 8
+verdict.intake: PASS
 verdict.explore: WARN
 verdict.ideate: PASS
 verdict.model: PASS

@@ -212,7 +212,10 @@
 
 ## Workbench (`cognos ui`)
 - Dash + Mantine app for model developers; light and dark themes.
-- **Runs**: every run with status, what it is waiting on, backend, champion, spend; start a run from
+- **Runs**: every run with status, what it is waiting on, backend, champion, spend. Runs are
+  named by role, not numbered: each model has one "Main run" with its trial runs listed under
+  it, and a deleted trial run keeps a dimmed line. Runs started separately from one profile
+  are separate models, told apart by when they started; start a run from
   a synthetic demo preset or a project profile, as a new model or a model update (upload the
   intent document, background material and the existing model's artifacts; download the template),
   interactive or autonomous, with a chosen backend.

@@ -1,5 +1,11 @@
 # Live run — real Claude agents on the commercial PD demo
 
+> **This recording predates the candidate pool and trial runs** (ADR-0016, ADR-0017). It shows
+> the earlier workflow, in which the Modeler chose a champion from an admissible set before
+> outcomes analysis. The agents' contracts have changed since, so the recorded answers no
+> longer replay and the replay test is skipped. The recording is kept as a record of that
+> run; it needs re-recording with live agents to show the current workflow.
+
 A complete, unedited COGNOS v1.0 run in which **every recommendation came from a live LLM agent**
 (`claude -p`, model `opus`, via the local Claude Code CLI), recorded so it can be inspected and
 replayed offline.

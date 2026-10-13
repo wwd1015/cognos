@@ -1,7 +1,8 @@
 {
   "baseline": {
-    "mean_pd": 0.007029949940893023,
-    "expected_loss": 0.0028119799763572095
+    "mean_pd": 0.00796604917632043,
+    "mean": 0.00796604917632043,
+    "expected_loss": 0.0031864196705281723
   },
   "scenarios": [
     {
@@ -11,11 +12,13 @@
           "add": 3.0
         }
       },
-      "mean_pd": 0.009908771552227745,
-      "delta_pd": 0.0028788216113347217,
-      "expected_loss": 0.003963508620891098,
-      "delta_expected_loss": 0.0011515286445338887,
-      "worst_decile_mean_pd": 0.13438589738424006
+      "mean_pd": 0.00796604917632043,
+      "delta_pd": 0.0,
+      "mean": 0.00796604917632043,
+      "delta": 0.0,
+      "expected_loss": 0.0031864196705281723,
+      "delta_expected_loss": 0.0,
+      "worst_decile_mean_pd": 0.09902086636427192
     },
     {
       "name": "severely_adverse",
@@ -24,12 +27,14 @@
           "add": 6.0
         }
       },
-      "mean_pd": 0.013871167010676767,
-      "delta_pd": 0.006841217069783744,
-      "expected_loss": 0.0055484668042707075,
-      "delta_expected_loss": 0.002736486827913498,
-      "worst_decile_mean_pd": 0.16939994025372326
+      "mean_pd": 0.00796604917632043,
+      "delta_pd": 0.0,
+      "mean": 0.00796604917632043,
+      "delta": 0.0,
+      "expected_loss": 0.0031864196705281723,
+      "delta_expected_loss": 0.0,
+      "worst_decile_mean_pd": 0.09902086636427192
     }
   ],
-  "note": "EL as PD\u00d7LGD (lgd=0.4) per unit EAD (125069634618 total); deterministic re-scoring"
+  "note": "EL as PD\u00d7LGD (lgd=0.4) per unit EAD (122610860903 total); deterministic re-scoring"
 }

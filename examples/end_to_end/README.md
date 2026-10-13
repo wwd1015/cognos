@@ -10,12 +10,14 @@ python examples/end_to_end/run_demo.py
 
 It runs three scenarios:
 
-1. **Autonomous mode — commercial credit model.** The full 8-stage pipeline runs unattended:
-   `explore → ideate → model → backtest → validate → comply → document → review`. It searches a space
-   of statistical models with a ratchet (accept-if-better) loop, fits the single interpretable
-   champion with full-rank statistical inference, scores the sealed **out-of-time** holdout through the
-   IMPACT feature-table engine (built-in fallback if IMPACT is not installed), and runs **SR 11-7
-   outcomes analysis** — discrimination (Gini/KS), calibration, and population stability (PSI). It then
+1. **Autonomous mode — commercial credit model.** The full nine-stage pipeline runs unattended:
+   `intake → explore → ideate → model → backtest → validate → comply → document → review`. It
+   follows a development plan (samples, a single-factor screen, a selection method), ends the
+   search on a pool of candidates with full-rank statistical inference, compares the pool on the
+   **out-of-time** test sample through the IMPACT feature-table engine (built-in fallback if
+   IMPACT is not installed) and chooses the single interpretable champion there, with **SR 11-7
+   outcomes analysis** — discrimination (Gini/KS), calibration, and population stability (PSI).
+   Validation scores the sealed holdout once, after the choice. It then
    emits a non-gating model-risk **readiness report** and a white paper as an **OKF bundle** (Google
    Open Knowledge Format) with a Model Card, then verifies the docs match the deployment code.
 

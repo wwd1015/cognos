@@ -8,7 +8,7 @@ matrix. The industry answer is to license a long external agency history (S&P Cr
 obligor-year rating data) and let the matrix carry the long-run default experience, with obligor
 fundamentals adding discrimination within grade.
 
-One script walks that engagement through **all eight COGNOS stages** and shows the system reaching
+One script walks that engagement through **all nine COGNOS stages** and shows the system reaching
 each decision for auditable reasons — including the decision to reject the internal-only plan.
 
 ```bash
@@ -61,12 +61,12 @@ sponsor's call.
 
 ### 3. Full pipeline — matrix, term structure, benchmark, loss forecast, and the gates
 
-All eight stages run with the `migration:` block enabled. What the model stage produces:
+All nine stages run with the `migration:` block enabled. What the model stage produces:
 
 **The estimated matrix** (cohort method, estimated on the training partition only — the matrix is
-*fitted*, so it never sees the sealed holdout):
+*fitted*, so it never sees the test sample):
 
-- **NR adjustment**: 7.3% of transitions end in a withdrawn rating and are removed from the row
+- **NR adjustment**: 7.5% of transitions end in a withdrawn rating and are removed from the row
   denominator (the standard S&P/CreditPro treatment), reported rather than silently dropped;
 - **PAVA rank-ordering**: raw AAA/AA default cells are zero-event small-sample artifacts; the
   weighted pool-adjacent-violators step monotonizes the default column and the run record names
@@ -77,42 +77,44 @@ All eight stages run with the `migration:` block enabled. What the model stage p
 
 | Rating | Y1 | Y2 | Y3 |
 |---|---|---|---|
-| AAA | 0.05% | 0.19% | 0.38% |
-| BBB | 0.26% | 0.61% | 1.05% |
-| BB | 0.97% | 2.46% | 4.37% |
-| B | 5.46% | 12.19% | 18.84% |
-| CCC | 38.16% | 56.03% | 65.08% |
+| AAA | 0.07% | 0.25% | 0.48% |
+| BBB | 0.29% | 0.68% | 1.14% |
+| BB | 0.96% | 2.39% | 4.21% |
+| B | 4.80% | 11.00% | 17.24% |
+| CCC | 38.04% | 55.65% | 64.44% |
 
-**Champion vs. the pure-migration challenger benchmark** (sealed out-of-time holdout, 2015+):
+**Champion vs. the pure-migration challenger benchmark** (out-of-time test sample):
 
-- Pure migration PD (the matrix alone, `deployed: false`): holdout AUC **0.885** (Gini 0.770);
-- Hybrid probit champion (`migration_pd` + leverage, coverage, margin, size, sector, macro):
-  holdout AUC **0.893**, CV 0.938 — fundamentals add discrimination *within* grade, and the raw
-  rating is swapped out of the champion's features (the PD is an exact function of the rating;
-  keeping both would make the K-1 inference design perfectly collinear).
+- Pure migration PD (the matrix alone, `deployed: false`): test AUC **0.912** (Gini 0.825);
+- The search ends on a pool of six candidates. Compared out of time, a two-factor hybrid
+  probit (`migration_pd` plus one fundamental) is chosen as champion: test AUC **0.954**,
+  validation 0.930 for the pool's leader. Fundamentals add discrimination *within* grade,
+  and the raw rating is swapped out of the features (the PD is an exact function of the
+  rating; keeping both would make the K-1 inference design perfectly collinear).
 
 **The expected-loss forecast** (the purpose of the model — by rating band on the out-of-time book,
 LGD 40%, 3-year horizon, EAD-weighted):
 
 | | EAD share | cum PD | EL |
 |---|---|---|---|
-| BBB | 34.0% | 1.05% | 179m |
-| BB | 11.3% | 4.37% | 247m |
-| B | 5.7% | 18.84% | 533m |
-| **Total** | | | **1.012% of EAD** through-the-cycle |
+| BBB | 33.6% | 1.14% | 188m |
+| BB | 11.9% | 4.21% | 246m |
+| B | 5.7% | 17.24% | 483m |
+| **Total** | | | **1.033% of EAD** through-the-cycle |
 
-with the regime-conditioned matrices as the stress axis: **expansion 0.84% → recession 1.85%** of
+with the regime-conditioned matrices as the stress axis: **expansion 0.88% → recession 1.86%** of
 EAD — the baseline/downturn split a CECL or CCAR reviewer asks for first.
 
 **Then the rest of the pipeline does its independent jobs:**
 
-- **backtest**: SR 11-7 outcomes analysis on the out-of-time sample — Gini 0.785, KS 0.702, PSI
-  0.005 (stable); Vasicek portfolio loss distribution (EL 0.28%, VaR₀.₉₉₉ 2.25%, IRB K 2.10%);
-  macro stress re-scored through the deployed scorer (baseline mean PD 0.70% → severely adverse
-  1.39%);
+- **backtest**: the pool compared on the out-of-time sample and the champion chosen there —
+  Gini 0.908, KS 0.784, PSI 0.008 (stable); Vasicek portfolio loss distribution (EL 0.31%,
+  VaR₀.₉₉₉ 2.34%, IRB K 2.38%). The macro scenarios shock `unemployment_rate`, and the
+  two-factor champion chosen in this captured run does not carry it, so they leave its mean
+  PD at 0.80%: here the regime-conditioned matrices above are the stress axis;
 - **validate** (gate): independent effective challenge passes with rubric 1.00 — no leakage (the
-  declared outcome column `next_rating` never enters the features), CV↔holdout gap within bounds,
-  significant coefficients;
+  declared outcome column `next_rating` never enters the features), validation↔out-of-sample
+  gap within bounds, significant coefficients;
 - **comply**: the non-gating readiness report lists the human-only steps (sponsor sign-off,
   monitoring plan, agency-data licensing note belongs in the data-provenance section);
 - **document**: the white paper renders the matrix, benchmark, and loss forecast into the OKF
@@ -127,7 +129,7 @@ documented, which is the correct posture for a credit model.
 
 - The **rejection of the internal-only plan is machine-generated evidence** (EPV finding + short
   history), not analyst folklore — and it is the documented justification for buying external data.
-- The **matrix is treated as a fitted model**: train-only estimation, sealed-holdout benchmark,
+- The **matrix is treated as a fitted model**: train-only estimation, an out-of-time benchmark,
   rank-order diagnostics with a transparent PAVA adjustment, NR treatment reported. Nothing about
   the agency data is taken on faith.
 - The **champion is the regulated-industry answer**: a single interpretable GLM that *contains* the

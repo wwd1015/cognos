@@ -35,6 +35,12 @@ versioning is SemVer.
   ("Alternatives tried"). A deleted trial run keeps one line in the model's record
   (`<runs>/_models/`, `cognos trials`). New: `RunState.lineage`, `cognos.trials`,
   `service.trial_run` / `promote_trial` / `trial_record`, `MODEL_RECORD.json` in exports.
+- Runs page: runs are named by role ("Main run", "Trial run") instead of numbered, a model's
+  trial runs are listed under its main run, and each separately started run has its own
+  heading.
+- The captured output and READMEs of the older examples (`commercial_credit`,
+  `public_obligor_pd`, `rating_migration_loss`, `model_update`, `end_to_end`) are refreshed to
+  the candidate-pool workflow.
 - Validation: a finding of severity INFO is a note for the record and no longer lowers a
   PASS to WARN.
 - `service.delete_runs` refuses the main run of a model while trial runs of it remain.

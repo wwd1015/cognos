@@ -26,7 +26,7 @@ on a *public*-obligor book, see [`examples/public_obligor_pd/`](../public_obligo
 2. **Ideate triangulates with the MD.** Run before the sponsor answered the design brief, ideate
    emits **open design questions** instead of assuming: use case? horizon? default definition?
    segment? is the flagged field really in the information set? plus a low
-   events-per-variable warning (93 defaults, 13 candidate features). See
+   events-per-variable warning (93 defaults, 14 candidate features). See
    [`sample_output/open_questions_before_answers.md`](sample_output/open_questions_before_answers.md).
 
 3. **The MD answers.** The config drops the leak (`data.drop_columns`) and fills the `design:`
@@ -44,13 +44,18 @@ on a *public*-obligor book, see [`examples/public_obligor_pd/`](../public_obligo
 4. **The full pipeline** runs with the econometric and simulation layers unlocked by the MD's
    answers: `data.event_time_col` (the default quarter) adds the **discrete-time hazard families**
    (`hazard_logit`/`hazard_cloglog`, Shumway 2001 — obligor-period panel expansion, PD term
-   structure) to the slate alongside logit/**probit/cloglog**; the ratchet picks the champion on
-   evidence, with the labelled ensemble challenger stated as "the price of interpretability" →
-   **out-of-time SR 11-7 outcomes analysis** (Gini ≈ 0.48, KS ≈ 0.45, PSI ≈ 0.12 — the 2020
-   vintages moved the population, and the report says so) → **Vasicek one-factor portfolio
-   simulation** (EL/VaR/ES + closed-form Basel IRB capital) → **macro-scenario stress** (adverse
-   and severely-adverse unemployment/GDP shocks re-scored deterministically; baseline ≈ 3.1% mean
-   PD rising to ≈ 10.2% severely adverse) → independent validation → non-gating readiness report →
+   structure) to the slate alongside logit/**probit/cloglog**. The search screens 15 factors to
+   7, builds models stepwise and ends on a **pool of six candidates**, not a champion. The
+   pool is compared on the out-of-time sample and **the champion is chosen there** (a
+   five-factor ridge logit; validation AUC 0.83, out-of-time 0.75), with the labelled ensemble
+   challenger stated as "the price of interpretability" →
+   **out-of-time SR 11-7 outcomes analysis** (Gini ≈ 0.49, KS ≈ 0.46, PSI ≈ 0.09) → **Vasicek
+   one-factor portfolio simulation** (EL/VaR/ES + closed-form Basel IRB capital) →
+   **macro-scenario stress** (adverse and severely-adverse unemployment/GDP shocks re-scored
+   deterministically; baseline ≈ 4.2% mean PD rising to ≈ 10.3% severely adverse) →
+   independent validation, which opens the **sealed holdout** once (AUC 0.68) and **fails**
+   the model on the gap to the validation score: the synthetic portfolio drifts across
+   vintages, and the holdout is the only sample nobody chose on → non-gating readiness report →
    OKF white paper → docs↔code review. Captured verdicts:
    [`sample_output/run_summary.txt`](sample_output/run_summary.txt).
 
@@ -65,9 +70,9 @@ on a *public*-obligor book, see [`examples/public_obligor_pd/`](../public_obligo
 |---|---|
 | explore | post-outcome leakage patterns, event-support profiling (skill pack) |
 | ideate | data-structure assessment, framework selection (incl. hazard/structural unlock questions), MD triangulation, EPV-aware ranking |
-| model | traditional-regression menu (logit/probit/cloglog + discrete-time hazard with PD term structure), interpretable champion + challenger gap, economic sign checks |
-| backtest | OOT Gini/KS/calibration/PSI + Vasicek portfolio losses/IRB capital + macro stress deltas |
-| validate | independent effective challenge; leakage would have been the hard BLOCK |
+| model | single-factor screen, stepwise selection over the traditional-regression menu (logit/probit/cloglog + discrete-time hazard with PD term structure), a candidate pool, the challenger gap, economic sign checks |
+| backtest | the pool compared out of time and the champion chosen on it: Gini/KS/calibration/PSI + Vasicek portfolio losses/IRB capital + macro stress deltas |
+| validate | independent effective challenge; the sealed holdout scored once, after the choice; leakage would have been the hard BLOCK |
 | comply | readiness report with human-only steps; fair-lending scope per ADR-0004 |
 | document | design brief + rejected frameworks become "alternatives considered" |
 | review | docs↔code drift gate over the generated bundle |

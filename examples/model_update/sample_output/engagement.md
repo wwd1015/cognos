@@ -6,7 +6,7 @@ resource: stages/intake/brief.json
 tags:
 - intent
 - governance
-timestamp: '2026-10-11T15:25:18.719324+00:00'
+timestamp: '2026-10-13T00:02:19.170519+00:00'
 ---
 
 # Business Intent
@@ -45,7 +45,7 @@ Nothing.
 | --- | --- | --- |
 | update_request.md | intent | 1167bc94e733a593 |
 | score_v1.py | code | aac012eb0e04e7b8 |
-| prior_run_whitepaper.md | whitepaper | d64a6b46f7d14382 |
+| prior_run_whitepaper.md | whitepaper | f0a94e2957249224 |
 
 ## Model change record
 
@@ -60,7 +60,7 @@ Nothing.
 
 ## Existing model against this update
 
-The existing model is COGNOS run `20261011T152515Z-71ad02b`. Both columns are what each run recorded; the two runs keep separate test samples and sealed holdouts, so those figures are not measured on the same rows.
+The existing model is COGNOS run `20261013T000215Z-b494385`. Both columns are what each run recorded; the two runs keep separate test samples and sealed holdouts, so those figures are not measured on the same rows.
 
 |  | Existing model | This update |
 | --- | --- | --- |

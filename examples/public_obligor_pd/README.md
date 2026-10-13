@@ -25,7 +25,7 @@ Ideate runs *before* any capability is switched on. The design brief marks the h
 
 ### 2. Traditional GLM links — probit / cloglog with valid inference
 
-A probit champion (CV AUC 0.820) with statsmodels p-values from the full-rank K-1 design — signs
+A probit leads the search (validation AUC 0.822) with statsmodels p-values from the full-rank K-1 design — signs
 match credit intuition (utilization +, leverage +, margin −). cloglog is the grouped-time
 proportional-hazards link, the statistical bridge to step 3.
 
@@ -37,35 +37,43 @@ construction) and delivers what lifetime (CECL/IFRS 9) use cases actually need:
 
 | Quarter | Marginal hazard | Cumulative PD |
 |---|---|---|
-| Q1 | 1.88% | 1.88% |
-| Q2 | 1.45% | 3.18% |
-| Q3 | 0.88% | 3.92% |
-| Q4 | 1.30% | 4.96% |
+| Q1 | 2.24% | 2.24% |
+| Q2 | 1.45% | 3.56% |
+| Q3 | 0.95% | 4.38% |
+| Q4 | 1.67% | 5.76% |
 
-Baseline-hazard period effects carry p-values (panel GLM inference); the holdout AUC (0.752) edges
-the single-period probit reading (0.744).
+Baseline-hazard period effects carry p-values (panel GLM inference); the leading hazard
+candidate reaches validation AUC 0.824.
 
 ### 4. Merton structural — distance-to-default hybrid + benchmark
 
 The engine's KMV fixed-point solver turns equity value/vol + debt face into asset value/vol and
 **DD** (mean 6.4, zero failed rows). Two uses, both shown:
 
-- **Hybrid** (the deployed pattern): `merton_dd` enters the champion with a **−0.39 coefficient**
+- **Hybrid** (the deployed pattern): `merton_dd` enters the model with a **−0.32 coefficient**
   (higher DD = safer — the economically right sign), recomputed target-hidden at serve time;
-- **Pure-structural benchmark**: PD = N(−DD) alone scores holdout AUC 0.638 — real signal, but
-  well below the hybrid champion's 0.749. The gap is the documented case for reduced-form + DD
-  over pure structural on this book, exactly the "alternatives considered" evidence SR 11-7 wants.
+- **Pure-structural benchmark**: PD = N(−DD) alone scores test AUC 0.649 — real signal, but
+  well below the hybrid candidate's validation AUC of 0.820. The gap is the documented case
+  for reduced-form + DD over pure structural on this book, exactly the "alternatives
+  considered" evidence SR 11-7 wants.
 
 ### 5. Full pipeline — all families compete, simulation layer reports
 
-All 7 families (logit/probit/cloglog, both hazard links, regularized logits) compete in the
-ratchet; the full 8-stage pipeline runs green and the backtest stage reports:
+All 7 families (logit/probit/cloglog, both hazard links, regularized logits) compete in one
+search: 21 factors are screened to 9, 65 models are evaluated stepwise, and the stage ends on
+a pool of six. The pool is compared out of time and a four-factor logit is chosen as
+champion (validation AUC 0.81, out-of-time 0.72). The backtest stage reports:
 
-- **OOT outcomes**: Gini 0.499, KS 0.490, PSI 0.104;
-- **Vasicek portfolio** (LGD 45%, Basel ρ(PD)): EL 1.40%, VaR₀.₉₉₉ 8.6%, ES 9.8%, closed-form
-  IRB K 7.1% — the loss distribution behind the PDs;
-- **Macro stress**: baseline mean PD 3.12% → adverse 4.44% → severely adverse 10.07%,
+- **OOT outcomes**: Gini 0.443, KS 0.423, PSI 0.098;
+- **Vasicek portfolio** (LGD 45%, Basel ρ(PD)): EL 1.74%, VaR₀.₉₉₉ 9.6%, ES 11.3%, closed-form
+  IRB K 8.1% — the loss distribution behind the PDs;
+- **Macro stress**: baseline mean PD 3.89% → adverse 5.52% → severely adverse 10.90%,
   deterministically re-scored through the deployed scorer.
+
+Validation then opens the sealed holdout once (AUC 0.68) and **fails** the model on the gap
+to the validation score: the synthetic portfolio drifts across vintages, and the holdout is
+the only sample nobody chose on. The run's final verdict is FAIL, and that is the example
+working as intended.
 
 ## sample_output/
 
