@@ -361,14 +361,13 @@ def runs_table() -> Any:
                         style={"padding": "28px 0"})
     # A model has one main run; a trial run tries one of its decisions differently and is
     # listed under it. Runs are named for that role, not numbered: a number says nothing
-    # about which run counts. Two runs started separately from the same profile are two
-    # developments, each with its own main run.
+    # about which run counts.
     projects: dict[str, dict[str, list[dict]]] = {}
     for r in rows:
         projects.setdefault(r["project"], {}).setdefault(r["model"], []).append(r)
     body = []
     for project, models in projects.items():
-        for m, (model_id, runs) in enumerate(models.items()):
+        for model_id, runs in models.items():
             # the main run first, then its trial runs in the order they were made
             runs = sorted(runs, key=lambda r: (r.get("role") == "trial", r["run_id"]))
             trials_n = sum(1 for r in runs if r.get("role") == "trial")
@@ -377,15 +376,16 @@ def runs_table() -> Any:
                 link = (dcc.Link(label, href=f"/run/{r['run_id']}",
                                  style={"fontWeight": 600, "color": "var(--ink)"})
                         if not r["legacy"] else dmc.Text(label, c="dimmed", size="sm"))
-                if i == 0 and m == 0:
-                    note = (f"{len(models)} separate developments" if len(models) > 1 else
-                            f"{trials_n} trial run{'s' if trials_n != 1 else ''}" if trials_n
-                            else "")
+                if i == 0:
+                    # One model, one main run. Two runs started separately from the same
+                    # profile are two models: each gets its own heading, told apart by when
+                    # it was started.
+                    notes = [f"started {started(model_id)}"] if len(models) > 1 else []
+                    if trials_n:
+                        notes.append(f"{trials_n} trial run{'s' if trials_n != 1 else ''}")
                     model = dmc.Stack([dmc.Text(project, size="sm", fw=650),
-                                       dmc.Text(note, size="xs", c="dimmed") if note else None],
-                                      gap=0)
-                elif i == 0:
-                    model = dmc.Text("same profile, started separately", size="xs", c="dimmed")
+                                       dmc.Text(" · ".join(notes), size="xs", c="dimmed")
+                                       if notes else None], gap=0)
                 else:
                     model = dmc.Text("same model", size="xs", c="dimmed")
                 role = run_role(r)
@@ -425,6 +425,14 @@ def runs_table() -> Any:
                     ])
     return table(["Model", "Run", "Where it stands", "Mode", "Agents", "Champion", "Spend",
                   "Updated"], body)
+
+
+def started(run_id: str) -> str:
+    """When a run was started, read from its id (ids begin with a UTC timestamp)."""
+    import re
+
+    m = re.match(r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})", run_id)
+    return "{}-{}-{} {}:{}".format(*m.groups()) if m else run_id
 
 
 def run_role(r: dict) -> str:
