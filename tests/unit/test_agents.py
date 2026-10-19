@@ -225,6 +225,41 @@ def test_claude_cli_argv_isolates_the_agent():
         assert flag in argv, flag
     assert argv[argv.index("--tools") + 1] == ""
     assert "--output-format json" in joined
+    assert argv[argv.index("--model") + 1] == "opus"
+
+
+def test_claude_cli_records_the_model_that_ran_and_every_input_token(tmp_path, monkeypatch):
+    import subprocess
+
+    from cognos.agents.backends import claude_cli
+
+    result = {"type": "result", "is_error": False, "num_turns": 2, "total_cost_usd": 0.05,
+              "structured_output": {"ok": True},
+              "usage": {"input_tokens": 2, "cache_creation_input_tokens": 800,
+                        "cache_read_input_tokens": 200, "output_tokens": 300},
+              "modelUsage": {"claude-sonnet-5-5": {"costUSD": 0.05}}}
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["model"] = cmd[cmd.index("--model") + 1]
+        return subprocess.CompletedProcess(cmd, 0, json.dumps(result), "")
+
+    monkeypatch.setattr(claude_cli.subprocess, "run", fake_run)
+    out, meta = claude_cli.call("sys", "prompt", {"type": "object"}, {"model": "sonnet"}, None,
+                                tmp_path / "log.json")
+    assert out == {"ok": True} and seen["model"] == "sonnet"
+    # the cost is the CLI's own; the model is the one it resolved the alias to
+    assert meta["model"] == "claude-sonnet-5-5" and meta["cost_usd"] == 0.05
+    assert meta["input_tokens"] == 1002 and meta["output_tokens"] == 300
+
+
+def test_a_run_can_choose_among_its_providers_models():
+    listed = {p["id"]: p for p in providers.public_list()}
+    assert listed["claude_cli"]["models"][:3] == ["opus", "sonnet", "haiku"]
+    assert listed["anthropic"]["models"][0] == listed["anthropic"]["model"]
+    assert "claude-sonnet-5-5" in listed["anthropic"]["models"]
+    assert listed["heuristic"]["models"] == []
+    assert providers.get("anthropic", "claude-sonnet-5-5")["prices"]["input"] == 2.0
 
 
 class _FakeStream:

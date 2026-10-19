@@ -571,3 +571,26 @@ def test_trial_runs_are_made_listed_and_kept_on_the_pages(root):
     assert "Deleted trial run" in _serialize(ui.runs_table())
     assert "files deleted" in _serialize(ui.questions_tab(service.state(run_id)))
     assert "Make this the main run" in _serialize(ui.promote_modal())
+
+
+def test_the_new_run_form_offers_the_providers_models(root):
+    providers = service.provider_list()
+    data, value = ui.model_choices(providers, "claude_cli")
+    assert value == "opus" and [d["value"] for d in data][:3] == ["opus", "sonnet", "haiku"]
+    assert ui.model_choices(providers, "heuristic") == ([], None)
+    assert "CLI" in ui.model_note(providers, "claude_cli")
+    assert "new-model" in _serialize(ui.runs_page())
+
+    cfg = service.demo_config("cni", root, n=200, search_budget=4)
+    run_id = service.create_run(cfg, mode="autonomous", provider="heuristic", model="sonnet")
+    assert service.engine(run_id).config.agents.model == "sonnet"
+    assert service.agent_model(run_id) is None  # the deterministic agents have no model
+
+
+def test_the_side_columns_fold_away_for_the_stage_page():
+    assert ui.column_layout("workflow", None) == (True, 13, True)
+    assert ui.column_layout("workflow", {"left": False, "right": True}) == (False, 19, True)
+    assert ui.column_layout("workflow", {"left": True, "right": False}) == (True, 18, False)
+    assert ui.column_layout("workflow", {"left": False, "right": False}) == (False, 24, False)
+    assert ui.column_layout("audit", {"left": True, "right": True}) == (True, 18, False)
+    assert ui.column_layout("audit", {"left": False, "right": True}) == (False, 24, False)

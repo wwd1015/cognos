@@ -291,9 +291,13 @@ def with_engagement(source: CognosConfig | str | Path | dict,
 
 # --- runs ------------------------------------------------------------------------------------
 def create_run(source: CognosConfig | str | Path | dict, *, mode: str = "interactive",
-               provider: str | None = None, root: str | Path | None = None,
+               provider: str | None = None, model: str | None = None,
+               root: str | Path | None = None,
                engagement: dict[str, Any] | None = None) -> str:
+    """``model`` picks one of the provider's models for the run's agents (``agents.model``)."""
     cfg = with_engagement(source, engagement)
+    if model:
+        cfg = cfg.model_copy(update={"agents": cfg.agents.model_copy(update={"model": model})})
     eng = Engine(cfg, runs_root=runs_root(root), provider=provider, mode=mode)
     with _guard:
         _engines[str(eng.run_dir.resolve())] = eng
@@ -725,6 +729,17 @@ def list_profiles(directory: str | Path = "projects") -> list[dict[str, str]]:
         except Exception:
             continue
     return out
+
+
+def agent_model(run_id: str, root: str | Path | None = None) -> str | None:
+    """The model a run's agents use: the run's choice, else its provider's default."""
+    from .agents import providers
+
+    eng = engine(run_id, root)
+    p = providers.all_providers().get(eng.state.provider) or {}
+    if p.get("kind") in (None, "heuristic", "replay"):
+        return None
+    return eng.config.agents.model or p.get("model")
 
 
 def provider_list() -> list[dict[str, Any]]:

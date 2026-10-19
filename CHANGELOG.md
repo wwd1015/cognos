@@ -5,6 +5,15 @@ versioning is SemVer.
 
 ## [Unreleased]
 
+### Added
+- **Choose the agents' model when a run starts.** The new-run form offers the provider's
+  models (`models` in `providers.yaml`; the CLI's `opus`, `sonnet`, `haiku`), saved as
+  `agents.model`; `cognos run` / `cognos demo` take `--model`. The run header shows it. The
+  `claude -p` backend records the model the alias resolved to and counts cached input tokens;
+  its spend stays the CLI's own figure for that model.
+- **Fold the side columns of a run.** Two buttons hide the stage index and the live activity
+  so a stage page can use the full width; the choice is kept in the browser.
+
 ### Changed
 - **Workbench redesign.** The workbench adopts the "Ledger" design system used by IRIS-D: paper
   and warm-black themes, serif display type, mono numerals, one oxblood accent, ruled panels

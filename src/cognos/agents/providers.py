@@ -84,10 +84,18 @@ def resolve(requested: str | None, model: str | None = None) -> dict[str, Any]:
     return p
 
 
+def models(p: dict[str, Any]) -> list[str]:
+    """The models a run may choose for this provider, its default first."""
+    listed = list(p.get("models") or (p.get("model_prices") or {}))
+    default = p.get("model")
+    return ([default] if default else []) + [m for m in listed if m != default]
+
+
 def public_list() -> list[dict[str, Any]]:
     """What the UI and `cognos providers` show — never keys, only whether one is configured."""
     return [{"id": pid, "label": p.get("label", pid), "kind": p["kind"], "model": p.get("model"),
-             "available": is_available(p)} for pid, p in all_providers().items()]
+             "models": models(p), "available": is_available(p)}
+            for pid, p in all_providers().items()]
 
 
 def cost(p: dict[str, Any], input_tokens: int, output_tokens: int,

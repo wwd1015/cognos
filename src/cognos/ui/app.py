@@ -175,6 +175,7 @@ def runs_page() -> Any:
         dmc.Select(id="new-provider", label="Who makes the recommendations", data=prov_data,
                    value=default_prov, allowDeselect=False,
                    description="LLM agents recommend; the deterministic agents run offline."),
+        model_select(providers, default_prov),
         dmc.Alert("The engine computes every number and guards the sealed holdout; agents only "
                   "recommend, and you decide at the gates.", color="oxblood", variant="light",
                   icon=icon("tabler:shield-lock")),
@@ -207,6 +208,33 @@ def runs_page() -> Any:
         delete_modal(),
         dcc.Download(id="template-download"),
     ], size="xl", py="md")
+
+
+def model_choices(providers: list[dict], provider: str | None) -> tuple[list[dict], str | None]:
+    """The models a run may give its agents under ``provider``, default first; none for the
+    deterministic agents."""
+    p = next((p for p in providers if p["id"] == provider), None)
+    if p is None or p["kind"] in ("heuristic", "replay") or not p.get("models"):
+        return [], None
+    data = [{"value": m, "label": m + (" (default)" if i == 0 else "")}
+            for i, m in enumerate(p["models"])]
+    return data, p["models"][0]
+
+
+def model_note(providers: list[dict], provider: str | None) -> str:
+    p = next((p for p in providers if p["id"] == provider), None)
+    if p is not None and p["kind"] == "claude_cli":
+        return ("Spend is the Claude CLI's own figure for the model that ran, at list prices "
+                "(a subscription login is not billed per call).")
+    return "Spend is estimated from the model's tokens and list prices."
+
+
+def model_select(providers: list[dict], provider: str | None) -> Any:
+    data, value = model_choices(providers, provider)
+    return html.Div(dmc.Select(id="new-model", label="Model", data=data, value=value,
+                               allowDeselect=False, searchable=True,
+                               description=model_note(providers, provider)),
+                    id="new-model-wrap", style={} if data else {"display": "none"})
 
 
 def runs_figures() -> Any:
@@ -463,14 +491,29 @@ def workspace_page(run_id: str) -> Any:
         dcc.Store(id="ws-step", data=None),
         dcc.Store(id="ws-seat", data="developer"),
         dcc.Store(id="ws-key", data=None),
+        # Which side columns are shown; kept in the browser so the choice carries across runs.
+        dcc.Store(id="ws-sides", data={"left": True, "right": True}, storage_type="local"),
         dmc.Group([
-            html.Span("Acting as", className="eyebrow"),
-            dmc.SegmentedControl(
-                id="seat-switch", value="developer", size="xs",
-                data=[{"value": k, "label": v.title()} for k, v in SEAT_LABEL.items()
-                      if k != "express"],
-            ),
-        ], gap="sm", mt="xs", mb="sm"),
+            dmc.Group([
+                html.Span("Acting as", className="eyebrow"),
+                dmc.SegmentedControl(
+                    id="seat-switch", value="developer", size="xs",
+                    data=[{"value": k, "label": v.title()} for k, v in SEAT_LABEL.items()
+                          if k != "express"],
+                ),
+            ], gap="sm"),
+            dmc.Group([
+                dmc.Tooltip(dmc.ActionIcon(icon("tabler:layout-sidebar-left-collapse", 18),
+                                           id="ws-toggle-left", variant="subtle", color="gray",
+                                           n_clicks=0, **{"aria-label": "Show or hide the stages"}),
+                            label="Show or hide the run and its stages", id="ws-toggle-left-tip"),
+                dmc.Tooltip(dmc.ActionIcon(icon("tabler:layout-sidebar-right-collapse", 18),
+                                           id="ws-toggle-right", variant="subtle", color="gray",
+                                           n_clicks=0,
+                                           **{"aria-label": "Show or hide the activity"}),
+                            label="Show or hide the live activity", id="ws-toggle-right-tip"),
+            ], gap=4),
+        ], justify="space-between", mt="xs", mb="sm"),
         # The run's views. "Stages" is the work, one stage at a time; the other two cover the
         # whole run, so they sit above the stage index, not inside a stage.
         dmc.Tabs([dmc.TabsList([
@@ -480,7 +523,7 @@ def workspace_page(run_id: str) -> Any:
         ])], id="ws-tab", value="workflow", mb="lg"),
         dmc.Grid([
             dmc.GridCol([html.Div(id="ws-head"), html.Div(id="ws-rail", className="cognos-rail")],
-                        span={"base": 24, "md": 6}),
+                        id="ws-left-col", span={"base": 24, "md": 6}),
             dmc.GridCol(html.Div(id="ws-content", className="cognos-content"),
                         id="ws-main-col", span={"base": 24, "md": 13}),
             dmc.GridCol(html.Div(id="ws-activity"), id="ws-activity-col",
@@ -559,7 +602,8 @@ def role_fact(st) -> tuple[str, str] | None:
 def run_header(st) -> Any:
     res = service.results(st.run_id)
     model = res.get("model")
-    facts = [("Mode", st.mode), ("Agents", st.provider)]
+    facts = [("Mode", st.mode), ("Agents", backend_label(st.provider,
+                                                         service.agent_model(st.run_id)))]
     role = role_fact(st)
     if role is not None:
         facts.insert(0, role)
@@ -951,6 +995,14 @@ def register_callbacks(app: Dash) -> None:
     for _box in ("new-intent", "new-support", "new-prior", "new-data", "new-data-multi"):
         app.callback(Output(f"{_box}-names", "children"), Input(_box, "filename"))(upload_names)
 
+    @app.callback(Output("new-model", "data"), Output("new-model", "value"),
+                  Output("new-model", "description"), Output("new-model-wrap", "style"),
+                  Input("new-provider", "value"), prevent_initial_call=True)
+    def pick_provider(provider):
+        providers = service.provider_list()
+        data, value = model_choices(providers, provider)
+        return data, value, model_note(providers, provider), {} if data else {"display": "none"}
+
     @app.callback(Output("url", "pathname"), Output("new-feedback", "children"),
                   Input("new-create", "n_clicks"),
                   State("new-source", "value"), State("new-mode", "value"),
@@ -963,11 +1015,12 @@ def register_callbacks(app: Dash) -> None:
                   State("new-sf-table", "value"), State("new-sf-query", "value"),
                   State("new-sf-limit", "value"),
                   State("new-data-multi", "contents"), State("new-data-multi", "filename"),
-                  State("new-linked-sf", "value"), prevent_initial_call=True)
+                  State("new-linked-sf", "value"), State("new-model", "value"),
+                  prevent_initial_call=True)
     def create(clicks, source, mode, provider, kind, intent, intent_name, support,
                support_names, prior, prior_names, prior_run, name=None, data=None,
                data_name=None, sf_table=None, sf_query=None, sf_limit=None, multi=None,
-               multi_names=None, linked_sf=None):
+               multi_names=None, linked_sf=None, model=None):
         if not clicks:  # the button was just rendered, not clicked
             return no_update, no_update
         try:
@@ -998,7 +1051,9 @@ def register_callbacks(app: Dash) -> None:
                 "prior_artifacts": saved_uploads(prior, prior_names) if update else [],
                 "prior_run": prior_run if update else None,
             }
-            run_id = service.create_run(cfg, mode=mode, provider=provider, engagement=engagement)
+            choices, _ = model_choices(service.provider_list(), provider)
+            run_id = service.create_run(cfg, mode=mode, provider=provider,
+                                        model=model if choices else None, engagement=engagement)
             service.start(run_id)
         except Exception as exc:  # show, don't crash the page
             return no_update, dmc.Alert(str(exc), color="red", variant="light")
@@ -1048,13 +1103,28 @@ def register_callbacks(app: Dash) -> None:
         return (run_header(st), rail(st, sel if tab == "workflow" else None), activity(run_id),
                 content, full_key)
 
-    @app.callback(Output("ws-main-col", "span"), Output("ws-activity-col", "style"),
-                  Input("ws-tab", "value"))
-    def widen(tab):
-        """A run-wide view takes the room of the live activity feed."""
-        if tab == "workflow":
-            return {"base": 24, "md": 13}, {"display": "block"}
-        return {"base": 24, "md": 18}, {"display": "none"}
+    @app.callback(Output("ws-left-col", "style"), Output("ws-main-col", "span"),
+                  Output("ws-activity-col", "style"),
+                  Input("ws-tab", "value"), Input("ws-sides", "data"))
+    def widen(tab, sides):
+        left, main, right = column_layout(tab, sides)
+        return ({} if left else {"display": "none"}, {"base": 24, "md": main},
+                {} if right else {"display": "none"})
+
+    @app.callback(Output("ws-sides", "data"), Output("ws-toggle-left", "children"),
+                  Output("ws-toggle-right", "children"),
+                  Input("ws-toggle-left", "n_clicks"), Input("ws-toggle-right", "n_clicks"),
+                  State("ws-sides", "data"))
+    def fold(_left, _right, sides):
+        sides = {"left": True, "right": True, **(sides or {})}
+        if ctx.triggered_id == "ws-toggle-left":
+            sides["left"] = not sides["left"]
+        elif ctx.triggered_id == "ws-toggle-right":
+            sides["right"] = not sides["right"]
+        return (sides,
+                icon(f"tabler:layout-sidebar-left-{'collapse' if sides['left'] else 'expand'}", 18),
+                icon(f"tabler:layout-sidebar-right-{'collapse' if sides['right'] else 'expand'}",
+                     18))
 
     @app.callback(Output("ws-step", "data"), Output("ws-tab", "value"),
                   Input({"type": "rail", "step": ALL}, "n_clicks"), prevent_initial_call=True)
@@ -1212,6 +1282,15 @@ def register_callbacks(app: Dash) -> None:
             dmc.TabsPanel(dmc.Code(inp.get("prompt", ""), block=True), value="prompt"),
             dmc.TabsPanel(dmc.Code(inp.get("system", ""), block=True), value="sys"),
         ], value="out")
+
+
+def column_layout(tab: str | None, sides: dict | None) -> tuple[bool, int, bool]:
+    """(left shown, main column span of 24, right shown). Either side column can be folded away
+    so the stage page gets the room; a run-wide view also takes the room of the live activity."""
+    sides = {"left": True, "right": True, **(sides or {})}
+    left = bool(sides["left"])
+    right = bool(sides["right"]) and tab == "workflow"
+    return left, 24 - (6 if left else 0) - (5 if right else 0), right
 
 
 def backend_label(provider: str | None, model: str | None) -> str:

@@ -80,10 +80,15 @@ def call(system: str, prompt: str, schema: dict[str, Any], provider: dict[str, A
     if result.get("is_error"):
         raise RuntimeError(f"claude -p reported an error ({result.get('subtype')}): "
                            f"{str(result.get('result'))[:400]}")
-    meta = {"model": provider.get("model"), "turns": result.get("num_turns"),
+    # The cost is the CLI's own, priced for the model that ran; ``modelUsage`` names that model
+    # (the alias "opus" or "sonnet" resolves to a dated id on the CLI's side).
+    used = result.get("modelUsage") or {}
+    ran = max(used, key=lambda m: (used[m] or {}).get("costUSD") or 0) if used else None
+    meta = {"model": ran or provider.get("model"), "turns": result.get("num_turns"),
             "cost_usd": result.get("total_cost_usd")}
     usage = result.get("usage") or {}
-    meta["input_tokens"] = usage.get("input_tokens")
+    meta["input_tokens"] = sum(usage.get(k) or 0 for k in (
+        "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")) or None
     meta["output_tokens"] = usage.get("output_tokens")
     if isinstance(result.get("structured_output"), dict):
         return result["structured_output"], meta

@@ -393,6 +393,9 @@ def _cmd_run(args) -> int:
             base = service.load_config({**base.model_dump(mode="json"), "data": {
                 **base.data.model_dump(mode="json"), **keys}})
         cfg = service.with_engagement(base, _engagement_args(args))
+        if args.model:
+            cfg = cfg.model_copy(update={"agents": cfg.agents.model_copy(
+                update={"model": args.model})})
     except ValueError as exc:
         print(f"refused: {exc}")
         return 1
@@ -418,7 +421,8 @@ def _cmd_demo(args) -> int:
 
     cfg = service.demo_config(args.task, args.runs_dir)
     mode = "interactive" if args.interactive else "autonomous"
-    run_id = service.create_run(cfg, mode=mode, provider=args.provider, root=args.runs_dir)
+    run_id = service.create_run(cfg, mode=mode, provider=args.provider, model=args.model,
+                                root=args.runs_dir)
     rc = _drive(run_id, args.runs_dir, interactive=args.interactive)
     print(f"White paper (OKF bundle): {service.runs_root(args.runs_dir) / run_id / 'docs'}")
     return rc
@@ -512,6 +516,8 @@ def _cmd_providers(args) -> int:
     for p in providers.public_list():
         mark = "available" if p["available"] else "-"
         print(f"  {p['id']:<11} {mark:<10} {p['kind']:<14} {p.get('model') or '':<22} {p['label']}")
+        if len(p["models"]) > 1:
+            print(f"  {'':<11} {'':<10} {'':<14} also: {', '.join(p['models'][1:])}")
     try:
         print(f"\nauto resolves to: {providers.resolve('auto')['id']}")
     except providers.ProviderUnavailable as exc:
@@ -736,6 +742,8 @@ def build_parser() -> argparse.ArgumentParser:
                          "proposes the target. Several files: it also proposes how they join")
     pr.add_argument("--interactive", action="store_true", help="review each gate in the terminal")
     pr.add_argument("--provider", default=None, help="agent backend (see `cognos providers`)")
+    pr.add_argument("--model", default=None,
+                    help="the provider's model for this run's agents, e.g. sonnet")
     pr.add_argument("--run-id", default=None)
     pr.add_argument("--kind", choices=["new", "update"], default=None,
                     help="development mode: a new model, or an update of an existing one")
@@ -765,6 +773,7 @@ def build_parser() -> argparse.ArgumentParser:
                              "cni", "migration", "loss_forecast", "linked"])
     pd.add_argument("--interactive", action="store_true")
     pd.add_argument("--provider", default="heuristic")
+    pd.add_argument("--model", default=None, help="the provider's model, e.g. sonnet")
     runs(pd)
     pd.set_defaults(func=_cmd_demo)
 

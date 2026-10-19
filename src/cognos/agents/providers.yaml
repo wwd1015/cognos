@@ -4,8 +4,10 @@
 #   claude_cli     `claude -p` subprocess (your Claude Code login) — available when `claude` is on PATH
 #   anthropic      Anthropic Messages API — available when the key env var is set
 #   openai_compat  any OpenAI-compatible Chat Completions API — available when the key env var is set
-# A provider's model can be overridden per run (agents.model) or by COGNOS_<ID>_MODEL.
-# Prices are USD per 1M tokens and only feed the spend estimate/budget.
+# A provider's model can be overridden per run (agents.model, chosen when a run starts) or by
+# COGNOS_<ID>_MODEL. `models` lists the choices offered when a run starts (default: the keys of
+# `model_prices`). Prices are USD per 1M tokens and only feed the spend estimate/budget;
+# claude_cli needs none: the CLI reports the cost of the model that actually ran.
 heuristic:
   kind: heuristic
   label: Deterministic agents (offline)
@@ -16,6 +18,7 @@ claude_cli:
   kind: claude_cli
   label: Claude (local Claude Code CLI)
   model: opus
+  models: [opus, sonnet, haiku]   # the CLI's aliases for the latest of each
 anthropic:
   kind: anthropic
   label: Claude (Anthropic API)
