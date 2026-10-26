@@ -114,7 +114,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* ── Type ── */
 .mantine-Title-root { font-family: var(--font-display); letter-spacing: -0.005em; }
 .page-title { font-family: var(--font-display); font-weight: 600; font-size: 30px; line-height: 1.15; }
-.page-lede { color: var(--ink-2); font-size: 14px; max-width: 760px; margin-top: 4px; }
+.page-lede { color: var(--ink-2); font-size: 14.5px; max-width: 760px; margin-top: 4px; }
 .num, .mantine-Table-td .mantine-Code-root { font-family: var(--font-mono); }
 
 /* ── Panels: a rule and a serif title, never a box ── */
@@ -123,8 +123,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-top: 1px solid var(--rule);
   padding: 14px 0 6px;
 }
-.ledger-title { font-family: var(--font-display); font-weight: 600; font-size: 17px; line-height: 1.3; }
-.ledger-desc { color: var(--ink-2); font-size: 12.5px; margin-top: 2px; max-width: 720px; }
+.ledger-title { font-family: var(--font-display); font-weight: 600; font-size: 18px; line-height: 1.3; }
+.ledger-desc { color: var(--ink-2); font-size: 13px; margin-top: 2px; max-width: 720px; }
 
 /* a quiet tile, for galleries of small results */
 .mantine-Card-root.cognos-tile {
@@ -191,6 +191,9 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .mantine-Button-root { font-weight: 600; letter-spacing: 0.01em; transition: background 0.2s var(--ease), border-color 0.2s var(--ease); }
 .mantine-Button-root[data-variant="default"] { background: transparent; border-color: var(--line-strong); }
 .mantine-Button-root[data-variant="default"]:hover { border-color: var(--ink); background: transparent; }
+.mantine-Button-root:focus-visible, .mantine-NavLink-root:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
 
 /* ── Tabs: underline, ink when active ── */
 .mantine-Tabs-list::before { border-color: var(--line); }
@@ -228,7 +231,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ── Alerts: a margin note with a rule, not a filled box ── */
 .mantine-Alert-root {
-  background: var(--bg-surface); border: 0; border-left: 2px solid var(--alert-color, var(--ink-3));
+  background: var(--bg-surface); border: 0; border-top: 1px solid var(--alert-color, var(--line-strong));
   border-radius: 0; padding: 10px 14px;
 }
 .mantine-Alert-title { font-weight: 600; }
@@ -255,10 +258,15 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-radius: 0; padding: 9px 8px 9px 0; border-bottom: 1px solid var(--hair);
   background: transparent; align-items: flex-start;
 }
+.cognos-rail .mantine-NavLink-root { position: relative; transition: background 0.2s var(--ease); }
 .cognos-rail .mantine-NavLink-root:hover { background: var(--accent-tint); }
-.cognos-rail .mantine-NavLink-root[data-active] {
-  background: transparent; box-shadow: inset 2px 0 0 var(--accent); padding-left: 10px;
+/* the stage you are on: a tinted line and a caret in the margin, as in the logbook */
+.cognos-rail .mantine-NavLink-root[data-active] { background: var(--accent-tint); padding-left: 10px; }
+.cognos-rail .mantine-NavLink-root[data-active]::before {
+  content: ""; position: absolute; left: -14px; top: 15px;
+  border: 5px solid transparent; border-left: 7px solid var(--accent);
 }
+.cognos-rail .mantine-NavLink-root[data-active] .rail-no { color: var(--accent); }
 .cognos-rail .mantine-NavLink-root[data-active] .mantine-NavLink-label { color: var(--ink); }
 .cognos-rail .mantine-NavLink-description { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
 .cognos-rail .mantine-NavLink-section { margin-top: 2px; }
@@ -268,23 +276,30 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ── The human decision: the one place that is allowed weight ── */
 .mantine-Card-root.cognos-gate {
-  background: var(--bg-surface); border-top: 1px solid var(--line-strong);
-  border-left: 2px solid var(--ink-3); padding: 16px 20px 16px 18px;
+  background: transparent; border-top: 1px solid var(--line-strong); padding: 16px 0 14px;
 }
+/* an open decision is a sheet waiting for a signature: raised paper under a double rule */
 .mantine-Card-root.cognos-gate-open {
-  border-top: 2px solid var(--accent); border-left: 2px solid var(--accent);
-  background: var(--accent-tint);
+  background: var(--bg-raised); border: 1px solid var(--accent-border);
+  border-top: 4px double var(--accent); padding: 18px 24px 22px;
 }
-/* the agent's recommendation: a quoted passage */
-.mantine-Card-root.cognos-rec {
-  border-top: 0; border-left: 2px solid var(--line-strong); padding: 2px 0 2px 18px;
+/* Three voices, the same as the deck: the engine speaks in mono figures, an agent in an italic
+   serif quotation, a person in plain type with a name. The recommendation is the agent's. */
+.mantine-Card-root.cognos-rec { border-top: 0; padding: 2px 0 2px 34px; }
+.cognos-rec .rec-summary {
+  position: relative; font-family: var(--font-display); font-style: italic;
+  font-size: 17.5px; line-height: 1.5;
 }
-.cognos-rec .rec-summary { font-family: var(--font-display); font-size: 16px; line-height: 1.55; }
+.cognos-rec .rec-summary::before {
+  content: "\201C"; position: absolute; left: -32px; top: -10px;
+  font-family: var(--font-display); font-style: normal; font-size: 52px; line-height: 1;
+  color: var(--accent);
+}
 
 /* ── Activity feed ── */
 .activity-item { padding: 8px 0; border-bottom: 1px solid var(--hair); display: grid; grid-template-columns: 58px 1fr; gap: 0 8px; }
 .activity-time { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); padding-top: 2px; }
-.activity-text { font-size: 12.5px; line-height: 1.45; color: var(--ink); }
+.activity-text { font-size: 13px; line-height: 1.45; color: var(--ink); }
 .activity-item[data-tone="accent"] .activity-text { color: var(--accent); font-weight: 600; }
 .activity-item[data-tone="bad"] .activity-text { color: var(--mantine-color-red-6); }
 .activity-item[data-tone="quiet"] .activity-text { color: var(--ink-2); }

@@ -112,60 +112,62 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .panel { background: var(--raised); border: 1px solid var(--line); padding: 44px 48px;
          display: flex; flex-direction: column; gap: 28px; }
 
-/* the workshop: a floor plan. Shelves, a bench of machines with assistants above and people
-   at the checkpoints below, and a logbook that fills as a piece of work moves along */
-.floor { flex: 1; min-height: 0; position: relative; border: 1px dashed var(--line-strong);
-         padding: 64px 40px 36px; display: grid; grid-template-columns: 250px 1fr 430px; gap: 44px; }
-.floor-label { position: absolute; left: 40px; right: 40px; top: 20px; display: flex; justify-content: space-between;
-               font-family: var(--font-mono); font-size: 17px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
-.floor-label .viewers { display: flex; align-items: center; gap: 8px; letter-spacing: 0.06em; text-transform: none; }
-.floor-label .viewers i { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line-strong);
-                          display: inline-flex; align-items: center; justify-content: center; font-style: normal; color: var(--ink-2); }
-.shelf { display: flex; flex-direction: column; gap: 22px; }
-.shelf-box { border-top: 3px solid var(--ink); background: var(--raised); border-left: 1px solid var(--line);
-             border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 20px; }
-.shelf-box b { display: block; font-size: 24px; margin: 4px 0 8px; }
-.shelf-box .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.shelf-box .chips span { font-family: var(--font-mono); font-size: 15px; padding: 3px 8px; border: 1px solid var(--line); color: var(--ink-2); }
-.bench { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
-.bench-row { display: flex; align-items: flex-start; justify-content: space-between; }
-.ws-st { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 78px; }
-.ws-ag { width: 34px; height: 34px; border-radius: 50%; border: 1.5px dashed var(--ink-3); transition: all 0.4s var(--ease); }
-.ws-m { width: 70px; height: 70px; border: 1.5px solid var(--ink); background: var(--raised); position: relative;
-        transition: all 0.4s var(--ease); }
-.ws-m::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 16px; height: 2px; background: var(--ink-3); }
-.ws-m::before { content: ""; position: absolute; left: 50%; bottom: 16px; width: 2px; height: 26px; background: var(--ink-3);
-                transform-origin: bottom; transform: rotate(-40deg); transition: transform 0.6s var(--ease); }
-.ws-lab { font-family: var(--font-mono); font-size: 16px; color: var(--ink-2); white-space: nowrap; }
-.ws-cp { display: flex; flex-direction: column; align-items: center; gap: 22px; width: 40px; padding-top: 63px; }
-.ws-d { width: 20px; height: 20px; transform: rotate(45deg); border: 1.5px solid var(--ink-2); background: var(--paper); transition: all 0.4s var(--ease); }
-.ws-p { width: 34px; height: 34px; border-radius: 50%; background: var(--sunken); color: var(--ink-2);
-        display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 15px;
-        transition: all 0.4s var(--ease); }
-.ws-st.done .ws-m { background: var(--surface); }
-.ws-st.on .ws-m { border-color: var(--accent); background: var(--accent-tint); }
-.ws-st.on .ws-m::before { transform: rotate(35deg); background: var(--accent); }
-.ws-st.ask .ws-ag { border-style: solid; border-color: var(--accent); background: var(--accent-tint); }
-.ws-cp.on .ws-d { background: var(--accent); border-color: var(--accent); }
-.ws-cp.on .ws-p, .ws-cp.done .ws-p { background: var(--ink); color: var(--paper); }
-.ws-cap { border-top: 1px solid var(--line-strong); }
-.ws-cap > div { display: grid; grid-template-columns: 34px 300px 1fr; align-items: center; gap: 14px; padding: 11px 0;
-                border-bottom: 1px solid var(--line); opacity: 0.25; transition: opacity 0.4s var(--ease); }
-.ws-cap > div.on { opacity: 1; }
-.ws-cap .who { font-family: var(--font-mono); font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
-.ws-cap p { font-size: 22px; line-height: 1.3; }
-.ws-cap .glyph { justify-self: center; }
-.glyph.m { width: 22px; height: 22px; border: 1.5px solid var(--ink); }
-.glyph.a { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--accent); background: var(--accent-tint); }
-.glyph.p { width: 22px; height: 22px; border-radius: 50%; background: var(--ink); }
-.logbook { background: var(--raised); border: 1px solid var(--line); padding: 18px 24px; display: flex; flex-direction: column; gap: 10px;
-           background-image: repeating-linear-gradient(transparent 0 55px, var(--hair) 55px 56px); }
-.logbook ol { list-style: none; display: flex; flex-direction: column; }
-.logbook li { padding: 7px 0 8px; border-bottom: 1px solid var(--line); font-size: 19px; line-height: 1.3;
-              animation: ink-in 0.6s var(--ease); }
-.logbook li .when { display: block; font-family: var(--font-mono); font-size: 14px; color: var(--ink-3); letter-spacing: 0.06em; }
-.logbook li.new { color: var(--accent); }
-@keyframes ink-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* the workshop: one page of the logbook, written as the work moves. Every line has the same
+   anatomy: what the machine measured, what an assistant suggested, who decided and signed */
+.book { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.book-top { display: flex; justify-content: space-between; align-items: center; padding-bottom: 14px;
+            border-bottom: 2px solid var(--ink); font-family: var(--font-mono); font-size: 17px;
+            letter-spacing: 0.08em; color: var(--ink-2); }
+.book-top b { color: var(--ink); font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; margin-right: 18px; }
+.desks { display: flex; align-items: center; gap: 10px; }
+.desks i { font-style: normal; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+           border: 1.5px solid var(--line-strong); color: var(--ink-2); background: var(--raised);
+           transition: all 0.35s var(--ease); }
+.desks i.on { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+.desks em { font-style: normal; margin-left: 8px; min-width: 330px; }
+.lg-row { display: grid; grid-template-columns: 150px 1.05fr 1.2fr 1fr 120px; column-gap: 36px; align-items: center;
+          border-bottom: 1px solid var(--line); position: relative; }
+.lg-row.hd { height: 52px; border-bottom-color: var(--line-strong); font-family: var(--font-mono); font-size: 15px;
+             letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.lg-row.hd span { display: flex; align-items: center; gap: 12px; }
+.lg-row.ln { height: 80px; transition: background 0.4s var(--ease); }
+.lg-row.ln.on { background: var(--accent-tint); }
+.lg-row.ln::before { content: ""; position: absolute; left: -26px; top: 50%; width: 0; height: 0; margin-top: -8px;
+                     border: 8px solid transparent; border-left: 11px solid var(--accent); opacity: 0;
+                     transition: opacity 0.3s var(--ease); }
+.lg-row.ln.on::before { opacity: 1; }
+.lg-st { font-family: var(--font-display); font-size: 30px; color: var(--ink-3); transition: color 0.4s var(--ease); }
+.lg-row.on .lg-st, .lg-row.done .lg-st { color: var(--ink); }
+.lg-c { font-size: 21px; line-height: 1.3; clip-path: inset(0 100% 0 0); opacity: 0.2;
+        transition: clip-path 0.75s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s var(--ease); }
+.lg-c.in { clip-path: inset(0 0 0 0); opacity: 1; }
+.lg-c small { display: block; font-family: var(--font-mono); font-size: 14px; letter-spacing: 0.08em;
+              text-transform: uppercase; color: var(--ink-3); margin-bottom: 2px; }
+.lg-c.m { font-family: var(--font-mono); font-size: 18px; color: var(--ink-2); }
+.lg-c.ag { font-family: var(--font-display); font-style: italic; font-size: 23px; }
+.lg-c.p { font-weight: 500; }
+.stamp { justify-self: center; width: 60px; height: 60px; border-radius: 50%; border: 2.5px solid var(--accent);
+         color: var(--accent); display: grid; place-items: center; font-family: var(--font-display);
+         font-style: italic; font-size: 26px; opacity: 0; transform: scale(1.7) rotate(-14deg);
+         transition: opacity 0.2s, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+.stamp.in { opacity: 0.92; transform: scale(1) rotate(-8deg); }
+.stamp.seal { width: 104px; border-radius: 4px; height: 50px; font-family: var(--font-mono); font-style: normal;
+              font-size: 15px; letter-spacing: 0.16em; background: var(--accent); color: var(--paper); }
+.lg-key { display: flex; gap: 44px; align-items: center; padding-top: 18px; font-size: 21px; color: var(--ink-2); }
+.lg-key span { display: flex; align-items: center; gap: 12px; }
+.lg-key .end { margin-left: auto; font-family: var(--font-display); font-style: italic; font-size: 24px; color: var(--ink); }
+.glyph { display: inline-block; flex: none; }
+/* the three voices, everywhere in the deck: a square for the engine, a dashed circle for an
+   agent, a filled circle for a person. Put g-m, g-a or g-p on a label. */
+.g-m::before, .g-a::before, .g-p::before { content: ""; display: inline-block; width: 0.8em; height: 0.8em;
+  margin-right: 0.6em; vertical-align: -0.1em; box-sizing: border-box; }
+.g-m::before { border: 1.5px solid currentColor; }
+.g-a::before { border: 1.5px dashed currentColor; border-radius: 50%; }
+.g-p::before { background: currentColor; border-radius: 50%; }
+.glyph.m { width: 18px; height: 18px; border: 1.5px solid var(--ink); }
+.glyph.a { width: 18px; height: 18px; border-radius: 50%; border: 1.5px dashed var(--ink-2); }
+.glyph.p { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); }
+.glyph.s { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--accent); }
 
 /* ===========================================
    REVEALS: content arrives in order when a slide becomes active
@@ -205,9 +207,9 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .item p b { color: var(--ink); display: block; font-size: 28px; margin-bottom: 6px; }
 .grid-3x2 .item { grid-template-columns: 1fr; gap: 14px; align-content: start; padding: 36px 0 40px; }
 .callout { display: grid; grid-template-columns: 1fr 1fr; gap: 96px; align-items: start;
-           padding: 36px 44px; background: var(--surface); border-left: 4px solid var(--accent); }
+           padding: 32px 0 0; border-top: 4px double var(--accent); }
 .callout p { font-size: 26px; color: var(--ink-2); }
-.callout p.strong { color: var(--ink); }
+.callout p.strong { color: var(--ink); font-family: var(--font-display); font-size: 32px; line-height: 1.35; }
 
 /* three roles */
 .roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; flex: 1; }
@@ -259,6 +261,7 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .lane { border-top: 3px solid var(--line); padding-top: 20px; display: flex; flex-direction: column; gap: 12px;
         min-height: 230px; transition: opacity 0.35s, border-color 0.35s; }
 .lane p { font-size: 24px; line-height: 1.45; }
+#cap-agent { font-family: var(--font-display); font-style: italic; font-size: 26px; line-height: 1.4; }
 .lane.hot { border-top-color: var(--accent); }
 .lane.dim { opacity: 0.38; }
 .controls { display: flex; align-items: center; gap: 14px; }
@@ -298,7 +301,7 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .sentence { font-family: var(--font-display); font-size: 38px; line-height: 1.6; }
 .slot { font-family: var(--font-mono); font-size: 25px; padding: 3px 10px; background: var(--sunken);
         border: 1px dashed var(--line-strong); color: var(--ink-2); white-space: nowrap; transition: all 0.35s; }
-.slot.filled { font-family: var(--font-display); font-size: 38px; background: var(--accent-tint); border: 1px solid var(--accent-border);
+.slot.filled { font-family: var(--font-mono); font-size: 32px; background: var(--accent-tint); border: 1px solid var(--accent-border);
                color: var(--accent); font-weight: 600; }
 .ledger { border-top: 1px solid var(--line-strong); }
 .ledger-row { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--line);
@@ -353,7 +356,7 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .way p { font-size: 22px; color: var(--ink-2); }
 .way.on { border-color: var(--accent); background: var(--accent-tint); box-shadow: inset 0 4px 0 var(--accent); }
 .way.on h3 { color: var(--accent); }
-.outcome { min-height: 150px; padding: 26px 32px; background: var(--surface); border-left: 4px solid var(--accent);
+.outcome { min-height: 150px; padding: 22px 32px 26px; background: var(--surface); border-top: 2px solid var(--accent);
            font-size: 25px; color: var(--ink); line-height: 1.5; }
 .fixed4 { padding: 26px 32px; border: 1px dashed var(--line-strong); font-size: 22px; color: var(--ink-2); }
 .fixed4 b { color: var(--ink); }
@@ -381,7 +384,7 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .legend .l-ok::before { background: var(--ink); }
 .legend .l-stale::before { border: 1px dashed var(--warn); }
 .legend .l-run::before { background: var(--accent-tint); border: 1px solid var(--accent); }
-.why { min-height: 120px; font-size: 25px; line-height: 1.5; padding: 24px 30px; background: var(--surface); border-left: 4px solid var(--accent); }
+.why { min-height: 120px; font-size: 25px; line-height: 1.5; padding: 20px 30px 24px; background: var(--surface); border-top: 2px solid var(--accent); }
 
 /* ===========================================
    13. OFFLINE
@@ -460,9 +463,9 @@ body.moving .chrome { opacity: 1; }
       <p class="lede reveal d3">A multi-agent workbench for developing models that have to stand up to validation, audit and a regulator.</p>
     </div>
     <div class="creed">
-      <div class="reveal d3"><span class="who">The engine</span><em>disposes.</em></div>
-      <div class="reveal d4"><span class="who">Agents</span><em>recommend.</em></div>
-      <div class="reveal d5"><span class="who">People</span><em>decide.</em></div>
+      <div class="reveal d3"><span class="who g-m">The engine</span><em>disposes.</em></div>
+      <div class="reveal d4"><span class="who g-a">Agents</span><em>recommend.</em></div>
+      <div class="reveal d5"><span class="who g-p">People</span><em>decide.</em></div>
     </div>
   </div>
   <div class="foot"><span>→ or Space to advance · D for dark</span><span class="pg"></span></div>
@@ -500,17 +503,17 @@ body.moving .chrome { opacity: 1; }
     </div>
     <div class="roles">
       <div class="role reveal d2">
-        <div class="who">The engine</div><div class="verb">disposes</div>
+        <div class="who g-m">The engine</div><div class="verb">disposes</div>
         <p>Mechanics: plain code that sequences, computes every number, guards the holdout, applies decisions and keeps the record.</p>
         <ul><li>deterministic</li><li>no judgment, no "smart supervisor"</li><li>runs with no network at all</li></ul>
       </div>
       <div class="role reveal d3">
-        <div class="who">Agents</div><div class="verb">recommend</div>
+        <div class="who g-a">Agents</div><div class="verb">recommend</div>
         <p>Judgment: reading a business intent, naming a target, ranking designs, picking a champion, challenging a model, writing prose.</p>
         <ul><li>no tools of their own</li><li>cite facts, never type numbers</li><li>every answer checked before it counts</li></ul>
       </div>
       <div class="role reveal d4">
-        <div class="who">People</div><div class="verb">decide</div>
+        <div class="who g-p">People</div><div class="verb">decide</div>
         <p>Accountability: a named person in a named seat accepts, changes, sends back or rejects at every gate.</p>
         <ul><li>model developer</li><li>independent reviewer</li><li>approver</li></ul>
       </div>
@@ -522,41 +525,45 @@ body.moving .chrome { opacity: 1; }
 <!-- ===================== THE WORKSHOP (animated) ===================== -->
 <section class="slide" data-title="The workshop" data-anim="workshop">
   <div class="folio"><span>The picture</span><b>COGNOS</b></div>
-  <div class="slide-content" style="gap: 36px">
+  <div class="slide-content" style="gap: 40px">
     <div class="head">
       <div class="kicker reveal d1">If you remember one picture</div>
-      <h2 class="reveal d1">A shared workshop that keeps one logbook. Not a factory: a model is made once, with judgment.</h2>
+      <h2 class="reveal d1">A shared workshop that keeps one logbook.</h2>
     </div>
-    <div class="floor reveal d2">
-      <div class="floor-label"><span>The workshop floor · one shared runs folder</span><span class="viewers"><i>D</i><i>L</i><i>K</i>the whole team sees the same bench</span></div>
-      <div class="shelf">
-        <div class="shelf-box"><span class="eyebrow">Patterns</span><b>Templates</b>
-          <div class="chips"><span>PD scorecard</span><span>loss forecast</span><span>migration</span></div></div>
-        <div class="shelf-box"><span class="eyebrow">Stock</span><b>Data catalog</b>
-          <div class="chips"><span>obligors</span><span>facilities</span><span>macro</span><span>ratings</span></div></div>
+    <div class="book reveal d2">
+      <div class="book-top"><span><b>The logbook</b>PD scorecard · main run · started from a template and three catalog tables</span>
+        <span class="desks"><i data-who="D">D</i><i data-who="L">L</i><i data-who="K">K</i><em id="lg-who">open on every desk</em></span></div>
+      <div class="lg-row hd"><span>Station</span><span><i class="glyph m"></i>The machine measured</span>
+        <span><i class="glyph a"></i>An assistant suggested</span><span><i class="glyph p"></i>A person decided</span><span>Signed</span></div>
+      <div id="lg">
+        <div class="lg-row ln" data-who="D"><span class="lg-st">Intent</span>
+          <span class="lg-c m"><small>Mon 09:12</small>Reads the intent document</span>
+          <span class="lg-c ag"><small>Intake Analyst</small>The horizon is not stated. Ask the sponsor?</span>
+          <span class="lg-c p"><small>Dana</small>Answers: 12 months</span><span class="stamp">D</span></div>
+        <div class="lg-row ln" data-who="D"><span class="lg-st">Data</span>
+          <span class="lg-c m"><small>Mon 10:40</small>Joins 3 tables · measures 41 columns</span>
+          <span class="lg-c ag"><small>Data Analyst</small>The target is default_12m</span>
+          <span class="lg-c p"><small>Dana</small>Accepts; drops two ID columns</span><span class="stamp">D</span></div>
+        <div class="lg-row ln" data-who="D"><span class="lg-st">Design</span>
+          <span class="lg-c m"><small>Mon 11:05</small>18,400 rows · 3.1% defaults</span>
+          <span class="lg-c ag"><small>Design Lead</small>A logistic scorecard</span>
+          <span class="lg-c p"><small>Dana</small>Keeps the plan</span><span class="stamp">D</span></div>
+        <div class="lg-row ln" data-who="D"><span class="lg-st">Pool</span>
+          <span class="lg-c m"><small>Mon 14:22</small>Fits and ranks 26 candidates</span>
+          <span class="lg-c ag"><small>Outcomes Analyst</small>This one should be the champion</span>
+          <span class="lg-c p"><small>Dana</small>Chooses the champion</span><span class="stamp">D</span></div>
+        <div class="lg-row ln" data-who="L"><span class="lg-st">Validate</span>
+          <span class="lg-c m"><small>Tue 10:03</small>Opens the sealed sample, once</span>
+          <span class="lg-c ag"><small>Validator</small>One warning, on stability</span>
+          <span class="lg-c p"><small>Lee · reviewer</small>Accepts, with a reason</span><span class="stamp">L</span></div>
+        <div class="lg-row ln" data-who="K"><span class="lg-st">Sign-off</span>
+          <span class="lg-c m"><small>Wed 16:30</small>Fills every number in the paper</span>
+          <span class="lg-c ag"><small>Writer</small>The white paper</span>
+          <span class="lg-c p"><small>Kim · approver</small>Signs</span><span class="stamp seal">SEALED</span></div>
       </div>
-      <div class="bench">
-        <div class="bench-row" id="ws-bench">
-          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Intent</span></div>
-          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">D</span></div>
-          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Data</span></div>
-          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">D</span></div>
-          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Design</span></div>
-          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">D</span></div>
-          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Pool</span></div>
-          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">D</span></div>
-          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Validate</span></div>
-          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">L</span></div>
-          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Paper</span></div>
-          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">K</span></div>
-        </div>
-        <div class="ws-cap">
-          <div id="ws-m"><span class="glyph m"></span><span class="who">Machine · the engine</span><p></p></div>
-          <div id="ws-a"><span class="glyph a"></span><span class="who">Assistant · an agent</span><p></p></div>
-          <div id="ws-p"><span class="glyph p"></span><span class="who">Craftsperson · a person</span><p></p></div>
-        </div>
-      </div>
-      <div class="logbook"><span class="eyebrow">The logbook · the run record</span><ol id="ws-log"></ol></div>
+      <div class="lg-key"><span><i class="glyph m"></i>The engine runs and measures</span>
+        <span><i class="glyph a"></i>An agent suggests</span><span><i class="glyph p"></i>A person decides</span>
+        <span class="end">Not a factory: each model is made once, and every judgment is signed.</span></div>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
@@ -571,9 +578,9 @@ body.moving .chrome { opacity: 1; }
     <div class="caption reveal d3">
       <div class="caption-head"><span class="n" id="cap-n"></span><h3 id="cap-title"></h3><span class="tag" id="cap-kind"></span></div>
       <div class="lanes">
-        <div class="lane" id="lane-engine"><span class="eyebrow">The engine</span><p id="cap-engine"></p></div>
-        <div class="lane" id="lane-agent"><span class="eyebrow" id="cap-agent-name">The agent</span><p id="cap-agent"></p></div>
-        <div class="lane" id="lane-person"><span class="eyebrow" id="cap-person-name">A person</span><p id="cap-person"></p></div>
+        <div class="lane" id="lane-engine"><span class="eyebrow g-m">The engine</span><p id="cap-engine"></p></div>
+        <div class="lane" id="lane-agent"><span class="eyebrow g-a" id="cap-agent-name">The agent</span><p id="cap-agent"></p></div>
+        <div class="lane" id="lane-person"><span class="eyebrow g-p" id="cap-person-name">A person</span><p id="cap-person"></p></div>
       </div>
     </div>
     <div class="controls reveal d4">
@@ -596,11 +603,11 @@ body.moving .chrome { opacity: 1; }
     </div>
     <div>
       <div class="loop reveal d2" id="loop">
-        <div class="cell"><span class="n">01 · engine</span><h3>Compute</h3><p>Run the stage's mechanics. Every result becomes a fact with an id.</p></div>
-        <div class="cell"><span class="n">02 · engine</span><h3>Slice</h3><p>Hand the agent only the facts in its scope. Nothing else exists for it.</p></div>
-        <div class="cell"><span class="n">03 · agent</span><h3>Recommend</h3><p>Answer in a strict contract, citing facts by id.</p></div>
-        <div class="cell"><span class="n">04 · engine</span><h3>Check</h3><p>Unknown fact, typed number, option outside the allowed set: rejected.</p></div>
-        <div class="cell"><span class="n">05 · person</span><h3>Decide</h3><p>The gate shows evidence beside the recommendation. The decision is recorded with a name.</p></div>
+        <div class="cell"><span class="n g-m">01 · engine</span><h3>Compute</h3><p>Run the stage's mechanics. Every result becomes a fact with an id.</p></div>
+        <div class="cell"><span class="n g-m">02 · engine</span><h3>Slice</h3><p>Hand the agent only the facts in its scope. Nothing else exists for it.</p></div>
+        <div class="cell"><span class="n g-a">03 · agent</span><h3>Recommend</h3><p>Answer in a strict contract, citing facts by id.</p></div>
+        <div class="cell"><span class="n g-m">04 · engine</span><h3>Check</h3><p>Unknown fact, typed number, option outside the allowed set: rejected.</p></div>
+        <div class="cell"><span class="n g-p">05 · person</span><h3>Decide</h3><p>The gate shows evidence beside the recommendation. The decision is recorded with a name.</p></div>
       </div>
       <div class="retry reveal d3" id="retry"><span class="arc"></span><span class="txt">A rejected answer goes back to the agent with the reasons. Every attempt is kept in the audit trail.</span></div>
     </div>
@@ -1102,35 +1109,23 @@ function cycle(n, ms, fn, pause = 0) {
 })();
 
 /* ===========================================
-   THE WORKSHOP: a piece of work moves along the bench. At each station the machine measures,
-   the assistant suggests, a person decides at the checkpoint, and the logbook gains a line.
+   THE WORKSHOP: the logbook writes itself, a line per station. The machine's entry, then the
+   assistant's, then the person's with their stamp; the whole team watches the same page.
    =========================================== */
 (function workshop() {
-  const W = [
-    { m: "Reads the intent document", a: "Intake Analyst: the horizon is not stated. Ask?", p: "Dana answers: 12 months", log: "Dana confirmed the intent" },
-    { m: "Joins the tables, measures every column", a: "Data Analyst: the target is default_12m", p: "Dana accepts, drops two ID columns", log: "Dana accepted the target" },
-    { m: "Reads the shape of the data", a: "Design Lead: a logistic scorecard", p: "Dana keeps the plan", log: "Dana approved the design" },
-    { m: "Fits and ranks every candidate", a: "Modeler and Outcomes Analyst: this champion", p: "Dana chooses the champion", log: "Dana chose the champion" },
-    { m: "Opens the sealed sample, once", a: "Validator: one warning, on stability", p: "Lee, the reviewer, accepts with a reason", log: "Lee accepted validation" },
-    { m: "Fills every number in the paper", a: "Writer: the white paper", p: "Kim, the approver, signs", log: "Kim signed off · package sealed" },
-  ];
-  const sts = $$("#ws-bench .ws-st"), cps = $$("#ws-bench .ws-cp"), log = $("#ws-log");
-  const rows = { m: $("#ws-m"), a: $("#ws-a"), p: $("#ws-p") };
-  const labels = sts.map(st => $(".ws-lab", st).textContent);
-  anims.workshop = cycle(W.length * 3, 1150, k => {
-    const i = Math.floor(k / 3), phase = k % 3, w = W[i];
-    if (k === 0) log.innerHTML = "";
-    sts.forEach((st, j) => { st.classList.toggle("on", j === i); st.classList.toggle("done", j < i);
-                             st.classList.toggle("ask", j === i && phase >= 1); });
-    cps.forEach((cp, j) => { cp.classList.toggle("on", j === i && phase === 2); cp.classList.toggle("done", j < i); });
-    ["m", "a", "p"].forEach((key, r) => { rows[key].classList.toggle("on", r <= phase); $("p", rows[key]).textContent = r <= phase ? w[key] : ""; });
-    if (phase === 2) {
-      $$("li", log).forEach(li => li.classList.remove("new"));
-      const li = document.createElement("li"); li.className = "new";
-      li.innerHTML = `<span class="when">${labels[i]} · ${w.p.split(/[ ,]/)[0]} · reason kept</span>${w.log}`;
-      log.appendChild(li);
-    }
-  }, 2600);
+  const rows = $$("#lg .ln"), desks = $$(".desks i"), who = $("#lg-who");
+  const names = { D: "Dana", L: "Lee", K: "Kim" };
+  anims.workshop = cycle(rows.length * 3, 1050, k => {
+    const i = Math.floor(k / 3), phase = k % 3;
+    rows.forEach((r, j) => {
+      r.classList.toggle("on", j === i); r.classList.toggle("done", j < i);
+      $$(".lg-c", r).forEach((c, n) => c.classList.toggle("in", j < i || (j === i && n <= phase)));
+      $(".stamp", r).classList.toggle("in", j < i || (j === i && phase === 2));
+    });
+    const w = rows[i].dataset.who;
+    desks.forEach(d => d.classList.toggle("on", phase === 2 && d.dataset.who === w));
+    who.textContent = phase === 2 ? `${names[w]} signs; everyone sees it` : "open on every desk";
+  }, 3200);
 })();
 
 /* ===========================================
