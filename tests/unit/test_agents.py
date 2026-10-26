@@ -26,7 +26,7 @@ def test_render_replaces_placeholders_and_flags_bare_metrics():
     assert facts.render(text, f) == "A logit model with AUC 0.7812."
     assert facts.bare_metrics(text) == []
     assert facts.bare_metrics("AUC of 0.78 on 12.5% of the book") == ["0.78", "12.5%"]
-    assert facts.bare_metrics("SR 11-7, 5 folds, 2019 vintages") == []
+    assert facts.bare_metrics("SR 26-2, 5 folds, 2019 vintages") == []
 
 
 # --- engine checks ------------------------------------------------------------------------

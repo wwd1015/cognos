@@ -15,6 +15,7 @@ from .state import Challenge, RunState
 
 ACTIONS: dict[str, set[str]] = {
     "gate_intent": {"accept", "edit", "send_back"},
+    "gate_source": {"accept"},
     "gate_data": {"accept", "edit", "send_back"},
     "gate_design": {"accept", "edit", "send_back"},
     "gate_candidates": {"accept", "edit", "send_back"},
@@ -47,6 +48,11 @@ def why(gate: str, action: str, payload: dict[str, Any] | None, reason: str = ""
         if payload.get("answers"):
             return f"{label}: {len(payload['answers'])} interview question(s) answered"
         return f"{label}: the brief was accepted"
+    if gate == "gate_source":
+        given = payload.get("data")
+        if not given:
+            return f"{label}: the data the run came with was kept"
+        return f"{label}: {_clip(describe_data(given), 110)}"
     if gate == "gate_data":
         cols = payload.get("exclude_columns")
         if payload.get("join_changed"):
@@ -76,6 +82,30 @@ def why(gate: str, action: str, payload: dict[str, Any] | None, reason: str = ""
     return f"{label}: {action.replace('_', ' ')}"
 
 
+def describe_data(data: dict[str, Any]) -> str:
+    """The data in a few words: what was given, not what is in it."""
+    from pathlib import Path
+
+    def one(src: dict[str, Any]) -> str:
+        if src.get("path"):
+            return Path(src["path"]).name
+        return src.get("table") or ("a query" if src.get("query") else src.get("kind") or "a source")
+
+    if data.get("sources"):
+        return f"{len(data['sources'])} sources (" + ", ".join(
+            s.get("name") if s.get("catalog") else f"{s.get('name')} = {one(s)}"
+            for s in data["sources"]) + ")"
+    src = data.get("source") or {}
+    if src.get("catalog"):
+        return f"{src['catalog']} (data catalog)"
+    return one(data.get("source") or {"path": data.get("path")})
+
+
+# What gate_source may set on the data: where it comes from, the proposed base table and the
+# links the data catalog documents between the sources (ADR-0020), and its date column.
+DATA_KEYS = ("source", "sources", "base", "links", "datetime_col")
+
+
 def _changed_downstream(gate: str) -> list[str]:
     return descendants(gate)
 
@@ -98,17 +128,21 @@ def send_back(state: RunState, gate: str, payload: dict[str, Any], reason: str) 
 
 
 def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], reason: str,
-           results: dict[str, Any]) -> tuple[list[str], bool]:
-    """Apply a decision. Returns (steps to invalidate, whether the gate itself is now done)."""
+           results: dict[str, Any], *, config: Any = None) -> tuple[list[str], bool]:
+    """Apply a decision. Returns (steps to invalidate, whether the gate itself is now done).
+    ``config`` is the run's profile (gate_source reads whether it already gives the data)."""
     if action not in ACTIONS[gate]:
         raise GateError(f"{gate} does not accept {action!r}; allowed: {sorted(ACTIONS[gate])}")
-    stage = STAGE_OF_GATE[gate]
+    stage = STAGE_OF_GATE.get(gate)
     res = results.get(stage)
     verdict = res.verdict.value if res is not None else None
     payload = payload if payload is not None else {}
 
     if action == "send_back":
         return send_back(state, gate, payload, reason), False
+
+    if gate == "gate_source":
+        return _source(state, payload, config), True
 
     if gate == "gate_intent":
         brief = (res.payload if res is not None else None) or {}
@@ -293,6 +327,44 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
         return [], True
 
     raise GateError(f"unhandled decision {gate}/{action}")
+
+
+def _source(state: RunState, payload: dict[str, Any], config: Any) -> list[str]:
+    """The data for a run that started without it. New data starts the data work over: the
+    dependent variable, the join and the exclusions were decided on the old data."""
+    from pydantic import ValidationError
+
+    from ..config import DataConfig
+
+    given = {k: v for k, v in (payload.get("data") or {}).items() if k in DATA_KEYS and v}
+    target = str(payload.get("target") or "").strip() or None
+    if not given.get("source") and not given.get("sources"):
+        if state.overrides.data or (config is not None and config.data.given):
+            given = None  # keep the data the run has
+        else:
+            raise GateError("give the data: choose tables from the data catalog, or add a "
+                            "file, a Snowflake table or a query")
+    else:
+        try:
+            DataConfig.model_validate(given)
+        except ValidationError as exc:
+            raise GateError("the data cannot be read as given: "
+                            + "; ".join(e["msg"] for e in exc.errors())) from exc
+        if given.get("sources") and len(given["sources"]) < 2:
+            raise GateError("several sources means two or more; give one source instead")
+    payload.pop("data", None)
+    if given is not None:
+        payload["data"] = given  # the decision records what was given, as it was read
+    payload["catalog"] = [str(i) for i in payload.get("catalog") or []]  # the tables chosen
+    if given is not None and given != state.overrides.data:
+        state.overrides.data = given
+        state.overrides.target, state.overrides.task = target, None
+        state.overrides.join, state.overrides.exclude_columns = None, []
+        return _changed_downstream("gate_source")
+    if target and target != state.overrides.target:
+        state.overrides.target, state.overrides.task = target, None
+        return _changed_downstream("gate_source")
+    return []
 
 
 def _rename(state: RunState, model: dict[str, Any], names: dict[str, str], known: set[str]) -> bool:

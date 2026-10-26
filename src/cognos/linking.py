@@ -50,9 +50,11 @@ def is_linked(config: Any) -> bool:
     return len(config.data.sources) >= 2
 
 
-def named_sources(files: list[str] = (), snowflake_lines: str = "") -> dict[str, Any]:
+def named_sources(files: list[str] = (), snowflake_lines: str = "",
+                  at_least: int = 2) -> dict[str, Any]:
     """``{"sources": [...]}`` from what a person gives a front end: data files (each named
-    after its file) and Snowflake lines reading ``name = TABLE`` or ``name = SELECT ...``."""
+    after its file) and Snowflake lines reading ``name = TABLE`` or ``name = SELECT ...``.
+    Fewer than ``at_least`` is refused (data added to catalog tables may be one or none)."""
     from pathlib import Path
 
     sources: list[dict[str, Any]] = []
@@ -77,7 +79,7 @@ def named_sources(files: list[str] = (), snowflake_lines: str = "") -> dict[str,
         is_query = bool(re.match(r"(?i)(select|with)\b", what))
         sources.append({"name": unique(name.strip()), "kind": "snowflake",
                         **({"query": what} if is_query else {"table": what})})
-    if len(sources) < 2:
+    if len(sources) < at_least:
         raise LinkError("Give two or more sources: data files and/or Snowflake tables.")
     return {"sources": sources}
 
@@ -229,29 +231,37 @@ def _relation(a_unique: bool, b_unique: bool) -> str:
 
 
 def profile(tables: dict[str, pd.DataFrame], stated: list[Any] = (),
-            target: str = "") -> dict[str, Any]:
+            target: str = "", documented: list[Any] = (),
+            described: dict[str, str] | None = None) -> dict[str, Any]:
     """The tables and every link worth offering between two of them, best first per pair.
-    ``stated`` (the profile's ``data.join``) is always included, measured the same way. With a
+    ``stated`` (the profile's ``data.join``) is always included, measured the same way, and so
+    is each ``documented`` link (the data catalog's, ``data.links``) whose columns exist. With a
     ``target``, each link also says how the outcome differs between the rows it matches and
-    the rows it does not."""
+    the rows it does not. ``described`` is each table's description from the catalog."""
     meta = []
     for name, df in tables.items():
         keyish = [c for c in df.columns if _key_like(df[c])]
         unique = [c for c in keyish if df[c].notna().all() and df[c].is_unique]
         meta.append({"name": name, "n_rows": int(len(df)), "n_cols": int(df.shape[1]),
-                     "columns": [str(c) for c in df.columns], "unique_columns": unique})
+                     "columns": [str(c) for c in df.columns], "unique_columns": unique,
+                     **({"description": described[name]} if (described or {}).get(name)
+                        else {})})
     found: list[dict[str, Any]] = []
+    unusable: list[str] = []
 
-    def add(a: str, a_on: list[str], b: str, b_on: list[str], *, is_stated: bool = False) -> None:
-        if any(lk["a"] == a and lk["b"] == b and lk["a_on"] == a_on and lk["b_on"] == b_on
-               for lk in found):
-            return
+    def add(a: str, a_on: list[str], b: str, b_on: list[str], *, is_stated: bool = False,
+            note: str | None = None) -> None:
+        for lk in found:
+            if lk["a"] == a and lk["b"] == b and lk["a_on"] == a_on and lk["b_on"] == b_on:
+                return
         m = _measure(tables[a], a_on, tables[b], b_on)
         same = [_norm(x) for x in a_on] == [_norm(y) for y in b_on]
         m["a_outcome"] = _outcome(tables[a], a_on, tables[b], b_on, target)
         m["b_outcome"] = _outcome(tables[b], b_on, tables[a], a_on, target)
         found.append({"a": a, "a_on": a_on, "b": b, "b_on": b_on, **m, "same_name": same,
-                      "relation": _relation(m["a_unique"], m["b_unique"]), "stated": is_stated})
+                      "relation": _relation(m["a_unique"], m["b_unique"]), "stated": is_stated,
+                      "documented": note is not None,
+                      **({"note": note} if note else {})})
 
     for j in stated:
         for t, cols in ((j.left, j.left_on), (j.right, j.right_on)):
@@ -259,6 +269,16 @@ def profile(tables: dict[str, pd.DataFrame], stated: list[Any] = (),
             if missing:
                 raise LinkError(f"data.join: {t} has no column(s) {missing}")
         add(j.left, list(j.left_on), j.right, list(j.right_on), is_stated=True)
+    for j in documented:
+        if j.left not in tables or j.right not in tables:
+            continue
+        missing = [f"{t}.{c}" for t, cols in ((j.left, j.left_on), (j.right, j.right_on))
+                   for c in cols if c not in tables[t].columns]
+        if missing:  # the catalog is out of date: say so, offer the rest
+            unusable.append(f"The catalog links {j.left} and {j.right} on columns the data "
+                            f"does not have ({', '.join(missing)}).")
+            continue
+        add(j.left, list(j.left_on), j.right, list(j.right_on), note=j.note or "")
 
     for a, b in combinations(tables, 2):
         ta, tb = tables[a], tables[b]
@@ -304,7 +324,7 @@ def profile(tables: dict[str, pd.DataFrame], stated: list[Any] = (),
             add(x["a"], x["a_on"], x["b"], x["b_on"])
     for i, lk in enumerate(found, 1):
         lk["id"] = f"L{i}"
-    return {"tables": meta, "links": found}
+    return {"tables": meta, "links": found, **({"unusable": unusable} if unusable else {})}
 
 
 # --- a plan ---------------------------------------------------------------------------------------
@@ -387,7 +407,8 @@ def suggest(prof: dict[str, Any], base: str | None = None, target: str = "") -> 
             if len(inside) != 1:
                 continue
             step = _oriented(lk, next(iter(inside)))
-            rank = (lk["stated"], lk["same_name"], step["right_unique"], step["expected_match"])
+            rank = (lk["stated"], lk.get("documented", False), lk["same_name"],
+                    step["right_unique"], step["expected_match"])
             if step["expected_match"] >= MIN_OVERLAP and (best is None or rank > best[0]):
                 best = (rank, lk, step)
         if best is None:

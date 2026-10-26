@@ -390,7 +390,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 3, "system_version": "1.0.0", "date": "2026-10-12"}</script>
+<script type="application/json" id="edition">{"edition": 6, "system_version": "1.0.0", "date": "2026-10-24"}</script>
 
 <div class="stage" id="stage">
 
@@ -428,7 +428,7 @@ body.moving .chrome { opacity: 1; }
       <div class="item"><span class="n">04</span><p><b>Nobody is accountable.</b>A decision that no person made is a decision no person can defend.</p></div>
     </div>
     <div class="callout reveal d3">
-      <p>Model risk rules (SR 11-7 and its relatives) ask for the opposite of all four: reproducible results, documented choices, effective challenge and named owners.</p>
+      <p>Model risk guidance (SR 26-2, which replaced SR 11-7 in April 2026) asks for the opposite of all four: reproducible results, documented choices, effective challenge and named owners.</p>
       <p class="strong">COGNOS keeps the speed of agents and removes those four failures by <b class="a">construction</b>, not by asking the agents to behave.</p>
     </div>
   </div>
@@ -468,7 +468,7 @@ body.moving .chrome { opacity: 1; }
 <section class="slide" data-title="The workflow" data-anim="flow">
   <div class="folio"><span>How a run moves</span><b>COGNOS</b></div>
   <div class="slide-content" style="gap: 36px">
-    <h2 class="reveal d1">Nine stages. Seven gates where the run stops for a person.</h2>
+    <h2 class="reveal d1">Nine stages. Eight gates where the run stops for a person.</h2>
     <div class="track reveal d2" id="track"><div class="token" id="token"></div></div>
     <div class="caption reveal d3">
       <div class="caption-head"><span class="n" id="cap-n"></span><h3 id="cap-title"></h3><span class="tag" id="cap-kind"></span></div>
@@ -752,7 +752,7 @@ body.moving .chrome { opacity: 1; }
     </div>
     <div class="figures reveal d2">
       <div class="figure"><div class="k">Stages</div><div class="v" data-fact="n_stages">9</div><div class="h">2 of them can block a run</div></div>
-      <div class="figure"><div class="k">Human gates</div><div class="v" data-fact="n_gates">7</div><div class="h">the run stops at each</div></div>
+      <div class="figure"><div class="k">Human gates</div><div class="v" data-fact="n_gates">8</div><div class="h">the run stops at each</div></div>
       <div class="figure"><div class="k">Agents</div><div class="v" data-fact="n_agents">8</div><div class="h">each with an offline twin</div></div>
       <div class="figure"><div class="k">Seats</div><div class="v" data-fact="n_seats">3</div><div class="h">developer, reviewer, approver</div></div>
       <div class="figure"><div class="k">Exploration tools</div><div class="v" data-fact="n_explore_tools">14</div><div class="h">plus plugins and scripts</div></div>
@@ -780,6 +780,9 @@ body.moving .chrome { opacity: 1; }
         <tr><td class="mono">1</td><td class="mono">v1.0.0</td><td class="mono">2026-10-11</td><td>First edition. The three roles, the animated workflow, eight principles. Covers intake, linked sources, stage tools, the standard exploration tools, run-wide views, and limitations beside assumptions.</td></tr>
         <tr><td class="mono">2</td><td class="mono">v1.0.0</td><td class="mono">2026-10-11</td><td>Seven gates. The search ends on a candidate pool, the champion is chosen on outcomes analysis, and the sealed holdout is scored once at validation (ADR-0016).</td></tr>
         <tr><td class="mono">3</td><td class="mono">v1.0.0</td><td class="mono">2026-10-12</td><td>Trial runs: a decision taken differently in a copy of the run. A trial run stops before validation, every look at the test sample is counted for the model, and a deleted trial run keeps its line (ADR-0017).</td></tr>
+        <tr><td class="mono">4</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>Eight gates. A run starts from a template or from scratch, and the developer gives the data once the intent is confirmed (Provide the data). A finished run can be kept as a team template (ADR-0018).</td></tr>
+        <tr><td class="mono">5</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>Model risk guidance is SR 26-2 (April 2026), which replaced SR 11-7. The readiness report and the agents cite it; a profile that names SR 11-7 is read as SR 26-2 (ADR-0019).</td></tr>
+        <tr><td class="mono">6</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>The data catalog: the developer chooses the team's tables (the template's are checked) and adds any other data; documented links are offered and measured, never imposed (ADR-0020).</td></tr>
       </tbody>
     </table>
   </div>
@@ -809,6 +812,8 @@ const FLOW = [
     person: "" },
   { id: "gate_intent", label: "Confirm the intent", seat: "Model developer",
     person: "Records the sponsor's answers and confirms the intent. The stated design becomes part of the run." },
+  { id: "gate_source", label: "Provide the data", seat: "Model developer",
+    person: "Gives the data once the intent stands: tables from the team's data catalog (the template's are checked), plus any file, Snowflake table or query to add." },
   { id: "explore", label: "Explore data", short: "Data", agentName: "Data Analyst",
     engine: "Fetches the data once and keeps a snapshot. Measures how several sources connect. Runs every analysis that is asked for.",
     agent: "Proposes the join and the target, asks for analyses or writes a script, names candidate features and columns to exclude.",

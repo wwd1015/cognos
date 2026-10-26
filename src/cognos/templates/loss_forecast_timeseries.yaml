@@ -1,0 +1,67 @@
+# A built-in template (ADR-0018): a quarterly loss rate on macro drivers, for CECL and stress
+# testing. The drivers act through lags and changes and the series is short, so the plan builds
+# a factor library, screens it, and compares forward selection with best subset.
+
+name: loss_forecast_timeseries
+description: "Quarterly net charge-off rate on macro drivers: lags, changes, scenarios."
+template:
+  title: "Loss forecast — time series"
+task: timeseries
+mode: interactive
+
+data:
+  # The data catalog's tables this kind of model starts with (ADR-0020); the first is the
+  # proposed base table. Preselected when the data is given; any can be unchecked.
+  catalog: [macro_quarterly]
+  guide: |
+    One row per quarter, at least 40 quarters, with:
+    - the portfolio loss rate (net charge-offs over average loans, annualized);
+    - the quarter's date;
+    - macro drivers as published: unemployment rate, GDP growth, credit spreads (BBB),
+      house and commercial real estate price indices. The engine builds the lags and changes.
+
+metric:
+  name: rmse
+
+design:
+  use_case: loss forecasting (CECL / stress testing)
+  horizon: 9-quarter forecast of the quarterly net charge-off rate
+  default_definition: net charge-offs over average loans, annualized, in percent
+  interpretability: required
+
+evaluation:
+  rank_by:
+    - {metric: rmse, sample: validation}
+    - {metric: r2, sample: in_sample}
+  pool_size: 4
+
+factors:
+  lags: [1, 2, 3, 4]
+  expected_signs:
+    unemployment_rate: "+"
+    bbb_spread: "+"
+    gdp_growth: "-"
+    hpi: "-"
+    cre_price_index: "-"
+  max_p_value: 0.10
+  best_per_source: 2
+  max_correlation: 0.8
+  top_n: 12
+
+selection:
+  methods: [forward, best_subset]
+  max_factors: 3
+
+stress:
+  enabled: true
+  scenarios:
+    - name: adverse
+      shocks: {unemployment_rate: {add: 2.0}, bbb_spread: {add: 1.0}, hpi: {mul: 0.93}}
+    - name: severely_adverse
+      shocks: {unemployment_rate: {add: 4.5}, bbb_spread: {add: 2.5}, hpi: {mul: 0.82}}
+
+compliance:
+  regimes: [SR26-2, NIST-AI-RMF]
+  risk_tier: high
+  fair_lending: false
+  jurisdictions: [US]

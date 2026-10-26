@@ -72,8 +72,9 @@ def test_a_trial_run_needs_a_reason_a_developer_and_a_decision_it_has_reached(ma
         service.trial_run(run_id, "gate_design", "try", root=root, seat="reviewer")
     with pytest.raises(GateError, match="not a developer decision"):
         service.trial_run(run_id, "gate_validation", "try", root=root)
-    assert service.trial_gates(run_id, root) == ["gate_intent", "gate_data", "gate_design",
-                                                 "gate_candidates", "gate_champion"]
+    assert service.trial_gates(run_id, root) == ["gate_intent", "gate_source", "gate_data",
+                                                 "gate_design", "gate_candidates",
+                                                 "gate_champion"]
     fresh = service.create_run(service.demo_config("regression", root, n=150, search_budget=4),
                                mode="interactive", provider="heuristic", root=root)
     with pytest.raises(GateError, match="has not reached"):

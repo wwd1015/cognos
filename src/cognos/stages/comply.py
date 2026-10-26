@@ -1,11 +1,11 @@
 """Stage 6 — Regulatory compliance assessment (gate).
 
 Turns the modeling artifacts into a model-risk record an examiner would recognize: a model
-inventory entry, the three core SR 11-7 elements (conceptual soundness / ongoing monitoring /
-outcomes analysis), the four NIST AI RMF functions, the seven NIST trustworthy-AI characteristics,
+inventory entry, the three SR 26-2 components of model validation (conceptual soundness / ongoing
+monitoring / outcomes analysis), the four NIST AI RMF functions, the seven NIST trustworthy-AI characteristics,
 and — when the project is a credit model — an ECOA/Reg B fair-lending scan (four-fifths disparate
 impact + plain-English adverse-action reason codes). A disparate-impact violation BLOCKs the
-pipeline; an SR 11-7 element marked ``fail`` FAILs it. Runs fully offline (deterministic).
+pipeline; an SR 26-2 element marked ``fail`` FAILs it. Runs fully offline (deterministic).
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ class ComplyStage(Stage):
     name = "comply"
     requires = ("model",)
     is_gate = False  # ADR-0006: compliance is a non-gating report, never a verdict
-    description = "Produce a non-gating SR 11-7 / NIST AI RMF model-risk readiness report."
+    description = "Produce a non-gating SR 26-2 / NIST AI RMF model-risk readiness report."
 
     def run(self, ctx: RunContext) -> StageResult:
         cfg = ctx.config
@@ -78,7 +78,7 @@ class ComplyStage(Stage):
             "created_from_run": ctx.run_id,
         }
 
-        # --- (B) SR 11-7 three core elements ------------------------------------
+        # --- (B) SR 26-2 components of model validation -------------------------
         evidence_basis = coefficients is not None or importances is not None
         if evidence_basis and has_payload:
             conceptual = {
@@ -118,7 +118,7 @@ class ComplyStage(Stage):
                 "evidence": "No out-of-sample backtest result available; outcomes analysis is incomplete.",
             }
 
-        sr11_7 = {
+        sr26_2 = {
             "conceptual_soundness": conceptual,
             "ongoing_monitoring": ongoing,
             "outcomes_analysis": outcomes,
@@ -190,17 +190,17 @@ class ComplyStage(Stage):
             ]
 
         # --- findings for every fail/warn element -------------------------------
-        for label, elem in sr11_7.items():
+        for label, elem in sr26_2.items():
             if elem["status"] == FAIL:
                 res.add_finding(Finding(
-                    id=f"sr11-7-{label}", severity=Severity.HIGH, category="sr11-7",
-                    message=f"SR 11-7 {label.replace('_', ' ')} failed: {elem['evidence']}",
+                    id=f"sr26-2-{label}", severity=Severity.HIGH, category="sr26-2",
+                    message=f"SR 26-2 {label.replace('_', ' ')} failed: {elem['evidence']}",
                     location=label, confidence=0.9,
                 ))
             elif elem["status"] == WARN:
                 res.add_finding(Finding(
-                    id=f"sr11-7-{label}", severity=Severity.MEDIUM, category="sr11-7",
-                    message=f"SR 11-7 {label.replace('_', ' ')} warning: {elem['evidence']}",
+                    id=f"sr26-2-{label}", severity=Severity.MEDIUM, category="sr26-2",
+                    message=f"SR 26-2 {label.replace('_', ' ')} warning: {elem['evidence']}",
                     location=label, confidence=0.8,
                 ))
         for func, elem in nist_ai_rmf.items():
@@ -219,7 +219,7 @@ class ComplyStage(Stage):
                 ))
 
         # --- report, never a verdict (ADR-0006) ---------------------------------
-        # An agent cannot adjudicate SR 11-7 compliance (independent human validation is required) and
+        # An agent cannot judge whether a model meets SR 26-2 (that takes independent human validation) and
         # a verdict tempts rubber-stamping. This stage reports evidence + outstanding gaps; its verdict
         # is always PASS meaning "report produced", never a compliance judgement, and it never BLOCKs.
         outstanding_human_steps = [
@@ -234,10 +234,10 @@ class ComplyStage(Stage):
                 "commercial, credit)."
             )
 
-        n_evidenced = sum(1 for e in sr11_7.values() if e["status"] == PASS)
+        n_evidenced = sum(1 for e in sr26_2.values() if e["status"] == PASS)
         payload = {
             "inventory": inventory,
-            "sr11_7": sr11_7,
+            "sr26_2": sr26_2,
             "nist_ai_rmf": nist_ai_rmf,
             "trustworthy": trustworthy,
             "fair_lending": fair_lending,
@@ -253,7 +253,7 @@ class ComplyStage(Stage):
             "outstanding_human_steps": outstanding_human_steps}, res=res)
         out = ctx.recommend("risk_analyst", {
             "tool_runs": tool_runs,
-            "sr11_7": sr11_7,
+            "sr26_2": sr26_2,
             "nist_ai_rmf": {k: v["status"] for k, v in nist_ai_rmf.items()},
             "trustworthy": trustworthy,
             "outstanding_human_steps": outstanding_human_steps,
@@ -271,14 +271,14 @@ class ComplyStage(Stage):
         res.payload = payload
         res.verdict = Verdict.PASS  # "report produced" — never a compliance verdict
         res.metrics = {
-            "sr11_7_evidenced": n_evidenced,
+            "sr26_2_evidenced": n_evidenced,
             "disparate_impact": disparate_impact,
             "n_outstanding": len(outstanding_human_steps),
             "n_findings": len(res.findings),
         }
         di_str = f"DI={disparate_impact:.3f}" if disparate_impact is not None else "fair-lending n/a"
         res.summary = (
-            f"Model-risk readiness report (non-gating): SR 11-7 {n_evidenced}/3 evidenced, "
+            f"Model-risk readiness report (non-gating): SR 26-2 {n_evidenced}/3 evidenced, "
             f"{len(outstanding_human_steps)} human step(s) outstanding, {di_str}."
         )
         return res

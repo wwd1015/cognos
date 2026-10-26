@@ -154,6 +154,13 @@ def _decision_rows(sa: RunState, sb: RunState) -> list[dict]:
 def _override_rows(sa: RunState, sb: RunState) -> list[dict]:
     oa, ob = sa.overrides, sb.overrides
     rows = []
+    if oa.data != ob.data:
+        from .engine.gates import describe_data
+
+        def given(d):
+            return describe_data(d) if d else None
+        rows.append({"what": "Data", "a": given(oa.data), "b": given(ob.data),
+                     "note": "None = the data came with the run"})
     ea, eb = set(oa.exclude_columns), set(ob.exclude_columns)
     if ea != eb:
         rows.append({"what": "Excluded columns", "a": sorted(ea - eb), "b": sorted(eb - ea),

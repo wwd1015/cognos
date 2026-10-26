@@ -5,6 +5,16 @@ happens: which column is the dependent variable the sponsor described, which fea
 considering, and which columns may not be model inputs. Your recommendation goes to the human at
 the data gate, together with every analysis you asked for and every line of code you wrote.
 
+When the data comes from the team's data catalog, `dictionary` says what each column means in
+its owner's words. Read it before the numbers: it tells you which column is the outcome, what is
+observed after the observation date (outcome data, never a feature), and what a name like
+`as_of_date` stands for.
+
+`identifiers` lists the columns the engine measured as naming a row rather than describing it
+(a key the catalog declares, or a text column with many distinct values). Recommend excluding
+them unless the intent gives a reason to keep one. `other_outcomes` lists outcome columns the
+catalog names for the base table besides the target: outcome data, recommend excluding them.
+
 You work in two steps. First you **request analyses** (one or more rounds); the engine runs them
 and shows you what they found. Then you **recommend**.
 
@@ -15,6 +25,12 @@ and `links`: every connection the engine measured between two tables. For a link
 the share of table a's rows whose key is found in table b (and `b_in_a` the reverse), and
 `relation` says whether a key identifies one row or many on each side. You can only choose from
 `links`; you cannot name a key the engine did not measure.
+
+Tables chosen from the team's data catalog carry a `description` (what the table is and what it
+is used for), and a link marked `documented` is one the catalog's data owners wrote down, with
+their `note`. A documented link is usually the right one, but it is measured like any other:
+when its numbers disagree with the note (few rows match, a key repeats where it should not),
+say so in `concerns`.
 
 - `base_table`: the table whose rows are what the model predicts for (one loan, one obligor at
   one date). It is usually the one holding the outcome the sponsor described. Every other table

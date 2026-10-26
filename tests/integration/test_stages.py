@@ -76,10 +76,18 @@ def test_validate_rubric(reg_run):
     assert p["rubric"]["leakage"] == 1.0  # synthetic data has no leakage
 
 
-def test_comply_sr117_and_inventory(reg_run):
+def test_a_profile_naming_sr_11_7_reads_as_sr_26_2():
+    from cognos.config import ComplianceConfig
+
+    assert ComplianceConfig().regimes == ["SR26-2", "NIST-AI-RMF"]
+    assert ComplianceConfig(regimes=["SR11-7", "SR26-2", "EU-AI-Act"]).regimes == [
+        "SR26-2", "EU-AI-Act"]
+
+
+def test_comply_sr262_and_inventory(reg_run):
     ctx, _ = reg_run
     p = ctx.require("comply").payload
-    assert set(p["sr11_7"]) == {"conceptual_soundness", "ongoing_monitoring", "outcomes_analysis"}
+    assert set(p["sr26_2"]) == {"conceptual_soundness", "ongoing_monitoring", "outcomes_analysis"}
     assert p["inventory"]["model_id"] == "stages_reg"
     assert p["inventory"].get("annex_iv_required") is True  # EU jurisdiction
 
@@ -95,7 +103,7 @@ def test_comply_is_nongating_report(reg_run):
     assert comply.payload.get("report_only") is True
     assert comply.payload.get("outstanding_human_steps")
     # ongoing monitoring is never auto-passed
-    assert comply.payload["sr11_7"]["ongoing_monitoring"]["status"] != "pass"
+    assert comply.payload["sr26_2"]["ongoing_monitoring"]["status"] != "pass"
 
 
 def test_document_okf_bundle(reg_run):

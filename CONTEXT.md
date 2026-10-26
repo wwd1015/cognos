@@ -6,8 +6,9 @@ layer automates judgment. It does not remove the decision. Finishing a run is no
 The determinism is what keeps the reasoning honest (it is the anti-hallucination mechanism).
 
 **Primary domain:** commercial model development (e.g. commercial credit-risk: facility / obligor /
-collateral), governed by **SR 11-7 model risk management**. Fair-lending scans are an **optional,
-off-by-default module** for commercial profiles (report them as out of scope for the profile, not as
+collateral), governed by **SR 26-2 model risk management** (Fed SR 26-2 / OCC Bulletin 2026-13 /
+FDIC FIL-15-2026, April 17, 2026, which superseded SR 11-7 and OCC 2011-12; ADR-0019).
+Fair-lending scans are an **optional, off-by-default module** for commercial profiles (report them as out of scope for the profile, not as
 inapplicable law — ECOA/Reg B does reach business credit);
 see [ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md).
 
@@ -203,7 +204,7 @@ answered. Written once to `packages/vN.json` with a digest of the recorded facts
 marks the live pointer superseded and does not rewrite the file. Approval is not deployment.
 
 **Model-risk readiness report** (the `comply` deliverable):
-An optional, non-gating report that organizes the substantive evidence into the SR 11-7 structure and
+An optional, non-gating report that organizes the substantive evidence into the SR 26-2 structure and
 lists the human-only steps that remain (independent validation sign-off, monitoring plan, governance).
 It never adjudicates compliance and never marks an element compliant without concrete evidence.
 See [ADR-0006](docs/adr/0006-compliance-is-non-gating-readiness-report.md).
@@ -229,10 +230,10 @@ The fitted transform+estimator used to *score* (serving). For categoricals it us
 **Inference design**:
 A *separate*, full-rank (K-1 / drop-first dummy coding + intercept) design used only for statsmodels
 **coefficient/p-value estimation** on training data. Decoupled from the prediction pipeline so the
-reported coefficients and significances are statistically valid (no dummy-variable trap), as SR 11-7
+reported coefficients and significances are statistically valid (no dummy-variable trap), as SR 26-2
 validation of a regression model requires.
 
-**Outcomes analysis** (SR 11-7 backtesting):
+**Outcomes analysis** (SR 26-2 backtesting):
 Predicted-vs-actual validation of a credit-risk model on an out-of-time sample — discrimination
 (Gini/KS), calibration (expected vs observed default rate by band), and stability (PSI/CSI). This is
 what "backtest" means for the primary domain; trading metrics (PBO, Deflated Sharpe) are an opt-in
@@ -259,8 +260,8 @@ _Avoid_: answering a sponsor question on the sponsor's behalf.
 **Framework assessment (alternatives considered)**:
 Ideate's deterministic judgment of which econometric frameworks fit the data structure — structural
 (Merton) vs reduced-form PD vs discrete-time hazard vs rating migration vs ML challenger — each
-applicable / partial / **rejected with a stated reason**. The rejections are the SR 11-7
-"alternatives considered" evidence.
+applicable / partial / **rejected with a stated reason**. The rejections are the SR 26-2
+evidence for the comparison of alternative methodologies.
 
 **Discrete-time hazard family** (`hazard_logit` / `hazard_cloglog`):
 A survival model (Shumway 2001) fit by **panel-expanding obligor-periods inside the estimator**, so

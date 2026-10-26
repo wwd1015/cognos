@@ -50,8 +50,8 @@ randomness, it belongs to the **engine** ("the engine disposes"):
   unchanged.
 - When market observables exist but the `structural:` block is off, ideate marks the framework
   **available** and raises an unlock question; when they don't exist (private obligors), the
-  framework stays **rejected with a stated reason** — that recorded rejection is SR 11-7
-  "alternatives considered" evidence.
+  framework stays **rejected with a stated reason** — that recorded rejection is SR 26-2
+  evidence for the comparison of alternative methodologies.
 
 ### 3. Simulation is reported, never selected on
 

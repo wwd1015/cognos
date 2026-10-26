@@ -134,7 +134,7 @@ def changed(state: RunState) -> list[str]:
     return [k for k in now if now.get(k) != base.get(k)]
 
 
-CHANGE_LABELS = {"exclude_columns": "excluded columns", "target": "dependent variable",
+CHANGE_LABELS = {"data": "the data", "exclude_columns": "excluded columns", "target": "dependent variable",
                  "task": "task", "join": "join of the sources", "design": "design answers",
                  "compliance": "intended use", "slate": "model families", "plan": "the plan",
                  "pool": "candidate pool", "names": "model names", "champion": "champion"}

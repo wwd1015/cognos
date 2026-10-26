@@ -1,7 +1,8 @@
 """The service layer — the single API boundary the CLI and the UI use.
 
-Everything a front end needs: create a run (from a profile or a synthetic demo preset, as a new
-model development or a model update with its intent and prior-model documents), advance it
+Everything a front end needs: create a run (from a template, a profile or a synthetic demo
+preset, as a new model development or a model update with its intent and prior-model
+documents), give it its data once the intent is confirmed, keep a finished run as a template, advance it
 (synchronously or in the background), submit gate decisions, answer questions, retry, and read
 state, results, events and the agent audit. One :class:`~cognos.engine.Engine` per run is cached
 in-process so a background run and the UI callbacks share its in-flight bookkeeping. A REST adapter,
@@ -716,19 +717,274 @@ def delete_runs(run_ids: list[str], root: str | Path | None = None, *,
     return rows
 
 
-def list_profiles(directory: str | Path = "projects") -> list[dict[str, str]]:
-    d = Path(directory)
-    if not d.exists():
-        return []
+# --- templates (ADR-0018) ------------------------------------------------------------------
+BUILTIN_TEMPLATES = Path(__file__).parent / "templates"
+# How the built-ins are offered: PD first, then loss, then LGD and EAD. One not named goes last.
+_BUILTIN_ORDER = ["pd_logistic_scorecard", "pd_structural_simulation", "rating_migration",
+                  "loss_forecast_timeseries", "lgd_regression", "ead_ccf_regression"]
+_CARRIED = ("task", "mode", "design", "metric", "search", "evaluation", "factors", "selection",
+            "analysis", "plugins", "structural", "migration", "compliance", "impact", "backtest",
+            "portfolio", "stress", "workflow", "stages")
+
+
+def team_templates(root: str | Path | None = None) -> Path:
+    """Where a team keeps the templates it saved: beside its runs, so everyone on one runs
+    folder sees them (ADR-0015)."""
+    return runs_root(root) / "_templates"
+
+
+def list_templates(root: str | Path | None = None) -> list[dict[str, Any]]:
+    """The built-in templates, then the team's, each as ``{"ref", "title", "description",
+    "origin", "guide", "task", ...}``. ``ref`` is what :func:`template_config` takes."""
     out = []
-    for p in sorted(d.glob("*.y*ml")):
-        try:
-            cfg = CognosConfig.from_yaml(p)
-            out.append({"path": str(p), "name": cfg.name, "description": cfg.description,
-                        "task": cfg.task.value if cfg.task else "from the data"})
-        except Exception:
-            continue
+    for origin, folder in (("built-in", BUILTIN_TEMPLATES), ("team", team_templates(root))):
+        found = sorted(folder.glob("*.yaml")) if folder.exists() else []
+        if origin == "built-in":
+            found.sort(key=lambda f: (_BUILTIN_ORDER + [f.stem]).index(f.stem))
+        for p in found:
+            try:
+                cfg = CognosConfig.from_yaml(p)
+            except Exception:
+                continue  # an unreadable file is not offered
+            info = cfg.template
+            out.append({"ref": f"{origin}:{p.stem}", "id": p.stem, "origin": origin,
+                        "title": (info.title if info else "") or cfg.name,
+                        "description": cfg.description, "guide": cfg.data.guide,
+                        "task": cfg.task.value if cfg.task else "from the data",
+                        "setup": template_setup(cfg),
+                        "saved_by": info.saved_by if info else "",
+                        "saved_at": info.saved_at if info else "",
+                        "from_run": info.from_run if info else "", "path": str(p)})
     return out
+
+
+_TASKS = {"classification": "a yes / no outcome", "regression": "a continuous outcome",
+          "timeseries": "a series over time"}
+_METRICS = {"roc_auc": "AUC", "rmse": "RMSE"}
+_TESTS = {"out_of_time": "the latest periods (out of time)", "random": "a random share",
+          "none": "none"}
+
+
+def template_setup(cfg: CognosConfig) -> list[tuple[str, str]]:
+    """What a template sets up, as (label, text) lines a person reads before choosing it. Only
+    what the template states; anything left to the run is not listed."""
+    out = []
+    d = cfg.design
+    if d.use_case:
+        out.append(("For", d.use_case))
+    if d.horizon:
+        out.append(("Horizon", d.horizon))
+    model = []
+    if cfg.structural.enabled:
+        model.append("Merton distance to default, alongside a scored model")
+    if cfg.migration.enabled:
+        model.append("rating transition matrices, alongside a scored model")
+    if cfg.search.model_families:
+        model.append(", ".join(cfg.search.model_families))
+    if cfg.task:
+        model.append(f"predicts {_TASKS.get(cfg.task.value, cfg.task.value)}")
+    if cfg.metric.name != "auto":
+        model.append(f"ranked on {_METRICS.get(cfg.metric.name, cfg.metric.name)}")
+    if model:
+        out.append(("Model", "; ".join(model)))
+    plan = []
+    if cfg.evaluation.test != "auto":
+        plan.append(f"test sample: {_TESTS[cfg.evaluation.test]}")
+    methods = [m for m in cfg.selection.methods if m != "auto"]
+    if methods:
+        plan.append(f"{' and '.join(m.replace('_', ' ') for m in methods)} selection, "
+                    f"up to {cfg.selection.max_factors} factors")
+    if cfg.factors.expected_signs:
+        n = len(cfg.factors.expected_signs)
+        plan.append(f"expected signs on {n} driver{'s' if n > 1 else ''}")
+    if plan:
+        out.append(("Development", "; ".join(plan)))
+    after = []
+    if cfg.stress.enabled and cfg.stress.scenarios:
+        after.append("stress scenarios: " + ", ".join(
+            str(s.get("name", "")).replace("_", " ") for s in cfg.stress.scenarios))
+    if cfg.portfolio.enabled:
+        after.append("portfolio loss simulation")
+    if after:
+        out.append(("Also", "; ".join(after)))
+    c = cfg.compliance
+    out.append(("Governance", f"{', '.join(c.regimes)}; {c.risk_tier} risk tier"))
+    return out
+
+
+def _slug(text: str, fallback: str = "model") -> str:
+    import re
+
+    return re.sub(r"[^A-Za-z0-9_]+", "_", text or "").strip("_").lower() or fallback
+
+
+def template_config(ref: str | None, name: str = "", *,
+                    root: str | Path | None = None) -> CognosConfig:
+    """The profile a run starts from: a template (``ref`` from :func:`list_templates`) or, with
+    no ref, nothing but the defaults. Either way it has no data; the developer gives it at
+    gate_source once the intent is confirmed."""
+    if not ref:
+        return CognosConfig.from_dict({"name": _slug(name), "mode": "interactive",
+                                       "runs_dir": str(runs_root(root))})
+    origin, _, tid = ref.partition(":")
+    folder = {"built-in": BUILTIN_TEMPLATES, "team": team_templates(root)}.get(origin)
+    path = folder / f"{tid}.yaml" if folder is not None and tid == Path(tid).name else None
+    if path is None or not path.exists():
+        raise KeyError(f"no template {ref!r}")
+    raw = CognosConfig.from_yaml(path).model_dump(mode="json")
+    raw["template"] = {**(raw.get("template") or {}), "id": tid, "origin": origin}
+    raw.update(name=_slug(name, raw["name"]), runs_dir=str(runs_root(root)))
+    return CognosConfig.from_dict(raw)
+
+
+def save_template(run_id: str, title: str, description: str = "", *,
+                  root: str | Path | None = None, by: str | None = None) -> str:
+    """Keep a finished run's setup as a team template: the template it started from with the
+    decisions the run took laid over it (design answers, intended use, the development plan
+    as edited, the model families). Nothing about its data goes in, except a line in the
+    guide saying what it was built on. Returns the template's ref."""
+    from .context import RunContext
+    from .engine.gates import describe_data
+    from .engine.state import utcnow
+    from .identity import whoami
+
+    title = " ".join(str(title or "").split())
+    if not title:
+        raise GateError("Give the template a title: it is what a person picks when starting a run.")
+    run_dir = _run_dir(run_id, root)
+    st = RunState.load(run_dir)
+    if st.status not in ("completed", "approved") or st.is_trial:
+        raise GateError("A template is saved from a main run that has gone through the whole "
+                        "process.")
+    cfg = CognosConfig.from_yaml(run_dir / "config.yaml")
+    ctx = RunContext(cfg, run_id=run_id, runs_root=run_dir.parent)
+    eff, ov = ctx.config, st.overrides
+    raw = {k: v for k, v in eff.model_dump(mode="json").items() if k in _CARRIED}
+    for section, fields in (ov.plan or {}).items():
+        raw[section] = {**raw.get(section, {}), **fields}
+    families = list(dict.fromkeys(s["family"] for s in ov.slate or [] if s.get("family")))
+    if families:
+        raw["search"] = {**raw["search"], "model_families": families}
+    built_on = [f"Saved from run {run_id} ({utcnow()[:10]}), built on "
+                f"{describe_data(ov.data or eff.data.model_dump(mode='json'))}"]
+    if eff.data.target:
+        built_on.append(f"with {eff.data.target} as the dependent variable")
+    guide = "\n\n".join(x for x in (cfg.data.guide.strip(), ", ".join(built_on) + ".") if x)
+    slug = _slug(title, "template")
+    dest = team_templates(root) / f"{slug}.yaml"
+    # The catalog tables the run was built on become the template's starting selection.
+    last = st.last_decision("gate_source")
+    used = list((last.payload or {}).get("catalog") or []) if last else []
+    raw.update(name=slug, description=description.strip() or cfg.description,
+               data={"guide": guide, "catalog": used or list(cfg.data.catalog)},
+               template={"id": slug, "title": title, "origin": "team", "saved_by": by or whoami(),
+                         "saved_at": utcnow(), "from_run": run_id})
+    tpl = CognosConfig.from_dict(raw)  # refuses anything a run could not start from
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:  # exclusive: two people saving the same title never overwrite each other
+        with open(dest, "x", encoding="utf-8") as fh:
+            fh.write(f"# A team template saved from run {run_id} by {tpl.template.saved_by} "
+                     f"(ADR-0018).\n")
+            import yaml
+
+            yaml.safe_dump(tpl.model_dump(mode="json", exclude_defaults=True,
+                                          exclude={"runs_dir", "agents", "engagement"}),
+                           fh, sort_keys=False, allow_unicode=True)
+    except FileExistsError:
+        raise GateError(f"The team already has a template called {title!r}; choose another "
+                        "title.") from None
+    return f"team:{slug}"
+
+
+def data_info(run_id: str, root: str | Path | None = None, *,
+              with_catalog: bool = False) -> dict[str, Any]:
+    """What a run's page says about its data: the template's note on what this kind of model
+    is built on, and the data in force (the profile's, or what was given at gate_source).
+    ``with_catalog`` adds the data catalog (``catalog``) and the tables the form starts with
+    checked (``preselected``): the last choice, else the template's, else the defaults."""
+    from .engine.gates import describe_data
+
+    run_dir = _run_dir(run_id, root)
+    cfg = CognosConfig.from_yaml(run_dir / "config.yaml")
+    st = RunState.load(run_dir)
+    given = st.overrides.data
+    if not given and cfg.data.given:
+        given = cfg.data.model_dump(mode="json")
+    info: dict[str, Any] = {"guide": cfg.data.guide,
+                            "given": describe_data(given) if given else ""}
+    if with_catalog:
+        from . import catalog
+
+        try:
+            info["catalog"] = catalog.listing(root)
+        except Exception as exc:  # an unreadable catalog leaves the form for added data
+            info["catalog"], info["catalog_error"] = None, str(exc)
+            return info
+        last = st.last_decision("gate_source")
+        chosen = list((last.payload or {}).get("catalog") or []) if last else []
+        known = {t["id"] for t in info["catalog"]["tables"]}
+        info["preselected"] = ([i for i in chosen if i in known] if last
+                               else catalog.preselected(cfg, root))
+    return info
+
+
+def catalog_line(table: dict[str, Any]) -> str:
+    """One line on what a catalog table (as :func:`catalog_listing` gives it) holds."""
+    from . import catalog
+
+    return catalog.summary_line(table)
+
+
+def catalog_listing(root: str | Path | None = None) -> dict[str, Any]:
+    """The data catalog: every table with its description, what it holds and its links."""
+    from . import catalog
+
+    return catalog.listing(root)
+
+
+def data_payload(catalog: list[str] = (), files: list[str] = (), lines: str = "", *,
+                 datetime_col: str | None = None, target: str | None = None,
+                 root: str | Path | None = None) -> dict[str, Any]:
+    """The gate_source payload for what the workbench form describes: catalog tables, data
+    files added, and Snowflake lines (``name = TABLE`` or ``name = SELECT ...``)."""
+    from . import catalog as catalog_mod
+    from . import linking
+
+    try:
+        added = linking.named_sources(list(files), lines or "", at_least=0)["sources"]
+        data = catalog_mod.data_spec(list(catalog), added, datetime_col=datetime_col or None,
+                                     root=root)
+    except (KeyError, ValueError) as exc:  # LinkError is a ValueError
+        raise GateError(str(exc).strip("'\"")) from exc
+    return {"catalog": list(catalog), "data": data,
+            **({"target": target} if target else {})}
+
+
+def provide_data(run_id: str, data: dict[str, Any] | None = None, *,
+                 catalog: list[str] = (), added: list[dict[str, Any]] = (),
+                 datetime_col: str | None = None, target: str | None = None,
+                 root: str | Path | None = None, by: str | None = None,
+                 background: bool = True) -> RunState:
+    """Give a run its data at gate_source: tables from the data ``catalog`` (ids, the first is
+    the proposed base table) and/or ``added`` sources (``{"name", "kind", "path" | "table" |
+    "query"}``), or a ``data`` mapping as it is (``{"source": {...}}`` or
+    ``{"sources": [...]}``)."""
+    payload: dict[str, Any] = {"catalog": list(catalog)}
+    if catalog or added:
+        from . import catalog as catalog_mod
+
+        try:
+            data = catalog_mod.data_spec(list(catalog), list(added), datetime_col=datetime_col,
+                                         root=root)
+        except (KeyError, ValueError) as exc:
+            raise GateError(str(exc).strip("'\"")) from exc
+    elif data is not None and datetime_col:
+        data = {**data, "datetime_col": datetime_col}
+    payload["data"] = data or {}
+    if target:
+        payload["target"] = target
+    return submit_gate(run_id, "gate_source", "accept", payload, root=root, by=by,
+                       background=background)
 
 
 def agent_model(run_id: str, root: str | Path | None = None) -> str | None:

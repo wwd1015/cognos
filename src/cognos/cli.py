@@ -169,7 +169,7 @@ stress:                   # macro-scenario stress: shock covariates, re-score de
   scenarios: []           # [{name: adverse, shocks: {unemployment: {add: 3.0}}}]
 
 compliance:
-  regimes: [SR11-7, NIST-AI-RMF]
+  regimes: [SR26-2, NIST-AI-RMF]
   risk_tier: medium       # low | medium | high
   fair_lending: false
   jurisdictions: [US]
@@ -191,6 +191,8 @@ def _gate_prompt(run_id: str, gate: str, root) -> bool:
     from .engine import GateError
     from .engine.graph import LABELS, STAGE_OF_GATE
 
+    if gate == "gate_source":
+        return _data_prompt(run_id, root)
     stage = STAGE_OF_GATE[gate]
     res = service.results(run_id, root).get(stage)
     print("\n" + "=" * 72)
@@ -239,6 +241,40 @@ def _gate_prompt(run_id: str, gate: str, root) -> bool:
         print(f"  refused: {exc}")
         return True
     return False
+
+
+def _data_prompt(run_id: str, root) -> bool:
+    """The run waits for its data (gate_source). In a terminal, choose catalog tables and add
+    files."""
+    from . import service
+    from .engine import GateError
+
+    info = service.data_info(run_id, root, with_catalog=True)
+    print("\n" + "=" * 72)
+    print("GATE gate_source — Provide the data")
+    if info["guide"]:
+        print("  What this kind of model is usually built on:")
+        print("\n".join(f"    {line}" for line in info["guide"].strip().splitlines()))
+    checked = info.get("preselected") or []
+    for t in (info.get("catalog") or {}).get("tables", []):
+        print(f"  [{'x' if t['id'] in checked else ' '}] {t['id']:<22} {t.get('title', '')}")
+    if not sys.stdin.isatty():
+        print(f"  (non-interactive stdin) -> left waiting; give it with "
+              f"`cognos data --run {run_id} --catalog` (the checked tables) or --file PATH.")
+        return False
+    picked = input("  catalog tables, separated by spaces (Enter: the checked ones, - for "
+                   "none) > ").split()
+    picked = [] if picked == ["-"] else (picked or checked)
+    files = input("  data files to add, separated by spaces (Enter: none) > ").split()
+    if not picked and not files:
+        return False
+    try:
+        service.submit_gate(run_id, "gate_source", "accept",
+                            service.data_payload(picked, files, root=root), root=root,
+                            background=False)
+    except GateError as exc:
+        print(f"  refused: {exc}")
+    return True
 
 
 def _interview(run_id: str, st, root) -> bool:
@@ -371,12 +407,99 @@ def _cmd_explain(args) -> int:
     return 0
 
 
+def _cmd_data(args) -> int:
+    from . import service
+    from .engine import GateError
+
+    lines = list(args.sql or [])
+    if args.table or args.query:
+        lines.append(f"snowflake = {args.query or args.table}")
+    try:
+        catalog = args.catalog
+        if catalog == []:  # --catalog alone: what the form starts with checked
+            catalog = service.data_info(args.run, args.runs_dir, with_catalog=True).get(
+                "preselected", [])
+        if catalog is None and not args.file and not lines:
+            print("refused: give --catalog TABLE..., --file FILE..., or --sql / --table / --query")
+            return 1
+        payload = service.data_payload(catalog or [], args.file or [], "\n".join(lines),
+                                       datetime_col=args.date_col, target=args.target,
+                                       root=args.runs_dir)
+        service.submit_gate(args.run, "gate_source", "accept", payload, root=args.runs_dir,
+                            background=False)
+    except (GateError, KeyError) as exc:
+        print(f"refused: {exc}")
+        return 1
+    return _drive(args.run, args.runs_dir, interactive=False)
+
+
+def _cmd_catalog(args) -> int:
+    from . import catalog
+
+    if args.init:
+        try:
+            path = catalog.init(args.runs_dir)
+        except FileExistsError as exc:
+            print(f"refused: {exc}")
+            return 1
+        print(f"wrote {path}, a copy of the default catalog: edit it to list your team's tables")
+        return 0
+    cat = catalog.load(args.runs_dir)
+    path, origin = catalog.in_force(args.runs_dir)
+    print(cat.title or "Data catalog")
+    if origin == "default":
+        print(f"  the default catalog shipped with COGNOS ({path})\n  to use your team's tables, "
+              f"write {catalog.team_file(args.runs_dir)} (cognos catalog --init)")
+    else:
+        print(f"  your team's catalog ({path})")
+    for t in cat.tables:
+        mark = "*" if t.id in cat.defaults else " "
+        print(f"\n{mark} {t.id:<22} {t.title}")
+        print(f"  {'':<22} {catalog.summary_line({**t.model_dump(), 'summary': catalog.measure(t, args.runs_dir, fetch=args.measure)})}")
+        if t.description:
+            print(f"  {'':<22} {t.description}")
+    if cat.links:
+        print("\nDocumented links:")
+        for lk in cat.links:
+            on = ", ".join(f"{a} = {b}" for a, b in zip(lk.left_on, lk.right_on, strict=False))
+            print(f"  {lk.left} -> {lk.right} on {on}" + (f"  ({lk.note})" if lk.note else ""))
+    print("\n* preselected for a run started from scratch")
+    return 0
+
+
+def _cmd_templates(args) -> int:
+    from . import service
+
+    for t in service.list_templates(args.runs_dir):
+        saved = f"  saved by {t['saved_by']} from {t['from_run']}" if t["origin"] == "team" else ""
+        print(f"{t['ref']:<40} {t['title']}{saved}")
+        print(f"{'':<40} {t['description']}")
+    return 0
+
+
+def _cmd_save_template(args) -> int:
+    from . import service
+    from .engine import GateError
+
+    try:
+        ref = service.save_template(args.run, args.title, args.description, root=args.runs_dir)
+    except (GateError, KeyError) as exc:
+        print(f"refused: {exc}")
+        return 1
+    print(f"saved: {ref}  (start from it with `cognos run --template {ref}`)")
+    return 0
+
+
 def _cmd_run(args) -> int:
     from . import service
 
     try:
-        if not args.config and not args.data:
-            print("refused: give --config, or --data to start from a data file alone")
+        if not args.config and not args.data and not args.template:
+            print("refused: give --template or --config, or --data to start from a data file "
+                  "alone")
+            return 1
+        if args.template and args.config:
+            print("refused: give --template or --config, not both")
             return 1
         files = list(args.data or [])
         if len(files) > 1:  # several files: joined at the data stage (linking.py)
@@ -387,16 +510,20 @@ def _cmd_run(args) -> int:
         elif files:
             spec = {"kind": "file", "path": files[0]}
             keys = {"path": None, "source": spec, "sources": []}
-        base = (_load_config(args.config) if args.config else
-                service.config_from_data(Path(files[0]).stem, spec, root=args.runs_dir))
-        if args.config and files:
+        if args.template:  # without --data, the run asks for it after the intent
+            base = service.template_config(None if args.template == "scratch" else args.template,
+                                           args.name or "", root=args.runs_dir)
+        else:
+            base = (_load_config(args.config) if args.config else
+                    service.config_from_data(Path(files[0]).stem, spec, root=args.runs_dir))
+        if (args.config or args.template) and files:
             base = service.load_config({**base.model_dump(mode="json"), "data": {
                 **base.data.model_dump(mode="json"), **keys}})
         cfg = service.with_engagement(base, _engagement_args(args))
         if args.model:
             cfg = cfg.model_copy(update={"agents": cfg.agents.model_copy(
                 update={"model": args.model})})
-    except ValueError as exc:
+    except (ValueError, KeyError) as exc:
         print(f"refused: {exc}")
         return 1
     mode = "interactive" if args.interactive else cfg.mode.value
@@ -740,6 +867,10 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--data", default=None, nargs="+", metavar="FILE",
                     help="a data file (.csv, .parquet, .xlsx); without --config the Data Analyst "
                          "proposes the target. Several files: it also proposes how they join")
+    pr.add_argument("--template", default=None,
+                    help="start from a template (see `cognos templates`), or 'scratch'; the "
+                         "run asks for the data after the intent unless --data gives it")
+    pr.add_argument("--name", default=None, help="with --template: the model's name")
     pr.add_argument("--interactive", action="store_true", help="review each gate in the terminal")
     pr.add_argument("--provider", default=None, help="agent backend (see `cognos providers`)")
     pr.add_argument("--model", default=None,
@@ -810,8 +941,8 @@ def build_parser() -> argparse.ArgumentParser:
                                        "differently (the run itself is not changed)")
     ptr.add_argument("--run", required=True)
     ptr.add_argument("--gate", required=True,
-                     choices=["gate_intent", "gate_data", "gate_design", "gate_candidates",
-                              "gate_champion"])
+                     choices=["gate_intent", "gate_source", "gate_data", "gate_design",
+                              "gate_candidates", "gate_champion"])
     ptr.add_argument("--note", required=True, help="what the trial run is for (kept on record)")
     runs(ptr)
     ptr.set_defaults(func=_cmd_trial)
@@ -827,6 +958,44 @@ def build_parser() -> argparse.ArgumentParser:
     ptl.add_argument("--run", required=True)
     runs(ptl)
     ptl.set_defaults(func=_cmd_trials)
+
+    pdt = sub.add_parser("data", help="give a run its data (it asks once the intent is "
+                                      "confirmed)")
+    pdt.add_argument("--run", required=True)
+    pdt.add_argument("--catalog", nargs="*", default=None, metavar="TABLE",
+                     help="tables from the data catalog (the first is the proposed base "
+                          "table); alone, the ones the template starts with")
+    pdt.add_argument("--file", nargs="+", default=None, metavar="FILE",
+                     help="data files to add; several sources are joined at the data stage")
+    pdt.add_argument("--sql", action="append", default=None, metavar="'NAME = TABLE|SELECT'",
+                     help="a Snowflake table or read-only query to add (repeatable)")
+    pdt.add_argument("--table", default=None, help="a Snowflake table")
+    pdt.add_argument("--query", default=None, help="a read-only Snowflake query")
+    pdt.add_argument("--target", default=None,
+                     help="the dependent variable (else the Data Analyst proposes it)")
+    pdt.add_argument("--date-col", default=None, help="the date column")
+    runs(pdt)
+    pdt.set_defaults(func=_cmd_data)
+
+    pcat = sub.add_parser("catalog", help="list the data catalog: its tables, what each "
+                                          "holds and how they join")
+    pcat.add_argument("--measure", action="store_true",
+                      help="also read database tables to measure them (files always are)")
+    pcat.add_argument("--init", action="store_true",
+                      help="write the runs folder's own catalog, a copy of the default, to edit")
+    runs(pcat)
+    pcat.set_defaults(func=_cmd_catalog)
+
+    ptp = sub.add_parser("templates", help="list the built-in and team templates")
+    runs(ptp)
+    ptp.set_defaults(func=_cmd_templates)
+
+    psv = sub.add_parser("save-template", help="keep a finished run's setup as a team template")
+    psv.add_argument("--run", required=True)
+    psv.add_argument("--title", required=True)
+    psv.add_argument("--description", default="")
+    runs(psv)
+    psv.set_defaults(func=_cmd_save_template)
 
     pa = sub.add_parser("answer", help="answer (or accept as an assumption) a sponsor question")
     pa.add_argument("--run", required=True)

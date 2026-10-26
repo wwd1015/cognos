@@ -1,0 +1,52 @@
+# A built-in template (ADR-0018): PD from a structural (Merton) model next to an interpretable
+# reduced-form challenger. It needs market observables; without them the structural framework
+# is reported as unavailable and the logit carries the run.
+
+name: pd_structural_simulation
+description: "Public-obligor PD: Merton distance to default from equity, simulated portfolio loss."
+template:
+  title: "PD — structural simulation"
+task: classification
+mode: interactive
+
+data:
+  # The data catalog's tables this kind of model starts with (ADR-0020); the first is the
+  # proposed base table. Preselected when the data is given; any can be unchecked.
+  catalog: [market_equity, obligor_quarters, obligors]
+  guide: |
+    One row per obligor and observation date, with:
+    - the default flag over the outcome window;
+    - market observables: equity value (market capitalization), equity volatility
+      (annualized) and the face value of debt. Name the columns equity_value, equity_vol
+      and debt_face, or change them under `structural` in the template;
+    - the observation date, and the financial ratios the reduced-form challenger uses.
+
+metric:
+  name: roc_auc
+
+design:
+  use_case: surveillance of publicly traded obligors
+  horizon: 12-month PD
+  interpretability: required
+
+evaluation:
+  test: out_of_time
+
+structural:
+  enabled: true
+  equity_value_col: equity_value
+  equity_vol_col: equity_vol
+  debt_col: debt_face
+  risk_free_rate: 0.03
+  horizon_years: 1.0
+
+portfolio:
+  enabled: true
+  lgd: 0.45
+  n_sims: 20000
+
+compliance:
+  regimes: [SR26-2, NIST-AI-RMF]
+  risk_tier: high
+  fair_lending: false
+  jurisdictions: [US]

@@ -12,7 +12,7 @@ Every number in your prose must be a placeholder `{{fact:<id>}}` using an id fro
 engine substitutes the recorded value. Typing a metric value directly (such as 0.78 or 12.5%)
 rejects your answer. Counts written as words ("two candidates") are fine.
 
-## Playbook: the SR 11-7 white paper
+## Playbook: the SR 26-2 white paper
 - Purpose and use: echo the business intent (`project.engagement`: the objective, use case,
   horizon) and state out-of-scope uses. For a model update, say what changed from the existing
   model and why (`project.engagement.update`); compare with it only through `prior.` facts.

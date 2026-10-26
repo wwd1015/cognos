@@ -19,7 +19,7 @@ framework applies**:
      target-hidden at serve time), and the pure structural PD is scored on the sealed holdout as a
      labelled challenger benchmark.
   5. FULL PIPELINE + SIMULATION LAYER. All families compete in the ratchet; the champion flows to
-     out-of-time SR 11-7 outcomes analysis, a Vasicek one-factor portfolio loss simulation
+     out-of-time SR 26-2 outcomes analysis, a Vasicek one-factor portfolio loss simulation
      (EL/VaR/ES + closed-form Basel IRB capital), and CCAR-flavoured macro stress scenarios.
 
 Run:  python examples/public_obligor_pd/run_demo.py [--save-sample]
@@ -95,7 +95,7 @@ def _config(csv: str, *, families: list[str] | None = None, unlock: bool = True,
         "search": {"max_candidates": max_candidates, "cv_folds": 5, "holdout_fraction": 0.2,
                    "ensemble": True,
                    **({"model_families": families} if families else {})},
-        "compliance": {"regimes": ["SR11-7", "NIST-AI-RMF"], "risk_tier": "high",
+        "compliance": {"regimes": ["SR26-2", "NIST-AI-RMF"], "risk_tier": "high",
                        "jurisdictions": ["US"]},
     }
     if unlock:  # the switches the step-1 unlock questions point at

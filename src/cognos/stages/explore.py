@@ -47,9 +47,22 @@ def _tokens(text: str) -> set[str]:
     return {t for t in re.split(r"[^a-z0-9]+", str(text).lower()) if t}
 
 
-def target_candidates(df: pd.DataFrame, cfg, intent: str) -> list[dict]:
-    """Columns that could be the dependent variable, most outcome-like first. Mechanical: a
-    name that reads like an outcome, a binary coding, and words shared with the stated intent."""
+def declared_outcomes(cfg, base_table: str | None = None) -> list[str]:
+    """The outcome columns the data catalog names for the base table (the one source, or the
+    base of a join). An outcome of a table joined to it describes something else."""
+    if cfg.data.source is not None:
+        return list(cfg.data.source.outcomes)
+    for s in cfg.data.sources:
+        if s.name == base_table:
+            return list(s.outcomes)
+    return []
+
+
+def target_candidates(df: pd.DataFrame, cfg, intent: str,
+                      outcomes: list[str] = ()) -> list[dict]:
+    """Columns that could be the dependent variable, most outcome-like first. Mechanical: the
+    data catalog names it an outcome of the base table, a name that reads like an outcome, a
+    binary coding, and words shared with the stated intent."""
     dc = cfg.data
     skip = {dc.datetime_col, dc.event_time_col, cfg.migration.next_rating_col,
             *dc.drop_columns, *dc.protected_attributes}
@@ -65,6 +78,9 @@ def target_candidates(df: pd.DataFrame, cfg, intent: str) -> list[dict]:
         toks = _tokens(col)
         binary = n_unique == 2
         why, score = [], 0
+        if col in outcomes:
+            score += 6
+            why.append("the data catalog names it an outcome of the base table")
         if toks & _OUTCOME_HINTS:
             score += 3
             why.append("its name reads like an outcome")
@@ -96,6 +112,40 @@ def _intent_text(ctx: RunContext) -> str:
     return " ".join([*parts, d.default_definition, d.use_case, ctx.config.description])
 
 
+_ID_NAME = re.compile(r"(^|_)(id|key|code|number|no|num)$", re.I)
+
+
+def identifiers(df: pd.DataFrame, features: list[str], cfg) -> list[str]:
+    """Feature columns that name a row rather than describe it: a key the data catalog
+    declares, or a text column with many distinct values (most rows its own, or an id-like name
+    with more than 50). Measured, for the Data Analyst to recommend excluding: coded as a
+    category, an identifier is one column per obligor and carries nothing that generalizes."""
+    sources = cfg.data.sources or ([cfg.data.source] if cfg.data.source else [])
+    declared = {k for s in sources for k in s.keys}
+    out = []
+    for col in features:
+        s = df[col]
+        if col in declared:
+            out.append(col)
+        elif not (pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s)):
+            n = int(s.nunique())
+            if n > max(50, 0.5 * len(s)) or (n > 50 and _ID_NAME.search(str(col))):
+                out.append(col)
+    return out
+
+
+def dictionary(cfg, columns: list) -> dict[str, str]:
+    """What each column means, from the data catalog's descriptions of the sources it came
+    from (ADR-0020). Empty for data given without a catalog."""
+    sources = cfg.data.sources or ([cfg.data.source] if cfg.data.source else [])
+    out: dict[str, str] = {}
+    for src in sources:
+        for col, text in src.columns.items():
+            if col in columns and text:
+                out.setdefault(col, text)
+    return out
+
+
 def linked_dataset(ctx: RunContext) -> tuple[pd.DataFrame, dict]:
     """Several sources as one modelling table, and how it was made. The plan in force is the
     data-gate decision, else the profile's stated join, else the Data Analyst's proposal. The
@@ -109,7 +159,9 @@ def linked_dataset(ctx: RunContext) -> tuple[pd.DataFrame, dict]:
     base = ctx.base_config
     tables, provenance = linking.snapshot(ctx)
     target = base.data.target or ctx.overrides.target or ""
-    prof = linking.profile(tables, base.data.join, target)
+    prof = linking.profile(tables, base.data.join, target, documented=base.data.links,
+                           described={s.name: s.description for s in base.data.sources
+                                      if s.description})
     rationale: dict = {}
     if ctx.overrides.join:
         source = "decision"
@@ -157,6 +209,7 @@ def linked_dataset(ctx: RunContext) -> tuple[pd.DataFrame, dict]:
             "connector", "kind", "location", "query", "snapshot_sha256")}}
             for t in prof["tables"]],
         "links": prof["links"], "plan": plan, "rationale": rationale, "report": report,
+        "unusable": prof.get("unusable", []),
         "left_out": [t["name"] for t in prof["tables"] if t["name"] not in joined],
     }
     ctx.save_json("stages/explore/join.json", info)
@@ -188,7 +241,9 @@ class ExploreStage(Stage):
         target = base.data.target or ctx.overrides.target or ""
         target_source = "profile" if base.data.target else ("decision" if target else "agent")
         target_rationale = ""
-        candidates = [] if base.data.target else target_candidates(df, base, _intent_text(ctx))
+        outcomes = declared_outcomes(base, (linked or {}).get("plan", {}).get("base"))
+        candidates = [] if base.data.target else target_candidates(df, base, _intent_text(ctx),
+                                                                   outcomes)
         if target and target not in df.columns:
             return StageResult(
                 stage=self.name, verdict=Verdict.FAIL,
@@ -227,13 +282,14 @@ class ExploreStage(Stage):
                  for t in reg.tools_for("explore")]
         author = f"the Data Analyst agent ({ctx.runner.provider['id']})"
         with_missing = [c for c in df.columns if df[c].isna().any()]
+        described = dictionary(base, list(df.columns))
         records: list[dict] = []
         res.payload = {"analyses": records}
         for round_no in range(1, base.analysis.rounds + (0 if target else 1) + 1):
             cfg = settled(target) if target else None
             try:
                 out = ctx.recommend("data_scout", {
-                    "round": round_no, "columns": list(df.columns),
+                    "round": round_no, "columns": list(df.columns), "dictionary": described,
                     "dtypes": {c: str(df[c].dtype) for c in df.columns}, "n_rows": int(len(df)),
                     "target": target, "task": cfg.task.value if cfg else None,
                     "target_basis": target_rationale, "target_candidates": candidates,
@@ -355,14 +411,19 @@ class ExploreStage(Stage):
             "target_summary": target_summary,
             "top_correlations": corrs[:15],
             "leakage_suspects": leakage,
+            "identifiers": identifiers(df, features, base),
+            # outcome data the catalog names that is not the target: never a feature
+            "other_outcomes": [c for c in outcomes if c in features],
         }
         # --- the Data Analyst's recommendation (engine-checked) --------------------
         res.payload = profile
         constant = [c for c in numeric_cols if f"const-{c}" in {f.id for f in res.findings}]
         out = ctx.recommend("data_analyst", {
-            "columns": list(df.columns),
+            "columns": list(df.columns), "dictionary": described,
             "features": features,
             "leakage_suspects": leakage,
+            "identifiers": profile["identifiers"],
+            "other_outcomes": profile["other_outcomes"],
             "top_correlations": corrs[:15],
             "missing_high": {c: round(f, 4) for c, f in missing.items() if f >= HIGH_MISSING},
             "constant_features": constant,

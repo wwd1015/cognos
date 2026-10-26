@@ -230,7 +230,7 @@
   prompt).
 - **Charts** on the validated reference palette: experiment ledger (kept vs discarded, champion
   ringed), coefficients by significance, calibration by score band, validation rubric, PD term
-  structure; the screen, selection paths, candidate pool, sign checks, statistical battery, framework assessment, slate, SR 11-7 /
+  structure; the screen, selection paths, candidate pool, sign checks, statistical battery, framework assessment, slate, SR 26-2 /
   NIST tables; rendered narrative, decision log, model card and white paper.
 - **Out-of-date steps say why**: the decision, answer or validator loop that invalidated a stage is
   shown on the rail and the panel, and once it has re-run, what the re-run changed (champion,
@@ -260,8 +260,8 @@
   **events-per-variable** (Peduzzi ~10 rule) for PD-style tasks, with a finding when support is thin.
 - **Econometric framework assessment** (deterministic rules over the profile): structural Merton vs.
   reduced-form PD scorecard vs. discrete-time hazard vs. rating migration vs. ML challenger — each
-  applicable/partial/**rejected with a stated reason**, which becomes the SR 11-7 "alternatives
-  considered" evidence.
+  applicable/partial/**rejected with a stated reason**, which becomes the SR 26-2
+  evidence for the comparison of alternative methodologies.
 - **MD triangulation via the `design:` config block** (use case, horizon, default definition,
   segment, interpretability): every unanswered design point becomes an explicit **open question to
   the sponsor** (plus data-driven questions: leakage confirmation, panel-column hints, low EPV) —
@@ -323,8 +323,8 @@
   - Stationarity (time series): ADF + KPSS (complementary pair).
 - Pinned seeds; deployable scorer persisted for serving/IMPACT.
 
-## Backtesting (SR 11-7 outcomes analysis) & IMPACT integration (`backtest`)
-- **Backtest = SR 11-7 outcomes analysis by default** (ADR-0005), computed on an **out-of-time (OOT)** sample via `modeling/credit_metrics.py`:
+## Backtesting (SR 26-2 outcomes analysis) & IMPACT integration (`backtest`)
+- **Backtest = SR 26-2 outcomes analysis by default** (ADR-0005), computed on an **out-of-time (OOT)** sample via `modeling/credit_metrics.py`:
   - **Discrimination** — Gini / AUC and the KS statistic.
   - **Calibration** — expected-vs-observed default rate by score band, plus Expected Calibration Error (ECE).
   - **Stability** — PSI (and CSI) between the development and OOT populations.
@@ -344,7 +344,7 @@
 - Walk-forward stability of the champion.
 
 ## Independent validation (`validate`, gate)
-- SR 11-7 **effective challenge**: runs independently of the modeling stage (separate context/agent).
+- SR 26-2 **effective challenge**: runs independently of the modeling stage (separate context/agent).
 - Five-axis rubric (0–1): leakage, overfitting, stability, diagnostics, statistical significance.
 - Hard **BLOCK on confirmed target leakage**; FAIL on a large CV-vs-sealed-holdout gap (the reliable overfit trigger).
 - Detects pathological coefficients/p-values (collinearity, separation, numerical blow-up) — soundness checks made meaningful by the decoupled full-rank inference design.
@@ -352,11 +352,11 @@
 - Optional LLM "does this model make sense" narrative (additive; never changes the verdict).
 
 ## Compliance & model risk (`comply`, non-gating report)
-- **Non-gating model-risk readiness report** (ADR-0006): never PASS/BLOCK on compliance. It *organizes* the SR 11-7 evidence the substantive stages already produced; it never adjudicates compliance.
+- **Non-gating model-risk readiness report** (ADR-0006): never PASS/BLOCK on compliance. It *organizes* the SR 26-2 evidence the substantive stages already produced; it never adjudicates compliance.
 - **Never auto-passes an unevidenced element**: items without concrete, checkable evidence are listed as outstanding gaps (ongoing monitoring is always outstanding at dev time), never silently marked compliant.
 - **Lists the human-only outstanding steps**: independent validation sign-off, a monitoring plan with thresholds, override/governance policy.
 - **Model inventory** entry (id, version, owner, risk tier, purpose, intended / out-of-scope use).
-- **SR 11-7** three core elements: conceptual soundness, ongoing monitoring, outcomes analysis.
+- **SR 26-2** three core elements: conceptual soundness, ongoing monitoring, outcomes analysis.
 - **NIST AI RMF** four functions (Govern / Map / Measure / Manage) mapped to artifacts.
 - Seven **trustworthy-AI** characteristics checklist.
 - EU jurisdiction → flags required **EU AI Act Annex IV** components.
@@ -386,7 +386,7 @@
 - **autoforge protocol** reimplemented: `name: value` stdout parsing, experiment ledger, generic ratchet loop.
 - Typed config (Pydantic v2) with auto metric/direction resolution and YAML round-trip.
 - CLI: see *CLI* above.
-- **Demo tasks** including **`commercial`** (SR 11-7 + OOT outcomes analysis), **`cni`** — the flagship C&I showcase with an answered design brief, event timing (hazard families), Vasicek portfolio simulation, and two macro stress scenarios (ADR-0004, ADR-0008) — and **`migration`**: rating-migration loss forecasting on an S&P-style agency panel (transition matrix, term structure, EL forecast, regime conditioning; ADR-0009). The consumer fair-lending `credit` demo exercises an off-by-default module, not the primary path.
+- **Demo tasks** including **`commercial`** (SR 26-2 + OOT outcomes analysis), **`cni`** — the flagship C&I showcase with an answered design brief, event timing (hazard families), Vasicek portfolio simulation, and two macro stress scenarios (ADR-0004, ADR-0008) — and **`migration`**: rating-migration loss forecasting on an S&P-style agency panel (transition matrix, term structure, EL forecast, regime conditioning; ADR-0009). The consumer fair-lending `credit` demo exercises an off-by-default module, not the primary path.
 - Python API: `cognos.service` (runs, gates, answers, state), `cognos.engine.Engine`, `RunContext`, `CognosConfig`; `run_pipeline` / `Orchestrator` as a compatibility wrapper.
 - Synthetic data generators (regression, classification, time series, commercial credit-risk with a vintage/date column for OOT calibration/PSI, a **C&I portfolio** with event timing + optional market observables + a deliberate post-outcome leak, and consumer credit-with-protected-attribute for the optional fair-lending module) for tests and demos.
 - **Worked examples**: `examples/commercial_credit/` (private middle-market arc: leakage catch → MD triangulation → full pipeline), `examples/public_obligor_pd/` (public-obligor book: every econometric + structural + simulation capability in one run), and `examples/rating_migration_loss/` (the corporate loss-forecast engagement: internal-data insufficiency → external S&P-style agency data → migration matrix, term structure, EL forecast through all eight stages), all with captured real artifacts under `sample_output/`.

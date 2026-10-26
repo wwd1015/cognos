@@ -243,15 +243,10 @@ def test_own_data_form_builds_a_source_and_explore_shows_charts_and_code(root, t
     from cognos import synth
 
     page = _serialize(ui.runs_page())
-    assert "Upload a data file" in page and "Snowflake table or query" in page
-    assert "new-data" in page and "new-sf-table" in page
-    assert "Upload the data file" in ui.data_source_spec("file", [], None, None, None)
-    assert ui.data_source_spec("file", ["/x/loans.csv"], None, None, None) == {
-        "kind": "file", "path": "/x/loans.csv"}
-    assert "Name the Snowflake table" in ui.data_source_spec("snowflake", [], " ", None, None)
-    assert ui.data_source_spec("snowflake", [], "DB.S.T", "", 500) == {
-        "kind": "snowflake", "limit": 500, "table": "DB.S.T"}
-    assert ui.data_source_spec("snowflake", [], "", "SELECT 1", None)["query"] == "SELECT 1"
+    # the drawer asks what to start from, never for the data or a demo (ADR-0018)
+    assert "new-start" in page and "logistic scorecard" in page and "From scratch" in page
+    assert "The data this kind of model is built on" in page and "Governance" in page
+    assert "new-data" not in page and "new-sf-table" not in page and "Synthetic demos" not in page
 
     data = tmp_path / "loans.csv"
     synth.GENERATORS["commercial"](n=500).to_csv(data, index=False)
@@ -333,15 +328,6 @@ def test_linked_sources_show_the_join_and_let_the_developer_change_it(root):
         "join_many": "aggregate", "join_unmatched": "plan", "exclude": []}, run_id)
     st = service.submit_gate(run_id, "gate_data", "edit", same, background=False)
     assert st.status_of("gate_data") == "done" and st.status_of("explore") == "done"
-    assert "linked" in json.dumps(ui.runs_page(), cls=plotly.utils.PlotlyJSONEncoder)
-
-
-def test_several_sources_form_needs_two_and_names_them():
-    assert isinstance(ui.linked_sources_spec(["/tmp/a.csv"], ""), str)
-    assert "name = TABLE" in ui.linked_sources_spec(["/tmp/a.csv"], "RISK.LOANS")
-    spec = ui.linked_sources_spec(["/tmp/a.csv"], "ratings = RISK.RATINGS")
-    assert [s["name"] for s in spec["sources"]] == ["a", "ratings"]
-    assert service.config_from_data("m", spec).data.sources[1].kind == "snowflake"
 
 
 def test_the_record_names_the_person(root, monkeypatch):
@@ -587,10 +573,53 @@ def test_the_new_run_form_offers_the_providers_models(root):
     assert service.agent_model(run_id) is None  # the deterministic agents have no model
 
 
-def test_the_side_columns_fold_away_for_the_stage_page():
+def test_focus_hides_both_side_columns_on_every_view():
     assert ui.column_layout("workflow", None) == (True, 13, True)
-    assert ui.column_layout("workflow", {"left": False, "right": True}) == (False, 19, True)
-    assert ui.column_layout("workflow", {"left": True, "right": False}) == (True, 18, False)
-    assert ui.column_layout("workflow", {"left": False, "right": False}) == (False, 24, False)
-    assert ui.column_layout("audit", {"left": True, "right": True}) == (True, 18, False)
-    assert ui.column_layout("audit", {"left": False, "right": True}) == (False, 24, False)
+    assert ui.column_layout("workflow", True) == (False, 24, False)
+    assert ui.column_layout("audit", False) == (True, 18, False)
+    assert ui.column_layout("questions", True) == (False, 24, False)
+    assert ui.column_layout("workflow", {"left": False}) == (True, 13, True)  # an old choice
+
+
+def test_the_data_is_given_on_the_explore_page_after_the_intent(root, tmp_path):
+    from cognos import synth
+
+    cfg = service.template_config("built-in:pd_logistic_scorecard", "cni pd")
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic")
+    service.run_until_idle(run_id)
+    service.submit_gate(run_id, "gate_intent", "accept", reason="test", background=False)
+    st = service.run_until_idle(run_id)
+    assert ui.auto_step(st) == "explore"  # the page that asks for it
+    info = service.data_info(run_id, with_catalog=True)
+    assert "default flag" in info["guide"] and info["given"] == ""
+    # the data catalog, with the template's tables checked and what each holds
+    assert info["preselected"] == ["obligor_quarters", "facilities", "obligors", "macro_quarterly"]
+    page = _serialize(stage_panel("explore", None, st, "light", data_info=info))
+    assert "Provide the data" in page and "Use this data" in page and "default flag" in page
+    assert "Starts once the data is given" in page
+    assert "Obligor financials by quarter" in page and "rows" in page and "Add data" in page
+    assert "How the tables join, as documented" in page
+    assert "The default catalog shipped with COGNOS" in page  # which catalog is in force
+    rail = _serialize(ui.rail(st, "explore"))
+    assert "Provide the data" in rail
+    # the form, read back as the engine's payload
+    with pytest.raises(ui.GateError, match="choose a table"):
+        ui.gate_payload("gate_source", "accept", {"catalog": [], "add_files": ""}, run_id)
+    payload, _ = ui.gate_payload("gate_source", "accept", {"catalog": ["obligor_quarters"]},
+                                 run_id)
+    assert payload["catalog"] == ["obligor_quarters"]
+    assert payload["data"]["source"]["catalog"] == "obligor_quarters"
+    assert payload["data"]["datetime_col"] == "as_of_date"  # the catalog's, unless given
+    data = tmp_path / "loans.csv"
+    synth.GENERATORS["commercial"](n=300).to_csv(data, index=False)
+    payload, _ = ui.gate_payload("gate_source", "accept", {
+        "catalog": [], "add_files": json.dumps([str(data)]), "target": "default",
+        "datetime_col": "vintage"}, run_id)
+    assert payload == {"catalog": [], "target": "default", "data": {
+        "source": {"kind": "file", "path": str(data)}, "datetime_col": "vintage"}}
+    service.submit_gate(run_id, "gate_source", "accept", payload, background=False)
+    st = service.run_until_idle(run_id)
+    page = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light",
+                                  data_info=service.data_info(run_id)))
+    assert "Data in use" in page and "loans.csv" in page
+    assert service.results(run_id)["explore"].payload["target"] == "default"

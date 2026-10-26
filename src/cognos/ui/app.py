@@ -18,11 +18,19 @@ from pathlib import Path
 from typing import Any
 
 import dash_mantine_components as dmc
-from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
+from dash import ALL, MATCH, Dash, Input, Output, State, ctx, dcc, html, no_update
 
 from .. import __version__, service
 from ..engine import GateError
-from ..engine.graph import GATE_OF_STAGE, GATES, LABELS, STAGE_OF_GATE, STAGES
+from ..engine.graph import (
+    GATE_BEFORE_STAGE,
+    GATE_OF_STAGE,
+    GATES,
+    LABELS,
+    STAGE_AFTER_GATE,
+    STAGE_OF_GATE,
+    STAGES,
+)
 from ..engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, next_action, seat_label
 from .components import (
     empty,
@@ -43,6 +51,7 @@ from .panels import (
     gap_need,
     gap_outcomes,
     gap_required,
+    guide_text,
     questions_summary,
     stage_panel,
 )
@@ -85,26 +94,45 @@ def build_layout() -> Any:
         ])
 
 
+def start_choices(templates: list[dict]) -> list[dict]:
+    """What a run can start from: a built-in template, one the team saved, or nothing."""
+    groups = [("built-in", "Built-in templates"), ("team", "Team templates")]
+    out = [{"group": label, "items": [{"value": t["ref"], "label": t["title"]}
+                                      for t in templates if t["origin"] == origin]}
+           for origin, label in groups]
+    return [g for g in out if g["items"]] + [{"group": "No template", "items": [
+        {"value": "scratch", "label": "From scratch — configure the whole process yourself"}]}]
+
+
+def start_note(ref: str | None, templates: list[dict]) -> Any:
+    """What the chosen template is for, what it sets up, and the data it is usually built on."""
+    t = next((t for t in templates if t["ref"] == ref), None)
+    if t is None:
+        return dmc.Text("Every choice is made in the run: the Design Lead proposes the plan from "
+                        "the intent and the data, and you confirm it at the gates.",
+                        size="xs", c="dimmed")
+    saved = (f"Saved by {t['saved_by']} on {t['saved_at'][:10]} from run {t['from_run']}. "
+             if t["origin"] == "team" else "")
+    rows = [dmc.Text([dmc.Text(label, fw=650, span=True), "  ", text], size="xs")
+            for label, text in t["setup"]]
+    body = [dmc.Text(saved + t["description"], size="sm"), *rows]
+    if t["guide"]:
+        body.append(dmc.Accordion([dmc.AccordionItem([
+            dmc.AccordionControl("The data this kind of model is built on",
+                                 icon=icon("tabler:database")),
+            dmc.AccordionPanel(guide_text(t["guide"])),
+        ], value="data")], variant="default"))
+    return dmc.Stack(body, gap=4, mt=4)
+
+
 def runs_page() -> Any:
-    profiles = service.list_profiles()
+    templates = service.list_templates()
     providers = service.provider_list()
     prov_data = [{"value": p["id"], "label": f"{p['label']}" + ("" if p["available"] else " — unavailable"),
                   "disabled": not p["available"]} for p in providers if p["id"] != "replay"]
     default_prov = next((p["id"] for p in providers if p["available"] and p["id"] == "claude_cli"),
                         "heuristic")
-    sources = {s["kind"]: s for s in service.plugin_list()["sources"]}
-    snow = sources.get("snowflake", {})
-    own = [{"value": "data:file", "label": "Upload a data file (.csv, .parquet, .xlsx)"},
-           {"value": "data:snowflake", "label": "Snowflake table or query"
-            + ("" if snow.get("available") else " — not configured")},
-           {"value": "data:linked", "label": "Several sources (files, Snowflake tables): the "
-                                             "Data Analyst proposes the join"}]
-    source_data = ([{"group": "Your data — the Data Analyst proposes the target", "items": own}]
-                   + [{"group": "Synthetic demos", "items": [
-        {"value": f"demo:{k}", "label": v} for k, v in service.DEMO_LABELS.items()]}]
-        + ([{"group": "Project profiles", "items": [
-            {"value": f"profile:{p['path']}", "label": f"{p['name']} ({p['path']})"}
-            for p in profiles]}] if profiles else []))
+    first = templates[0]["ref"] if templates else "scratch"
     prior_runs = [{"value": r["run_id"], "label": f"{r['project']} · {r['run_id']}"}
                   for r in service.list_runs() if not r["legacy"] and r["champion"]]
     drawer = dmc.Drawer(id="new-drawer", title=dmc.Text("Start a run", fw=650), position="right",
@@ -112,38 +140,14 @@ def runs_page() -> Any:
         dmc.SegmentedControl(id="new-kind", value="new", fullWidth=True, data=[
             {"value": "new", "label": "New model development"},
             {"value": "update", "label": "Model update"}]),
-        dmc.Select(id="new-source", label="Data & design", data=source_data, value="demo:cni",
-                   allowDeselect=False, searchable=True),
-        html.Div(dmc.Stack([
-            dmc.TextInput(id="new-name", label="Model name", placeholder="e.g. commercial_pd"),
-            html.Div(dmc.Stack([
-                dmc.Text("Data file", size="sm", fw=500),
-                upload_box("new-data", "Drop the dataset, or click to choose", multiple=False),
-            ], gap=4), id="new-data-file"),
-            html.Div(dmc.Stack([
-                dmc.TextInput(id="new-sf-table", label="Table",
-                              placeholder="DATABASE.SCHEMA.TABLE"),
-                dmc.Textarea(id="new-sf-query", label="Or a read-only query", autosize=True,
-                             minRows=2, placeholder="SELECT ... FROM ... WHERE ..."),
-                dmc.NumberInput(id="new-sf-limit", label="Row limit (optional)", min=1),
-                dmc.Text(snow.get("note") or "Connects with the SNOWFLAKE_ACCOUNT / SNOWFLAKE_USER "
-                         "and password or key in this server's environment. Nothing secret is "
-                         "stored in the run.", size="xs", c="dimmed"),
-            ], gap=4), id="new-data-sf", style={"display": "none"}),
-            html.Div(dmc.Stack([
-                dmc.Text("Data files", size="sm", fw=500),
-                upload_box("new-data-multi", "Drop the files, or click to choose (.csv, "
-                                             ".parquet, .xlsx)", multiple=True),
-                dmc.Textarea(id="new-linked-sf", label="Snowflake tables or queries (optional)",
-                             autosize=True, minRows=2,
-                             placeholder="one per line:\nloans = RISK.CREDIT.LOANS\n"
-                                         "ratings = SELECT obligor_id, rating FROM RISK.CREDIT.RATINGS"),
-                dmc.Text("Give two or more sources in total. The engine measures how they "
-                         "connect, the Data Analyst proposes the base table and the joins, and "
-                         "you confirm or change the join at the data gate. If you already have "
-                         "the join, use one query instead.", size="xs", c="dimmed"),
-            ], gap=4), id="new-data-linked", style={"display": "none"}),
-        ], gap="xs"), id="new-data-wrap", style={"display": "none"}),
+        dmc.TextInput(id="new-name", label="Model name", placeholder="e.g. cni_pd_2026"),
+        dmc.Stack([
+            dmc.Select(id="new-start", label="Start from", data=start_choices(templates),
+                       value=first, allowDeselect=False, searchable=True,
+                       description="A template is a standard setup for one kind of model. "
+                                   "Every choice in it can be changed at the gates."),
+            html.Div(start_note(first, templates), id="new-start-note"),
+        ], gap=4),
         dmc.Stack([
             dmc.Group([
                 dmc.Text("Business intent document", size="sm", fw=500, id="new-intent-label"),
@@ -153,8 +157,8 @@ def runs_page() -> Any:
             upload_box("new-intent", "Drop the filled-in template, or click to choose "
                                      "(.md, .txt, .docx)", multiple=False),
             dmc.Text("What the model is for, in the sponsor's words. The Intake Analyst reads it "
-                     "and asks about anything left unclear. A synthetic demo brings its own.",
-                     size="xs", c="dimmed", id="new-intent-help"),
+                     "and asks about anything left unclear. You give the data once the intent "
+                     "is confirmed.", size="xs", c="dimmed", id="new-intent-help"),
         ], gap=4),
         dmc.Stack([
             dmc.Text("Background documents (optional)", size="sm", fw=500),
@@ -188,7 +192,7 @@ def runs_page() -> Any:
                       html.Div("Model development", className="page-title"),
                       html.Div("A run starts from the sponsor's business intent (a new model, or "
                                "an update of an existing one) and takes it through nine stages "
-                               "and seven review gates.", className="page-lede")]),
+                               "and eight review gates.", className="page-lede")]),
             dmc.Button("New run", id="new-open", leftSection=icon("tabler:plus")),
         ], justify="space-between", align="flex-end", mt="lg", mb="xl", wrap="nowrap"),
         html.Div(id="runs-figures", children=runs_figures()),
@@ -492,7 +496,7 @@ def workspace_page(run_id: str) -> Any:
         dcc.Store(id="ws-seat", data="developer"),
         dcc.Store(id="ws-key", data=None),
         # Which side columns are shown; kept in the browser so the choice carries across runs.
-        dcc.Store(id="ws-sides", data={"left": True, "right": True}, storage_type="local"),
+        dcc.Store(id="ws-focus", data=False, storage_type="local"),
         dmc.Group([
             dmc.Group([
                 html.Span("Acting as", className="eyebrow"),
@@ -502,17 +506,10 @@ def workspace_page(run_id: str) -> Any:
                           if k != "express"],
                 ),
             ], gap="sm"),
-            dmc.Group([
-                dmc.Tooltip(dmc.ActionIcon(icon("tabler:layout-sidebar-left-collapse", 18),
-                                           id="ws-toggle-left", variant="subtle", color="gray",
-                                           n_clicks=0, **{"aria-label": "Show or hide the stages"}),
-                            label="Show or hide the run and its stages", id="ws-toggle-left-tip"),
-                dmc.Tooltip(dmc.ActionIcon(icon("tabler:layout-sidebar-right-collapse", 18),
-                                           id="ws-toggle-right", variant="subtle", color="gray",
-                                           n_clicks=0,
-                                           **{"aria-label": "Show or hide the activity"}),
-                            label="Show or hide the live activity", id="ws-toggle-right-tip"),
-            ], gap=4),
+            dmc.Tooltip(dmc.ActionIcon(icon("tabler:arrows-maximize", 18), id="ws-focus-toggle",
+                                       variant="subtle", color="gray", n_clicks=0,
+                                       **{"aria-label": "Focus on the page"}),
+                        label="Focus on the page: hide the side columns", id="ws-focus-tip"),
         ], justify="space-between", mt="xs", mb="sm"),
         # The run's views. "Stages" is the work, one stage at a time; the other two cover the
         # whole run, so they sit above the stage index, not inside a stage.
@@ -530,7 +527,7 @@ def workspace_page(run_id: str) -> Any:
                         span={"base": 24, "md": 5}),
         ], gutter="lg", columns=24),
         dmc.Modal(id="io-modal", size="80%", title="Agent call", children=html.Div(id="io-body")),
-        trial_modal(), promote_modal(),
+        trial_modal(), promote_modal(), template_modal(),
         dcc.Download(id="export-download"),
     ])
 
@@ -577,6 +574,28 @@ def promote_modal() -> Any:
             dmc.Button("Cancel", id="promote-cancel", variant="default", n_clicks=0),
             dmc.Button("Make it the main run", id="promote-go", n_clicks=0,
                        leftSection=icon("tabler:arrow-up-circle", 16)),
+        ], justify="flex-end"),
+    ], gap="md"))
+
+
+def template_modal() -> Any:
+    return dmc.Modal(id="tpl-modal", title=dmc.Text("Save as a team template", fw=650),
+                     size="lg", children=dmc.Stack([
+        dmc.Text("The setup this run finished with becomes a starting point for the next "
+                 "model of its kind: the template it started from, with the design answers, "
+                 "the development plan as you edited it and the model families laid over it. "
+                 "The data stays with this run; the template only says what it was built on.",
+                 size="sm"),
+        dmc.TextInput(id="tpl-title", label="Title",
+                      placeholder="For example: C&I PD — middle market"),
+        dmc.Textarea(id="tpl-description", label="What it is for (optional)", autosize=True,
+                     minRows=2),
+        dmc.Text("Everyone on this runs folder can start from it.", size="xs", c="dimmed"),
+        html.Div(id="tpl-feedback"),
+        dmc.Group([
+            dmc.Button("Cancel", id="tpl-cancel", variant="default", n_clicks=0),
+            dmc.Button("Save the template", id="tpl-go", n_clicks=0,
+                       leftSection=icon("tabler:template", 16)),
         ], justify="flex-end"),
     ], gap="md"))
 
@@ -650,6 +669,9 @@ def run_actions(run_id: str) -> Any:
         if service.trial_gates(run_id) else None,
         dmc.Button("Make this the main run", id="promote-open", size="compact-sm", n_clicks=0,
                    leftSection=icon("tabler:arrow-up-circle", 14)) if st.is_trial else None,
+        dmc.Button("Save as template", id="tpl-open", variant="default", size="compact-sm",
+                   n_clicks=0, leftSection=icon("tabler:template", 14))
+        if st.status in ("completed", "approved") and not st.is_trial else None,
         dmc.Button("Export", id="export-btn", variant="default", size="compact-sm", n_clicks=0,
                    leftSection=icon("tabler:package-export", 14)),
         dcc.Link(dmc.Button(label, variant="subtle", size="compact-sm",
@@ -665,6 +687,8 @@ def rail(st, selected: str | None) -> Any:
     for i, stage in enumerate(STAGES, 1):
         status = st.status_of(stage)
         gate = GATE_OF_STAGE.get(stage)
+        if st.status_of(STAGE_AFTER_GATE.get(stage, "")) == "awaiting":
+            gate = STAGE_AFTER_GATE[stage]  # the data is asked for on explore's page
         gstatus = st.status_of(gate) if gate else None
         right = None
         if gstatus == "awaiting":
@@ -846,7 +870,7 @@ def audit_tab(run_id: str) -> Any:
 def auto_step(st) -> str:
     for g in GATES:
         if st.status_of(g) == "awaiting":
-            return STAGE_OF_GATE[g]
+            return STAGE_OF_GATE.get(g) or GATE_BEFORE_STAGE[g]
     for s in STAGES:
         if st.status_of(s) in ("running", "failed", "blocked"):
             return s
@@ -982,17 +1006,12 @@ def register_callbacks(app: Dash) -> None:
         return {"content": service.intent_template(kind or "new"), "filename": name,
                 "type": "text/markdown"}
 
-    @app.callback(Output("new-data-wrap", "style"), Output("new-data-file", "style"),
-                  Output("new-data-sf", "style"), Output("new-data-linked", "style"),
-                  Input("new-source", "value"))
-    def show_data(source):
-        show, hide = {"display": "block"}, {"display": "none"}
-        own = str(source or "").startswith("data:")
-        return (show if own else hide, show if source == "data:file" else hide,
-                show if source == "data:snowflake" else hide,
-                show if source == "data:linked" else hide)
+    @app.callback(Output("new-start-note", "children"), Input("new-start", "value"),
+                  prevent_initial_call=True)
+    def show_start(ref):
+        return start_note(ref, service.list_templates())
 
-    for _box in ("new-intent", "new-support", "new-prior", "new-data", "new-data-multi"):
+    for _box in ("new-intent", "new-support", "new-prior"):
         app.callback(Output(f"{_box}-names", "children"), Input(_box, "filename"))(upload_names)
 
     @app.callback(Output("new-model", "data"), Output("new-model", "value"),
@@ -1005,41 +1024,22 @@ def register_callbacks(app: Dash) -> None:
 
     @app.callback(Output("url", "pathname"), Output("new-feedback", "children"),
                   Input("new-create", "n_clicks"),
-                  State("new-source", "value"), State("new-mode", "value"),
+                  State("new-start", "value"), State("new-mode", "value"),
                   State("new-provider", "value"), State("new-kind", "value"),
                   State("new-intent", "contents"), State("new-intent", "filename"),
                   State("new-support", "contents"), State("new-support", "filename"),
                   State("new-prior", "contents"), State("new-prior", "filename"),
                   State("new-prior-run", "value"), State("new-name", "value"),
-                  State("new-data", "contents"), State("new-data", "filename"),
-                  State("new-sf-table", "value"), State("new-sf-query", "value"),
-                  State("new-sf-limit", "value"),
-                  State("new-data-multi", "contents"), State("new-data-multi", "filename"),
-                  State("new-linked-sf", "value"), State("new-model", "value"),
-                  prevent_initial_call=True)
-    def create(clicks, source, mode, provider, kind, intent, intent_name, support,
-               support_names, prior, prior_names, prior_run, name=None, data=None,
-               data_name=None, sf_table=None, sf_query=None, sf_limit=None, multi=None,
-               multi_names=None, linked_sf=None, model=None):
+                  State("new-model", "value"), prevent_initial_call=True)
+    def create(clicks, start, mode, provider, kind, intent, intent_name, support,
+               support_names, prior, prior_names, prior_run, name=None, model=None):
         if not clicks:  # the button was just rendered, not clicked
             return no_update, no_update
         try:
-            if source == "data:linked":
-                spec = linked_sources_spec(saved_uploads(multi, multi_names), linked_sf)
-                if isinstance(spec, str):
-                    return no_update, dmc.Alert(spec, color="yellow", variant="light")
-                cfg = service.config_from_data(name or "linked_model", spec)
-            elif source.startswith("data:"):
-                spec = data_source_spec(source[5:], saved_uploads(data, data_name), sf_table,
-                                        sf_query, sf_limit)
-                if isinstance(spec, str):
-                    return no_update, dmc.Alert(spec, color="yellow", variant="light")
-                cfg = service.config_from_data(
-                    name or (data_name or sf_table or "model").rsplit(".", 1)[0], spec)
-            elif source.startswith("demo:"):
-                cfg = service.demo_config(source[5:])
-            else:
-                cfg = service.load_config(source[8:])
+            if not (name or "").strip():
+                return no_update, dmc.Alert("Name the model: it is how its runs are found.",
+                                            color="yellow", variant="light")
+            cfg = service.template_config(None if start in (None, "scratch") else start, name)
             problem = engagement_problem(kind, cfg, bool(intent), bool(prior or prior_run))
             if problem:
                 return no_update, dmc.Alert(problem, color="yellow", variant="light")
@@ -1078,8 +1078,10 @@ def register_callbacks(app: Dash) -> None:
         if tab == "workflow":
             asked = ",".join(f"{g.id}:{g.status}" for g in st.gaps if g.stage == sel)
             sent = ",".join(f"{c.id}:{c.status}" for c in st.challenges if c.target_stage == sel)
+            before = STAGE_AFTER_GATE.get(sel)
             content_key = (f"wf|{sel}|{st.status_of(sel)}|{st.steps[sel].runs}|"
-                           f"{st.status_of(gate) if gate else ''}|{len(st.decisions)}|"
+                           f"{st.status_of(gate) if gate else ''}|"
+                           f"{st.status_of(before) if before else ''}|{len(st.decisions)}|"
                            f"{scheme}|{seat}|{pkg}|{asked}|{sent}")
         elif tab == "questions":
             content_key = "q|" + "|".join(f"{g.id}:{g.status}" for g in st.gaps) + "|" + "|".join(
@@ -1093,8 +1095,11 @@ def register_callbacks(app: Dash) -> None:
         if not key or key.split("|", 1)[1] != content_key:
             if tab == "workflow":
                 res = service.results(run_id).get(sel)
+                info = (service.data_info(run_id, with_catalog=st.status_of("gate_source")
+                                          == "awaiting")
+                        if sel in STAGE_AFTER_GATE else None)
                 content = dmc.Stack(stage_panel(sel, res, st, scheme,
-                                                service.step_changes(run_id, sel), seat),
+                                                service.step_changes(run_id, sel), seat, info),
                                     gap="md")
             elif tab == "questions":
                 content = questions_tab(st, seat)
@@ -1105,26 +1110,21 @@ def register_callbacks(app: Dash) -> None:
 
     @app.callback(Output("ws-left-col", "style"), Output("ws-main-col", "span"),
                   Output("ws-activity-col", "style"),
-                  Input("ws-tab", "value"), Input("ws-sides", "data"))
-    def widen(tab, sides):
-        left, main, right = column_layout(tab, sides)
+                  Input("ws-tab", "value"), Input("ws-focus", "data"))
+    def widen(tab, focus):
+        left, main, right = column_layout(tab, focus)
         return ({} if left else {"display": "none"}, {"base": 24, "md": main},
                 {} if right else {"display": "none"})
 
-    @app.callback(Output("ws-sides", "data"), Output("ws-toggle-left", "children"),
-                  Output("ws-toggle-right", "children"),
-                  Input("ws-toggle-left", "n_clicks"), Input("ws-toggle-right", "n_clicks"),
-                  State("ws-sides", "data"))
-    def fold(_left, _right, sides):
-        sides = {"left": True, "right": True, **(sides or {})}
-        if ctx.triggered_id == "ws-toggle-left":
-            sides["left"] = not sides["left"]
-        elif ctx.triggered_id == "ws-toggle-right":
-            sides["right"] = not sides["right"]
-        return (sides,
-                icon(f"tabler:layout-sidebar-left-{'collapse' if sides['left'] else 'expand'}", 18),
-                icon(f"tabler:layout-sidebar-right-{'collapse' if sides['right'] else 'expand'}",
-                     18))
+    @app.callback(Output("ws-focus", "data"), Output("ws-focus-toggle", "children"),
+                  Output("ws-focus-tip", "label"),
+                  Input("ws-focus-toggle", "n_clicks"), State("ws-focus", "data"))
+    def focus(_clicks, focused):
+        focused = focused is True  # an older browser may hold the per-side choice
+        if ctx.triggered_id == "ws-focus-toggle":
+            focused = not focused
+        return (focused, icon(f"tabler:arrows-{'minimize' if focused else 'maximize'}", 18),
+                "Show the side columns" if focused else "Focus on the page: hide the side columns")
 
     @app.callback(Output("ws-step", "data"), Output("ws-tab", "value"),
                   Input({"type": "rail", "step": ALL}, "n_clicks"), prevent_initial_call=True)
@@ -1150,12 +1150,23 @@ def register_callbacks(app: Dash) -> None:
             return no_update, no_update
         gate, action = trig["gate"], trig["action"]
         fields = {i["field"]: v for i, v in zip(ids, values, strict=False) if i["gate"] == gate}
-        payload, reason = gate_payload(gate, action, fields, run_id)
         try:
+            payload, reason = gate_payload(gate, action, fields, run_id)
             service.submit_gate(run_id, gate, action, payload, reason, seat=seat)
         except GateError as exc:
             return [notice("Decision refused", str(exc), "red")], no_update
         return [notice("Decision recorded", f"{LABELS[gate]}: {action.replace('_', ' ')}", "oxblood")], None
+
+    @app.callback(Output({"type": "gate-field", "gate": "gate_source", "field": MATCH}, "value"),
+                  Output({"type": "src-names", "field": MATCH}, "children"),
+                  Input({"type": "src-upload", "field": MATCH}, "contents"),
+                  State({"type": "src-upload", "field": MATCH}, "filename"),
+                  prevent_initial_call=True)
+    def keep_source_upload(contents, names):
+        """Save dropped data files at once; the decision carries their paths."""
+        if not contents:
+            return no_update, no_update
+        return json.dumps(saved_uploads(contents, names)), upload_names(names)
 
     @app.callback(
         Output("notify", "sendNotifications", allow_duplicate=True),
@@ -1264,6 +1275,33 @@ def register_callbacks(app: Dash) -> None:
         return False, None, [notice("This is now the main run",
                                     "It goes on to independent validation.", "oxblood")], None
 
+    @app.callback(Output("tpl-modal", "opened"), Output("tpl-title", "value"),
+                  Output("tpl-feedback", "children"),
+                  Input("tpl-open", "n_clicks"), Input("tpl-cancel", "n_clicks"),
+                  prevent_initial_call=True)
+    def open_template(opened, cancelled):
+        if ctx.triggered_id == "tpl-open" and opened:
+            return True, "", None
+        if ctx.triggered_id == "tpl-cancel" and cancelled:
+            return False, no_update, None
+        return no_update, no_update, no_update
+
+    @app.callback(Output("tpl-modal", "opened", allow_duplicate=True),
+                  Output("tpl-feedback", "children", allow_duplicate=True),
+                  Output("notify", "sendNotifications", allow_duplicate=True),
+                  Input("tpl-go", "n_clicks"), State("tpl-title", "value"),
+                  State("tpl-description", "value"), State("ws-run", "data"),
+                  prevent_initial_call=True)
+    def save_template(clicks, title, description, run_id):
+        if not clicks:
+            return (no_update,) * 3
+        try:
+            service.save_template(run_id, title or "", description or "")
+        except (GateError, OSError, ValueError) as exc:
+            return no_update, dmc.Alert(str(exc), color="red", variant="light"), no_update
+        return False, None, [notice("Template saved", f"“{title}” is under Team templates when "
+                                    "a run is started.", "oxblood")]
+
     @app.callback(Output("io-modal", "opened"), Output("io-body", "children"),
                   Input({"type": "audit-row", "call": ALL}, "n_clicks"), State("ws-run", "data"),
                   prevent_initial_call=True)
@@ -1284,12 +1322,11 @@ def register_callbacks(app: Dash) -> None:
         ], value="out")
 
 
-def column_layout(tab: str | None, sides: dict | None) -> tuple[bool, int, bool]:
-    """(left shown, main column span of 24, right shown). Either side column can be folded away
-    so the stage page gets the room; a run-wide view also takes the room of the live activity."""
-    sides = {"left": True, "right": True, **(sides or {})}
-    left = bool(sides["left"])
-    right = bool(sides["right"]) and tab == "workflow"
+def column_layout(tab: str | None, focus: bool | None) -> tuple[bool, int, bool]:
+    """(left shown, main column span of 24, right shown). Focus hides both side columns so the
+    page in the middle gets the room; a run-wide view never has the live activity."""
+    left = focus is not True
+    right = left and tab == "workflow"
     return left, 24 - (6 if left else 0) - (5 if right else 0), right
 
 
@@ -1301,32 +1338,6 @@ def backend_label(provider: str | None, model: str | None) -> str:
 def notice(title: str, message: str, color: str) -> dict:
     return {"action": "show", "title": title, "message": message, "color": color,
             "id": f"n{time.time_ns()}"}
-
-
-def data_source_spec(kind: str, uploaded: list[str], table: str | None, query: str | None,
-                     limit: Any) -> dict | str:
-    """The ``data.source`` the form describes, or (a string) why it is not complete yet."""
-    if kind == "file":
-        if not uploaded:
-            return "Upload the data file to model (.csv, .parquet or .xlsx)."
-        return {"kind": "file", "path": uploaded[0]}
-    table, query = (table or "").strip(), (query or "").strip()
-    if not table and not query:
-        return "Name the Snowflake table, or give a read-only query."
-    spec: dict = {"kind": kind, "limit": int(limit) if limit else None}
-    spec.update({"query": query} if query else {"table": table})
-    return spec
-
-
-def linked_sources_spec(uploaded: list[str], snowflake_lines: str | None) -> dict | str:
-    """``{"sources": [...]}`` for the several-sources form, or (a string) why it is not
-    complete yet."""
-    from .. import linking
-
-    try:
-        return linking.named_sources(uploaded, snowflake_lines or "")
-    except linking.LinkError as exc:
-        return str(exc)
 
 
 def engagement_problem(kind: str | None, cfg, has_intent: bool, has_prior: bool) -> str | None:
@@ -1347,6 +1358,19 @@ def engagement_problem(kind: str | None, cfg, has_intent: bool, has_prior: bool)
     return None
 
 
+def source_payload(fields: dict, run_id: str | None = None) -> dict:
+    """The data the "Provide the data" form describes: the catalog tables checked, the files
+    dropped and the Snowflake lines. An incomplete form is refused in the words of the form."""
+    try:
+        files = list(json.loads(fields.get("add_files") or "[]"))
+    except ValueError:
+        files = []
+    return service.data_payload(
+        list(fields.get("catalog") or []), files, fields.get("add_sql") or "",
+        datetime_col=(fields.get("datetime_col") or "").strip() or None,
+        target=(fields.get("target") or "").strip() or None)
+
+
 def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dict, str]:
     """Translate form fields into the engine's gate payload."""
     reason = (fields.get("reason") or "").strip()
@@ -1356,6 +1380,8 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
         if fields.get("target"):
             payload["target"] = fields["target"]
         return payload, reason or payload["message"]
+    if gate == "gate_source":
+        return source_payload(fields), reason
     if gate == "gate_data" and action == "edit":
         payload["exclude_columns"] = list(fields.get("exclude") or [])
         if fields.get("target"):

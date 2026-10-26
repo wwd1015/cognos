@@ -22,7 +22,7 @@
   {
    "statement": "Model owner to adopt a production monitoring plan: PSI alert thresholds (for example 0.10 / 0.25), performance-decay and calibration triggers, cadence and a named owner. The backtest PSI and ECE can serve as baselines.",
    "evidence": [
-    "comply.sr11_7.ongoing_monitoring",
+    "comply.sr26_2.ongoing_monitoring",
     "backtest.psi",
     "backtest.expected_calibration_error",
     "backtest.auc"

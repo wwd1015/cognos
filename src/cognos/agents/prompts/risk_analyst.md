@@ -9,7 +9,7 @@ organizes evidence; it never adjudicates compliance, and you must not claim it d
 - `priority_actions`: the human steps that matter most, each citing facts.
 
 ## Playbook
-- SR 11-7 evidence groups into development (design brief, data lineage, alternatives considered,
+- SR 26-2 evidence groups into development (design brief, data lineage, alternatives considered,
   estimation), validation (effective challenge, outcomes analysis, benchmarking) and governance
   (intended use, a monitoring plan with thresholds such as PSI 0.10 / 0.25, a remediation path).
 - NIST AI RMF: the engine can evidence Map and Measure; Govern and Manage are organizational and

@@ -1,0 +1,56 @@
+# A built-in template (ADR-0018): portfolio loss through rating migration. Long-run transition
+# matrices come from agency-style rating histories (ADR-0009); matrix powers give the multi-year
+# term structure, and regime-conditional matrices give the stress view.
+
+name: rating_migration
+description: "Large-corporate loss forecast through rating migration matrices."
+template:
+  title: "Rating migration"
+task: classification
+mode: interactive
+
+data:
+  # The data catalog's tables this kind of model starts with (ADR-0020); the first is the
+  # proposed base table. Preselected when the data is given; any can be unchecked.
+  catalog: [rating_history]
+  guide: |
+    One row per obligor and annual cohort date, with:
+    - the rating at the cohort date (column `rating`) and one period later (`next_rating`,
+      outcome data, never a feature), on the scale AAA ... CCC, D for default, NR for withdrawn;
+    - the default flag over the period;
+    - optionally the exposure (`ead`) and a macro regime label (`regime`) for conditional
+      matrices. Change the column names under `migration` in the template if yours differ.
+
+metric:
+  name: roc_auc
+
+design:
+  use_case: portfolio loss forecasting for CECL provisioning and stress testing
+  horizon: 1-year default, extended to a 3-year cumulative term structure via matrix powers
+  default_definition: agency default state D (payment default, distressed exchange, bankruptcy)
+  segment: large corporate (agency-rated universe, mapped to the internal master scale)
+  interpretability: required
+
+migration:
+  enabled: true
+  rating_col: rating
+  next_rating_col: next_rating
+  rating_scale: [AAA, AA, A, BBB, BB, B, CCC]
+  default_state: D
+  withdrawn_states: [NR]
+  horizon_periods: 3
+  monotone_pd: true
+  condition_col: regime
+  lgd: 0.40
+  ead_column: ead
+
+portfolio:
+  enabled: true
+  lgd: 0.40
+  ead_column: ead
+
+compliance:
+  regimes: [SR26-2, NIST-AI-RMF]
+  risk_tier: high
+  fair_lending: false
+  jurisdictions: [US]

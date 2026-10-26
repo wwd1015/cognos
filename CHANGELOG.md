@@ -6,15 +6,46 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- **The data catalog** ([ADR-0020](docs/adr/0020-the-data-catalog.md)). The tables a team
+  keeps, in `<runs>/_catalog/catalog.yaml`: what each is for, its grain, keys, dates, outcomes,
+  owner, source and column meanings, and the documented links between tables. At "Provide the
+  data" the Explore page lists them with their size and date range, the template's tables
+  (`data.catalog`) checked; files, Snowflake tables and queries can be added beside them. The
+  documented links are offered and measured at explore, the Data Analyst reads the column
+  meanings, and the decision records the tables chosen. COGNOS ships a default catalog with
+  synthetic commercial-credit tables, so every built-in template runs out of the box; it is in
+  force until the runs folder has its own `_catalog/catalog.yaml`, which replaces it entirely.
+  CLI: `cognos catalog` (`--init` starts the folder's own from the default), `cognos data
+  --catalog`.
+- **Templates, and the data after the intent**
+  ([ADR-0018](docs/adr/0018-templates-and-the-data-after-the-intent.md)). A run starts from a
+  built-in template (PD logistic scorecard, PD structural simulation, loss forecast time
+  series, rating migration, LGD regression, EAD credit conversion factor), a team template or
+  from scratch. New developer gate `gate_source` ("Provide the data") after `gate_intent`: the
+  developer gives the data on the Explore page once the intent is confirmed, with the
+  template's note on what this kind of model is usually built on. A run whose profile gives the
+  data passes it by itself. A finished main run can be saved as a team template
+  (`<runs>/_templates/`). CLI: `cognos run --template`, `cognos data`, `cognos templates`,
+  `cognos save-template`.
 - **Choose the agents' model when a run starts.** The new-run form offers the provider's
   models (`models` in `providers.yaml`; the CLI's `opus`, `sonnet`, `haiku`), saved as
   `agents.model`; `cognos run` / `cognos demo` take `--model`. The run header shows it. The
   `claude -p` backend records the model the alias resolved to and counts cached input tokens;
   its spend stays the CLI's own figure for that model.
-- **Fold the side columns of a run.** Two buttons hide the stage index and the live activity
-  so a stage page can use the full width; the choice is kept in the browser.
+- **Focus on a run's page.** One button hides the side columns (the stage index and, on a
+  stage page, the live activity) so the page in the middle uses the full width, on every view;
+  the choice is kept in the browser.
 
 ### Changed
+- **SR 26-2 replaces SR 11-7** ([ADR-0019](docs/adr/0019-sr-26-2-replaces-sr-11-7.md)). The
+  interagency model risk guidance of April 17, 2026 (Fed SR 26-2, OCC Bulletin 2026-13, FDIC
+  FIL-15-2026) superseded SR 11-7. The default regime is `SR26-2`, the readiness report's
+  evidence is `sr26_2` (facts `comply.sr26_2.*`), and stages, prompts, templates and docs cite
+  SR 26-2. A profile or run that names `SR11-7` is read as `SR26-2`; results recorded earlier
+  still display.
+- **The new-run form no longer asks for data or offers demos.** It asks for the model's name
+  and what to start from. Demos are runs (`cognos demo`). `projects/` is removed; its examples
+  live on as the demo presets and the built-in templates.
 - **Workbench redesign.** The workbench adopts the "Ledger" design system used by IRIS-D: paper
   and warm-black themes, serif display type, mono numerals, one oxblood accent, ruled panels
   instead of boxed cards, a masthead, figure strips, a numbered stage index and a plain activity

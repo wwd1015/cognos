@@ -1,0 +1,75 @@
+# A built-in template (ADR-0018): the standard setup for a commercial PD scorecard. It holds no
+# data. The developer gives the data once the intent is confirmed, and every choice below is a
+# starting value the gates can change.
+
+name: pd_logistic_scorecard
+description: "Commercial PD scorecard: obligors by vintage, 12-month default, interpretable logit."
+template:
+  title: "PD — logistic scorecard"
+task: classification
+mode: interactive
+
+data:
+  # The data catalog's tables this kind of model starts with (ADR-0020); the first is the
+  # proposed base table. Preselected when the data is given; any can be unchecked.
+  catalog: [obligor_quarters, facilities, obligors, macro_quarterly]
+  guide: |
+    One row per obligor and observation date (a vintage or snapshot), with:
+    - the default flag over the outcome window (e.g. 90+ DPD or nonaccrual within 12 months);
+    - the observation date, so the test sample can be the latest vintages (out of time);
+    - financial ratios (leverage, coverage, liquidity, profitability, size), facility
+      features (utilization, collateral coverage) and macro drivers at the observation date.
+    Leave out identifiers and anything known only after the observation date (days past due
+    at the outcome, workout status).
+
+metric:
+  name: roc_auc
+
+design:
+  use_case: origination underwriting and annual review
+  horizon: 12-month PD
+  interpretability: required
+
+evaluation:
+  test: out_of_time
+  pool_size: 6
+
+factors:
+  expected_signs:            # a factor that enters with the other sign is dropped
+    debt_to_ebitda: "+"
+    leverage: "+"
+    utilization_rate: "+"
+    unemployment_rate: "+"
+    interest_coverage: "-"
+    current_ratio: "-"
+    operating_margin: "-"
+    log_total_assets: "-"
+    collateral_coverage: "-"
+    gdp_growth: "-"
+  max_p_value: 0.10
+  max_correlation: 0.8
+
+selection:
+  methods: [stepwise]
+  max_factors: 6
+
+search:
+  model_families: [logit, probit, cloglog]
+
+portfolio:
+  enabled: true
+  lgd: 0.45
+
+stress:
+  enabled: true
+  scenarios:
+    - name: adverse
+      shocks: {unemployment_rate: {add: 3.0}, gdp_growth: {add: -2.0}}
+    - name: severely_adverse
+      shocks: {unemployment_rate: {add: 6.0}, gdp_growth: {set: -4.0}}
+
+compliance:
+  regimes: [SR26-2, NIST-AI-RMF]
+  risk_tier: high
+  fair_lending: false        # commercial credit: no consumer protected attributes
+  jurisdictions: [US]

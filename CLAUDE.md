@@ -41,13 +41,13 @@ trustworthy. v1.0 architecture: **agents recommend, humans decide, the engine di
 
 ## The workflow (engine/graph.py)
 ```
-intake → gate_intent → explore → gate_data → ideate → gate_design → model → gate_candidates
-       → backtest → gate_champion → validate → gate_validation → comply → document → review
-       → gate_signoff
+intake → gate_intent → gate_source → explore → gate_data → ideate → gate_design → model
+       → gate_candidates → backtest → gate_champion → validate → gate_validation → comply
+       → document → review → gate_signoff
 ```
 `RunState` (`runs/<id>/state.json`) holds step statuses, gate decisions, challenges, gaps (sponsor
-questions) and overrides. Human decisions change the *effective* config through overrides (design
-answers → `ctx.config.design`; exclusions → `ctx.profile()`; slate → model families; plan →
+questions) and overrides. Human decisions change the *effective* config through overrides (data
+→ `ctx.base_config.data`; design answers → `ctx.config.design`; exclusions → `ctx.profile()`; slate → model families; plan →
 `overrides.plan`; pool → `overrides.pool`; champion → `overrides.champion`) — the profile YAML is
 never edited. A changed decision marks the downstream
 steps `stale`; a step invalidated while running stays stale when it finishes.
@@ -56,7 +56,7 @@ A gap closes three ways (`gates.apply_answers`): answered (fills the brief, re-r
 that raised it), `assumed` or `limitation` (re-runs only `validate`, which raises a non-blocking
 finding per item; `document` lists the two apart). A new way to close a gap must reach both.
 
-Seats (`engine/process.py`): developer on intent, data, design, candidates and champion; reviewer on validation;
+Seats (`engine/process.py`): developer on intent, source, data, design, candidates and champion; reviewer on validation;
 approver on sign-off. The engine refuses a seat on another seat's gate. Use, horizon, default
 definition and segment cannot be assumed, and `approve` refuses while any of them is open.
 `approve` writes `packages/vN.json` once (a digest of recorded facts). A later invalidation
@@ -72,6 +72,42 @@ Comparisons (`compare.py`: run vs run, re-run vs previous) are mechanical reads 
 no judgment, nothing stored, and "better" only where the metric has a direction (`_HIGHER` / `_LOWER`,
 or the run's own metric direction). Exports (`export.py`) never include `data/`, `models/` or binary
 caches — the sealed holdout stays sealed; a new artifact type that should travel must be a text format.
+
+## Templates and the data step (ADR-0018)
+- **The data comes after the intent.** `gate_source` (between `gate_intent` and `explore`)
+  reviews no stage (`graph.GATE_BEFORE_STAGE`); the workbench shows it on the Explore page.
+  The data given is `overrides.data`, laid over the profile by `CognosConfig.with_data` in
+  `RunContext`. New data clears the target, join and exclusions, drops the snapshot and
+  marks `explore` on stale. Autonomous mode waits for it too.
+- **A profile that gives the data closes the gate by itself** ("the data came with the
+  run", no decision). Keep demos, `--config` runs and old runs working that way.
+- **A template is a profile without data** plus `template` (title, origin, who saved it)
+  and `data.guide` (shown to the developer, never read by the engine). Built-ins live in
+  `src/cognos/templates/`; a team's in `<runs>/_templates/`. Every value is a starting
+  point the gates can change. `service.save_template` writes a finished main run's setup:
+  never its data, never overwriting a title.
+- The new-run form asks for a name and what to start from (template or scratch), never for
+  data or a demo. Demos are runs (`cognos demo`).
+
+## The data catalog (ADR-0020)
+- **One catalog in force per runs folder** (`catalog.in_force`): the folder's own
+  (`<runs>/_catalog/catalog.yaml`) when it exists, else the default shipped with COGNOS
+  (`default_catalog/catalog.yaml`, read from the package, never copied; its synthetic tables,
+  `synth.make_catalog_tables`, are written to `<runs>/_catalog/default_data/` on first use).
+  A team's file replaces the default entirely (`cognos catalog --init` starts one from it).
+  It is configuration: never a secret, and a run never reads it again after taking its snapshot.
+- **A template names its starting tables** (`data.catalog`, the first is the proposed base);
+  from scratch, `defaults`; a revised decision, the last choice. Every built-in template's
+  tables must exist in the default catalog (`tests/integration/test_catalog.py`).
+- **The catalog informs, it never decides.** Documented links become `data.links`: offered
+  and measured (`linking.profile(documented=...)`), preferred by the heuristic, never binding.
+  Do not turn them into `data.join`. Descriptions and column meanings travel with the sources
+  and reach the Data Analyst as `dictionary`; the engine never reads them.
+- Declared outcomes and keys inform explore's measurements (`declared_outcomes` ranks the
+  target candidates; `identifiers` and `other_outcomes` reach the Data Analyst), never a
+  decision: the developer still confirms the target and the exclusions at the data gate.
+- Front ends go through `service.data_payload` / `data_info(with_catalog=True)`; the decision
+  records the catalog ids chosen.
 
 ## Plan, pool and champion (ADR-0016)
 - **The model stage ends on a pool, never a champion.** `model` follows the development plan
@@ -274,6 +310,8 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 - **New data source** → a `DataSource` in `datasources.BUILTIN` or a plugin; `available()` must
   explain what is missing instead of raising at import.
 - **New compliance regime** → extend `stages/comply.py`; emit evidence `document`/`review` can trace.
+  The model risk guidance is SR 26-2 (ADR-0019): cite it, never SR 11-7. A regime a later
+  letter replaces goes in `config.SUPERSEDED_REGIMES`, so older profiles read as the one in force.
 - **New stage** → single-responsibility; wire `requires`, a graph node, and (optionally) an agent.
 - **New stage metric** → if it has a good direction, add it to `compare._HIGHER` / `_LOWER` and give it a
   label in `compare.METRIC_LABELS`; otherwise comparisons report it as a difference without a verdict.
@@ -282,6 +320,11 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   `trials.CHANGE_LABELS`, so a trial run's line can say what it changed.
 - **New demo** → a generator in `synth.GENERATORS`, a preset in `service.DEMO_PRESETS` (+
   `DEMO_LABELS`), the `cognos demo --task` choices.
+- **New built-in template** → a YAML in `src/cognos/templates/` with no data source, a
+  `template.title`, a `data.guide` and its starting tables in `data.catalog` (in the default
+  catalog, with synthetic data); `tests/integration/test_templates.py` lists them.
+- **New default catalog table** → an entry in `default_catalog/catalog.yaml` (every column
+  described) and its frame in `synth.make_catalog_tables`.
 
 ## Integrations
 - **IMPACT** is optional. `integrations/impact_adapter.py` prefers the real `EntityPipeline` and falls

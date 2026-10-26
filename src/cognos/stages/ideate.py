@@ -150,8 +150,8 @@ def _data_structure(cfg: CognosConfig, profile: dict) -> dict:
 
 
 def _framework_assessment(cfg: CognosConfig, profile: dict, structure: dict) -> list[dict]:
-    """Which econometric frameworks fit this problem — and, for SR 11-7 'alternatives considered'
-    documentation, which were rejected and why. Deterministic rules over the data structure."""
+    """Which econometric frameworks fit this problem — and, for the SR 26-2 comparison of alternative
+    methodologies, which were rejected and why. Deterministic rules over the data structure."""
     all_cols = list(profile.get("dtypes", {}).keys())
     feats = profile.get("features", [])
     frameworks: list[dict] = []
@@ -165,7 +165,7 @@ def _framework_assessment(cfg: CognosConfig, profile: dict, structure: dict) -> 
             "reason": "Binary outcome with obligor-level financial and facility covariates — the "
                       "standard framework for commercial PD at origination or surveillance.",
             "engine_families": ["logit", "ridge_logit", "lasso_logit"],
-            "reference": "Altman (1968); Ohlson (1980); Basel IRB PD; SR 11-7",
+            "reference": "Altman (1968); Ohlson (1980); Basel IRB PD; SR 26-2",
         })
         panel = structure["shape"] == "panel"
         has_event_time = bool(cfg.data.event_time_col)
@@ -237,7 +237,7 @@ def _framework_assessment(cfg: CognosConfig, profile: dict, structure: dict) -> 
             "role": "primary",
             "reason": "Time-ordered target; evaluation must be walk-forward (no shuffled CV).",
             "engine_families": ["ols", "ridge", "lasso"],
-            "reference": "out-of-time backtesting practice; SR 11-7 outcomes analysis",
+            "reference": "out-of-time backtesting practice; SR 26-2 outcomes analysis",
         })
     else:
         frameworks.append({
@@ -248,7 +248,7 @@ def _framework_assessment(cfg: CognosConfig, profile: dict, structure: dict) -> 
             "reason": "Continuous outcome with tabular covariates — interpretable coefficients "
                       "with valid inference for documentation.",
             "engine_families": ["ols", "ridge", "lasso", "elasticnet", "poisson", "gamma", "tweedie"],
-            "reference": "GLM practice (McCullagh & Nelder); SR 11-7",
+            "reference": "GLM practice (McCullagh & Nelder); SR 26-2",
         })
 
     interp = cfg.design.interpretability
@@ -263,7 +263,7 @@ def _framework_assessment(cfg: CognosConfig, profile: dict, structure: dict) -> 
                    "Interpretability is negotiable — nonlinear learners compete for champion, "
                    "subject to validation and documentation burden."),
         "engine_families": ["gradient_boosting", "random_forest"],
-        "reference": "champion–challenger practice; SR 11-7 benchmarking",
+        "reference": "champion–challenger practice; SR 26-2 benchmarking",
     })
     return frameworks
 

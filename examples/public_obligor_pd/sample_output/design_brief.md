@@ -26,11 +26,11 @@
 
 | Framework | Applicable | Role | Reason | Reference |
 |---|---|---|---|---|
-| Reduced-form PD (obligor scorecard / GLM) | True | primary | Binary outcome with obligor-level financial and facility covariates — the standard framework for commercial PD at origination or surveillance. | Altman (1968); Ohlson (1980); Basel IRB PD; SR 11-7 |
+| Reduced-form PD (obligor scorecard / GLM) | True | primary | Binary outcome with obligor-level financial and facility covariates — the standard framework for commercial PD at origination or surveillance. | Altman (1968); Ohlson (1980); Basel IRB PD; SR 26-2 |
 | Discrete-time hazard (survival) | True | candidate | Event timing present (data.event_time_col) — the engine panel-expands obligor-periods and fits a full discrete-time hazard (logit or cloglog grouped-time PH link) with a PD term structure. | Shumway (2001) hazard bankruptcy model |
 | Structural (Merton distance-to-default) | True | candidate | Market observables detected (equity_value, equity_vol); the structural: config block is enabled — the engine solves for distance-to-default, feeds it to the champion (hybrid), and scores the pure structural PD as a challenger benchmark. | Merton (1974); KMV/Moody's EDF |
 | Rating-transition matrix (migration) | False | rejected | Requires a rating history (grade at successive snapshots, e.g. an internal grade or agency rating panel); none present. | CreditMetrics (1997); S&P CreditPro rating-migration practice |
-| Machine-learning challenger (trees/boosting) | True | challenger | Interpretability is required for the deployed model, so nonlinear learners serve as challenger benchmarks quantifying the predictive ceiling. | champion–challenger practice; SR 11-7 benchmarking |
+| Machine-learning challenger (trees/boosting) | True | challenger | Interpretability is required for the deployed model, so nonlinear learners serve as challenger benchmarks quantifying the predictive ceiling. | champion–challenger practice; SR 26-2 benchmarking |
 
 ## Design Lead decisions
 

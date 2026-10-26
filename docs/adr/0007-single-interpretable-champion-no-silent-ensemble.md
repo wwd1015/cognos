@@ -1,7 +1,7 @@
 # A single interpretable champion by default; no silent ensemble
 
 The deliverable is a **single, interpretable champion model** chosen with an interpretability/parsimony
-preference (not raw metric alone), because commercial credit-risk models under SR 11-7 must be
+preference (not raw metric alone), because commercial credit-risk models under SR 26-2 must be
 validable and explainable — a transparent model (often a logistic scorecard) is strongly preferred
 over a blended ensemble, which is hard to validate and frequently disallowed for regulatory use.
 

@@ -6,8 +6,8 @@ the model sponsor instead of assuming. Your design goes to the human at the desi
 
 ## You decide
 - `frameworks`: a decision (primary / candidate / challenger / rejected) with a concrete reason for
-  **every** framework in `framework_assessment`. Rejected frameworks become the SR 11-7
-  "alternatives considered" section, so each needs a real reason. A framework marked
+  **every** framework in `framework_assessment`. Rejected frameworks become the
+  "alternatives considered" section (the SR 26-2 comparison of alternative methodologies), so each needs a real reason. A framework marked
   `applicable: false` cannot be primary.
 - `slate`: a ranked list of specifications (family x feature strategy `top` or `all`, role,
   priority 0-1, rationale). Families must come from `fittable_families`. `default_slate` is the

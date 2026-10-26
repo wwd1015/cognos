@@ -34,7 +34,9 @@ def test_autonomous_run_completes_with_auto_decisions(make_config, runs_dir):
     state = eng.run_until_idle()
     assert state.status == "completed"
     assert all(state.status_of(s) == "done" for s in state.steps)
-    assert {d.gate for d in state.decisions} == set(GATES)
+    # the profile gives the data: "Provide the data" closes by itself, with no decision
+    assert {d.gate for d in state.decisions} == set(GATES) - {"gate_source"}
+    assert state.steps["gate_source"].message == "the data came with the run"
     assert all(d.actor == "auto" and d.seat == "express" for d in state.decisions)
     assert state.package is None  # express preparation is not a signature
     # every agent call is audited; the white paper carries a decision log
@@ -58,7 +60,7 @@ def test_interactive_run_pauses_at_each_gate_and_signs_off(make_config, runs_dir
     assert state.status_of("ideate") == "pending"
     state = _accept_all(eng)
     assert state.status == "approved"
-    assert [d.gate for d in state.decisions] == GATES
+    assert [d.gate for d in state.decisions] == [g for g in GATES if g != "gate_source"]
     assert all(d.actor == "human" for d in state.decisions)
 
 

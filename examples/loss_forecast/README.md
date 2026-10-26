@@ -34,7 +34,9 @@ house-price growth over a year (one quarter back). `vix`, `cpi_inflation` and `t
 carry no signal; `gdp_growth` and `cre_price_index` move with the true drivers. A sound build
 finds a transformation of each true driver and leaves the rest out.
 
-The profile is [`projects/example-loss-forecast.yaml`](../../projects/example-loss-forecast.yaml).
+The demo's setup is the `loss_forecast` preset in `cognos/service.py`; the built-in template
+[`loss_forecast_timeseries.yaml`](../../src/cognos/templates/loss_forecast_timeseries.yaml)
+holds the same plan without the data.
 Lagged values of the loss rate itself are not offered as factors: an autoregressive model needs
 a recursive forecast, which the scorer does not do.
 

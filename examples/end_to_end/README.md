@@ -15,7 +15,7 @@ It runs three scenarios:
    follows a development plan (samples, a single-factor screen, a selection method), ends the
    search on a pool of candidates with full-rank statistical inference, compares the pool on the
    **out-of-time** test sample through the IMPACT feature-table engine (built-in fallback if
-   IMPACT is not installed) and chooses the single interpretable champion there, with **SR 11-7
+   IMPACT is not installed) and chooses the single interpretable champion there, with **SR 26-2
    outcomes analysis** — discrimination (Gini/KS), calibration, and population stability (PSI).
    Validation scores the sealed holdout once, after the choice. It then
    emits a non-gating model-risk **readiness report** and a white paper as an **OKF bundle** (Google
