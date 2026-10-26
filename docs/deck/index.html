@@ -112,6 +112,61 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .panel { background: var(--raised); border: 1px solid var(--line); padding: 44px 48px;
          display: flex; flex-direction: column; gap: 28px; }
 
+/* the workshop: a floor plan. Shelves, a bench of machines with assistants above and people
+   at the checkpoints below, and a logbook that fills as a piece of work moves along */
+.floor { flex: 1; min-height: 0; position: relative; border: 1px dashed var(--line-strong);
+         padding: 64px 40px 36px; display: grid; grid-template-columns: 250px 1fr 430px; gap: 44px; }
+.floor-label { position: absolute; left: 40px; right: 40px; top: 20px; display: flex; justify-content: space-between;
+               font-family: var(--font-mono); font-size: 17px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+.floor-label .viewers { display: flex; align-items: center; gap: 8px; letter-spacing: 0.06em; text-transform: none; }
+.floor-label .viewers i { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line-strong);
+                          display: inline-flex; align-items: center; justify-content: center; font-style: normal; color: var(--ink-2); }
+.shelf { display: flex; flex-direction: column; gap: 22px; }
+.shelf-box { border-top: 3px solid var(--ink); background: var(--raised); border-left: 1px solid var(--line);
+             border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 20px; }
+.shelf-box b { display: block; font-size: 24px; margin: 4px 0 8px; }
+.shelf-box .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.shelf-box .chips span { font-family: var(--font-mono); font-size: 15px; padding: 3px 8px; border: 1px solid var(--line); color: var(--ink-2); }
+.bench { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
+.bench-row { display: flex; align-items: flex-start; justify-content: space-between; }
+.ws-st { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 78px; }
+.ws-ag { width: 34px; height: 34px; border-radius: 50%; border: 1.5px dashed var(--ink-3); transition: all 0.4s var(--ease); }
+.ws-m { width: 70px; height: 70px; border: 1.5px solid var(--ink); background: var(--raised); position: relative;
+        transition: all 0.4s var(--ease); }
+.ws-m::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 16px; height: 2px; background: var(--ink-3); }
+.ws-m::before { content: ""; position: absolute; left: 50%; bottom: 16px; width: 2px; height: 26px; background: var(--ink-3);
+                transform-origin: bottom; transform: rotate(-40deg); transition: transform 0.6s var(--ease); }
+.ws-lab { font-family: var(--font-mono); font-size: 16px; color: var(--ink-2); white-space: nowrap; }
+.ws-cp { display: flex; flex-direction: column; align-items: center; gap: 22px; width: 40px; padding-top: 63px; }
+.ws-d { width: 20px; height: 20px; transform: rotate(45deg); border: 1.5px solid var(--ink-2); background: var(--paper); transition: all 0.4s var(--ease); }
+.ws-p { width: 34px; height: 34px; border-radius: 50%; background: var(--sunken); color: var(--ink-2);
+        display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 15px;
+        transition: all 0.4s var(--ease); }
+.ws-st.done .ws-m { background: var(--surface); }
+.ws-st.on .ws-m { border-color: var(--accent); background: var(--accent-tint); }
+.ws-st.on .ws-m::before { transform: rotate(35deg); background: var(--accent); }
+.ws-st.ask .ws-ag { border-style: solid; border-color: var(--accent); background: var(--accent-tint); }
+.ws-cp.on .ws-d { background: var(--accent); border-color: var(--accent); }
+.ws-cp.on .ws-p, .ws-cp.done .ws-p { background: var(--ink); color: var(--paper); }
+.ws-cap { border-top: 1px solid var(--line-strong); }
+.ws-cap > div { display: grid; grid-template-columns: 34px 300px 1fr; align-items: center; gap: 14px; padding: 11px 0;
+                border-bottom: 1px solid var(--line); opacity: 0.25; transition: opacity 0.4s var(--ease); }
+.ws-cap > div.on { opacity: 1; }
+.ws-cap .who { font-family: var(--font-mono); font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.ws-cap p { font-size: 22px; line-height: 1.3; }
+.ws-cap .glyph { justify-self: center; }
+.glyph.m { width: 22px; height: 22px; border: 1.5px solid var(--ink); }
+.glyph.a { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--accent); background: var(--accent-tint); }
+.glyph.p { width: 22px; height: 22px; border-radius: 50%; background: var(--ink); }
+.logbook { background: var(--raised); border: 1px solid var(--line); padding: 18px 24px; display: flex; flex-direction: column; gap: 10px;
+           background-image: repeating-linear-gradient(transparent 0 55px, var(--hair) 55px 56px); }
+.logbook ol { list-style: none; display: flex; flex-direction: column; }
+.logbook li { padding: 7px 0 8px; border-bottom: 1px solid var(--line); font-size: 19px; line-height: 1.3;
+              animation: ink-in 0.6s var(--ease); }
+.logbook li .when { display: block; font-family: var(--font-mono); font-size: 14px; color: var(--ink-3); letter-spacing: 0.06em; }
+.logbook li.new { color: var(--accent); }
+@keyframes ink-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
 /* ===========================================
    REVEALS: content arrives in order when a slide becomes active
    =========================================== */
@@ -158,7 +213,7 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; flex: 1; }
 .role { background: var(--raised); border: 1px solid var(--line); border-top: 4px solid var(--ink);
         padding: 44px 44px 40px; display: flex; flex-direction: column; gap: 22px; }
-.role:nth-child(2) { border-top-color: var(--accent); }
+.role:nth-child(3) { border-top-color: var(--accent); }
 .role .who { font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); }
 .role .verb { font-family: var(--font-display); font-style: italic; font-size: 88px; line-height: 0.95; color: var(--accent); margin-bottom: 6px; }
 .role p { font-size: 25px; color: var(--ink-2); line-height: 1.45; }
@@ -358,8 +413,8 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 table.log { width: 100%; border-collapse: collapse; }
 .log th { text-align: left; font-family: var(--font-mono); font-weight: 500; font-size: 17px; letter-spacing: 0.12em; text-transform: uppercase;
           color: var(--ink-2); padding: 0 24px 16px 0; border-bottom: 2px solid var(--ink); }
-.log td { padding: 24px 24px 24px 0; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 24px; line-height: 1.45; }
-.log td.mono { font-size: 21px; white-space: nowrap; }
+.log td { padding: 11px 24px 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 20px; line-height: 1.35; }
+.log td.mono { font-size: 19px; white-space: nowrap; }
 .repo { display: inline-block; font-family: var(--font-mono); font-size: 22px; padding: 4px 12px; background: var(--sunken); color: var(--ink); }
 
 /* ===========================================
@@ -390,7 +445,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 6, "system_version": "1.0.0", "date": "2026-10-24"}</script>
+<script type="application/json" id="edition">{"edition": 7, "system_version": "1.0.0", "date": "2026-10-25"}</script>
 
 <div class="stage" id="stage">
 
@@ -405,9 +460,9 @@ body.moving .chrome { opacity: 1; }
       <p class="lede reveal d3">A multi-agent workbench for developing models that have to stand up to validation, audit and a regulator.</p>
     </div>
     <div class="creed">
-      <div class="reveal d3"><span class="who">Agents</span><em>recommend.</em></div>
-      <div class="reveal d4"><span class="who">People</span><em>decide.</em></div>
-      <div class="reveal d5"><span class="who">The engine</span><em>disposes.</em></div>
+      <div class="reveal d3"><span class="who">The engine</span><em>disposes.</em></div>
+      <div class="reveal d4"><span class="who">Agents</span><em>recommend.</em></div>
+      <div class="reveal d5"><span class="who">People</span><em>decide.</em></div>
     </div>
   </div>
   <div class="foot"><span>→ or Space to advance · D for dark</span><span class="pg"></span></div>
@@ -445,20 +500,63 @@ body.moving .chrome { opacity: 1; }
     </div>
     <div class="roles">
       <div class="role reveal d2">
-        <div class="who">Agents</div><div class="verb">recommend</div>
-        <p>Judgment: reading a business intent, naming a target, ranking designs, picking a champion, challenging a model, writing prose.</p>
-        <ul><li>no tools of their own</li><li>cite facts, never type numbers</li><li>every answer checked before it counts</li></ul>
-      </div>
-      <div class="role reveal d3">
-        <div class="who">People</div><div class="verb">decide</div>
-        <p>Accountability: a named person in a named seat accepts, changes, sends back or rejects at every gate.</p>
-        <ul><li>model developer</li><li>independent reviewer</li><li>approver</li></ul>
-      </div>
-      <div class="role reveal d4">
         <div class="who">The engine</div><div class="verb">disposes</div>
         <p>Mechanics: plain code that sequences, computes every number, guards the holdout, applies decisions and keeps the record.</p>
         <ul><li>deterministic</li><li>no judgment, no "smart supervisor"</li><li>runs with no network at all</li></ul>
       </div>
+      <div class="role reveal d3">
+        <div class="who">Agents</div><div class="verb">recommend</div>
+        <p>Judgment: reading a business intent, naming a target, ranking designs, picking a champion, challenging a model, writing prose.</p>
+        <ul><li>no tools of their own</li><li>cite facts, never type numbers</li><li>every answer checked before it counts</li></ul>
+      </div>
+      <div class="role reveal d4">
+        <div class="who">People</div><div class="verb">decide</div>
+        <p>Accountability: a named person in a named seat accepts, changes, sends back or rejects at every gate.</p>
+        <ul><li>model developer</li><li>independent reviewer</li><li>approver</li></ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span></span><span class="pg"></span></div>
+</section>
+
+<!-- ===================== THE WORKSHOP (animated) ===================== -->
+<section class="slide" data-title="The workshop" data-anim="workshop">
+  <div class="folio"><span>The picture</span><b>COGNOS</b></div>
+  <div class="slide-content" style="gap: 36px">
+    <div class="head">
+      <div class="kicker reveal d1">If you remember one picture</div>
+      <h2 class="reveal d1">A shared workshop that keeps one logbook. Not a factory: a model is made once, with judgment.</h2>
+    </div>
+    <div class="floor reveal d2">
+      <div class="floor-label"><span>The workshop floor · one shared runs folder</span><span class="viewers"><i>D</i><i>L</i><i>K</i>the whole team sees the same bench</span></div>
+      <div class="shelf">
+        <div class="shelf-box"><span class="eyebrow">Patterns</span><b>Templates</b>
+          <div class="chips"><span>PD scorecard</span><span>loss forecast</span><span>migration</span></div></div>
+        <div class="shelf-box"><span class="eyebrow">Stock</span><b>Data catalog</b>
+          <div class="chips"><span>obligors</span><span>facilities</span><span>macro</span><span>ratings</span></div></div>
+      </div>
+      <div class="bench">
+        <div class="bench-row" id="ws-bench">
+          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Intent</span></div>
+          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">D</span></div>
+          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Data</span></div>
+          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">D</span></div>
+          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Design</span></div>
+          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">D</span></div>
+          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Pool</span></div>
+          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">D</span></div>
+          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Validate</span></div>
+          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">L</span></div>
+          <div class="ws-st"><span class="ws-ag"></span><span class="ws-m"></span><span class="ws-lab">Paper</span></div>
+          <div class="ws-cp"><span class="ws-d"></span><span class="ws-p">K</span></div>
+        </div>
+        <div class="ws-cap">
+          <div id="ws-m"><span class="glyph m"></span><span class="who">Machine · the engine</span><p></p></div>
+          <div id="ws-a"><span class="glyph a"></span><span class="who">Assistant · an agent</span><p></p></div>
+          <div id="ws-p"><span class="glyph p"></span><span class="who">Craftsperson · a person</span><p></p></div>
+        </div>
+      </div>
+      <div class="logbook"><span class="eyebrow">The logbook · the run record</span><ol id="ws-log"></ol></div>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
@@ -493,7 +591,7 @@ body.moving .chrome { opacity: 1; }
   <div class="folio"><span>Inside one stage</span><b>COGNOS</b></div>
   <div class="slide-content center" style="gap: 64px">
     <div class="head">
-      <div class="kicker reveal d1">The same five moves, nine times</div>
+      <div class="kicker reveal d1">The same five moves at every stage an agent works on</div>
       <h2 class="reveal d1">The agent only sees what it is allowed to see, and only answers in a form the engine can check.</h2>
     </div>
     <div>
@@ -768,14 +866,14 @@ body.moving .chrome { opacity: 1; }
 <!-- ===================== 16. THE DECK IS PART OF THE SYSTEM ===================== -->
 <section class="slide" data-title="Editions">
   <div class="folio"><span>This deck</span><b>COGNOS</b></div>
-  <div class="slide-content center" style="gap: 64px">
-    <div class="head">
+  <div class="slide-content" style="gap: 32px">
+    <div class="head" style="gap: 16px">
       <div class="kicker reveal d1">Kept with the code</div>
       <h2 class="reveal d1">This deck changes when the system does.</h2>
-      <p class="lede reveal d2">It lives in the repository at <span class="repo">docs/deck/index.html</span>. A test compares its workflow, its figures and its version with the code, so a change to the system that the deck does not describe fails the build.</p>
+      <p class="note reveal d2">It lives at <span class="repo">docs/deck/index.html</span>, and a test holds its workflow, figures and version to the code.</p>
     </div>
     <table class="log reveal d3" id="edition-log">
-      <thead><tr><th style="width: 150px">Edition</th><th style="width: 170px">System</th><th style="width: 220px">Date</th><th>What changed</th></tr></thead>
+      <thead><tr><th style="width: 120px">Edition</th><th style="width: 130px">System</th><th style="width: 180px">Date</th><th>What changed</th></tr></thead>
       <tbody>
         <tr><td class="mono">1</td><td class="mono">v1.0.0</td><td class="mono">2026-10-11</td><td>First edition. The three roles, the animated workflow, eight principles. Covers intake, linked sources, stage tools, the standard exploration tools, run-wide views, and limitations beside assumptions.</td></tr>
         <tr><td class="mono">2</td><td class="mono">v1.0.0</td><td class="mono">2026-10-11</td><td>Seven gates. The search ends on a candidate pool, the champion is chosen on outcomes analysis, and the sealed holdout is scored once at validation (ADR-0016).</td></tr>
@@ -783,10 +881,11 @@ body.moving .chrome { opacity: 1; }
         <tr><td class="mono">4</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>Eight gates. A run starts from a template or from scratch, and the developer gives the data once the intent is confirmed (Provide the data). A finished run can be kept as a team template (ADR-0018).</td></tr>
         <tr><td class="mono">5</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>Model risk guidance is SR 26-2 (April 2026), which replaced SR 11-7. The readiness report and the agents cite it; a profile that names SR 11-7 is read as SR 26-2 (ADR-0019).</td></tr>
         <tr><td class="mono">6</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>The data catalog: the developer chooses the team's tables (the template's are checked) and adds any other data; documented links are offered and measured, never imposed (ADR-0020).</td></tr>
+        <tr><td class="mono">7</td><td class="mono">v1.0.0</td><td class="mono">2026-10-25</td><td>The engine comes first: the engine disposes, agents recommend, people decide. A new slide pictures COGNOS as a shared workshop that keeps one logbook.</td></tr>
       </tbody>
     </table>
   </div>
-  <div class="foot"><span>Agents recommend. People decide. The engine disposes.</span><span class="pg"></span></div>
+  <div class="foot"><span>The engine disposes. Agents recommend. People decide.</span><span class="pg"></span></div>
 </section>
 
 <div class="progress" id="progress"></div>
@@ -1000,6 +1099,38 @@ function cycle(n, ms, fn, pause = 0) {
   $("#flow-prev").onclick = () => { pause(); show(at - 1); };
   show(0);
   anims.flow = { start() { show(0); play(); }, stop: pause };
+})();
+
+/* ===========================================
+   THE WORKSHOP: a piece of work moves along the bench. At each station the machine measures,
+   the assistant suggests, a person decides at the checkpoint, and the logbook gains a line.
+   =========================================== */
+(function workshop() {
+  const W = [
+    { m: "Reads the intent document", a: "Intake Analyst: the horizon is not stated. Ask?", p: "Dana answers: 12 months", log: "Dana confirmed the intent" },
+    { m: "Joins the tables, measures every column", a: "Data Analyst: the target is default_12m", p: "Dana accepts, drops two ID columns", log: "Dana accepted the target" },
+    { m: "Reads the shape of the data", a: "Design Lead: a logistic scorecard", p: "Dana keeps the plan", log: "Dana approved the design" },
+    { m: "Fits and ranks every candidate", a: "Modeler and Outcomes Analyst: this champion", p: "Dana chooses the champion", log: "Dana chose the champion" },
+    { m: "Opens the sealed sample, once", a: "Validator: one warning, on stability", p: "Lee, the reviewer, accepts with a reason", log: "Lee accepted validation" },
+    { m: "Fills every number in the paper", a: "Writer: the white paper", p: "Kim, the approver, signs", log: "Kim signed off · package sealed" },
+  ];
+  const sts = $$("#ws-bench .ws-st"), cps = $$("#ws-bench .ws-cp"), log = $("#ws-log");
+  const rows = { m: $("#ws-m"), a: $("#ws-a"), p: $("#ws-p") };
+  const labels = sts.map(st => $(".ws-lab", st).textContent);
+  anims.workshop = cycle(W.length * 3, 1150, k => {
+    const i = Math.floor(k / 3), phase = k % 3, w = W[i];
+    if (k === 0) log.innerHTML = "";
+    sts.forEach((st, j) => { st.classList.toggle("on", j === i); st.classList.toggle("done", j < i);
+                             st.classList.toggle("ask", j === i && phase >= 1); });
+    cps.forEach((cp, j) => { cp.classList.toggle("on", j === i && phase === 2); cp.classList.toggle("done", j < i); });
+    ["m", "a", "p"].forEach((key, r) => { rows[key].classList.toggle("on", r <= phase); $("p", rows[key]).textContent = r <= phase ? w[key] : ""; });
+    if (phase === 2) {
+      $$("li", log).forEach(li => li.classList.remove("new"));
+      const li = document.createElement("li"); li.className = "new";
+      li.innerHTML = `<span class="when">${labels[i]} · ${w.p.split(/[ ,]/)[0]} · reason kept</span>${w.log}`;
+      log.appendChild(li);
+    }
+  }, 2600);
 })();
 
 /* ===========================================
