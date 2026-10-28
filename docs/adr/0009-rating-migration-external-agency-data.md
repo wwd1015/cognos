@@ -67,8 +67,8 @@ champion and therefore cannot move a matrix.
 Ideate's transition-matrix framework entry is config-aware (rejected → available → candidate, with
 stated reasons) and emits a `data-migration` unlock question when rating columns exist unconfigured.
 Combined with the events-per-variable finding on a short internal history, the system itself
-produces the documented case for licensing external data — SR 11-7 "alternatives considered / data
-sufficiency" evidence, demonstrated end-to-end in `examples/rating_migration_loss/`.
+produces the documented case for licensing external data — SR 26-2 evidence on alternative
+methodologies and data sufficiency, demonstrated end-to-end in `examples/rating_migration_loss/`.
 
 ## Consequences
 

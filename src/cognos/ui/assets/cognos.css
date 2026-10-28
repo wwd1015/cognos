@@ -99,6 +99,12 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   font-family: var(--font-display); font-weight: 700; font-size: 27px; letter-spacing: 0.01em;
   line-height: 1;
 }
+/* the wordmark's two O's are the creed: dashed, the agents suggest; solid, a person decides
+   (docs/brand/cognos-logo.svg) */
+.wm-o { display: inline-block; width: 0.7em; height: 0.7em; margin: 0 0.05em; border-radius: 50%; box-sizing: border-box; }
+.wm-o.agent { background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2233%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2211%22%20stroke-dasharray%3D%2216%209.9%22/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2233%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2211%22%20stroke-dasharray%3D%2216%209.9%22/%3E%3C/svg%3E") center / contain no-repeat; }
+.wm-o.person { background: var(--accent); }
 .masthead-eyebrow, .eyebrow {
   font-family: var(--font); font-size: 10.5px; font-weight: 500; letter-spacing: 0.16em;
   text-transform: uppercase; color: var(--ink-2);
@@ -114,7 +120,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* ── Type ── */
 .mantine-Title-root { font-family: var(--font-display); letter-spacing: -0.005em; }
 .page-title { font-family: var(--font-display); font-weight: 600; font-size: 30px; line-height: 1.15; }
-.page-lede { color: var(--ink-2); font-size: 14px; max-width: 760px; margin-top: 4px; }
+.page-lede { color: var(--ink-2); font-size: 14.5px; max-width: 760px; margin-top: 4px; }
 .num, .mantine-Table-td .mantine-Code-root { font-family: var(--font-mono); }
 
 /* ── Panels: a rule and a serif title, never a box ── */
@@ -123,8 +129,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-top: 1px solid var(--rule);
   padding: 14px 0 6px;
 }
-.ledger-title { font-family: var(--font-display); font-weight: 600; font-size: 17px; line-height: 1.3; }
-.ledger-desc { color: var(--ink-2); font-size: 12.5px; margin-top: 2px; max-width: 720px; }
+.ledger-title { font-family: var(--font-display); font-weight: 600; font-size: 18px; line-height: 1.3; }
+.ledger-desc { color: var(--ink-2); font-size: 13px; margin-top: 2px; max-width: 720px; }
 
 /* a quiet tile, for galleries of small results */
 .mantine-Card-root.cognos-tile {
@@ -191,6 +197,9 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .mantine-Button-root { font-weight: 600; letter-spacing: 0.01em; transition: background 0.2s var(--ease), border-color 0.2s var(--ease); }
 .mantine-Button-root[data-variant="default"] { background: transparent; border-color: var(--line-strong); }
 .mantine-Button-root[data-variant="default"]:hover { border-color: var(--ink); background: transparent; }
+.mantine-Button-root:focus-visible, .mantine-NavLink-root:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
 
 /* ── Tabs: underline, ink when active ── */
 .mantine-Tabs-list::before { border-color: var(--line); }
@@ -228,7 +237,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ── Alerts: a margin note with a rule, not a filled box ── */
 .mantine-Alert-root {
-  background: var(--bg-surface); border: 0; border-left: 2px solid var(--alert-color, var(--ink-3));
+  background: var(--bg-surface); border: 0; border-top: 1px solid var(--alert-color, var(--line-strong));
   border-radius: 0; padding: 10px 14px;
 }
 .mantine-Alert-title { font-weight: 600; }
@@ -255,10 +264,15 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-radius: 0; padding: 9px 8px 9px 0; border-bottom: 1px solid var(--hair);
   background: transparent; align-items: flex-start;
 }
+.cognos-rail .mantine-NavLink-root { position: relative; transition: background 0.2s var(--ease); }
 .cognos-rail .mantine-NavLink-root:hover { background: var(--accent-tint); }
-.cognos-rail .mantine-NavLink-root[data-active] {
-  background: transparent; box-shadow: inset 2px 0 0 var(--accent); padding-left: 10px;
+/* the stage you are on: a tinted line and a caret in the margin, as in the logbook */
+.cognos-rail .mantine-NavLink-root[data-active] { background: var(--accent-tint); padding-left: 10px; }
+.cognos-rail .mantine-NavLink-root[data-active]::before {
+  content: ""; position: absolute; left: -14px; top: 15px;
+  border: 5px solid transparent; border-left: 7px solid var(--accent);
 }
+.cognos-rail .mantine-NavLink-root[data-active] .rail-no { color: var(--accent); }
 .cognos-rail .mantine-NavLink-root[data-active] .mantine-NavLink-label { color: var(--ink); }
 .cognos-rail .mantine-NavLink-description { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
 .cognos-rail .mantine-NavLink-section { margin-top: 2px; }
@@ -268,23 +282,30 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ── The human decision: the one place that is allowed weight ── */
 .mantine-Card-root.cognos-gate {
-  background: var(--bg-surface); border-top: 1px solid var(--line-strong);
-  border-left: 2px solid var(--ink-3); padding: 16px 20px 16px 18px;
+  background: transparent; border-top: 1px solid var(--line-strong); padding: 16px 0 14px;
 }
+/* an open decision is a sheet waiting for a signature: raised paper under a double rule */
 .mantine-Card-root.cognos-gate-open {
-  border-top: 2px solid var(--accent); border-left: 2px solid var(--accent);
-  background: var(--accent-tint);
+  background: var(--bg-raised); border: 1px solid var(--accent-border);
+  border-top: 4px double var(--accent); padding: 18px 24px 22px;
 }
-/* the agent's recommendation: a quoted passage */
-.mantine-Card-root.cognos-rec {
-  border-top: 0; border-left: 2px solid var(--line-strong); padding: 2px 0 2px 18px;
+/* Three voices, the same as the deck: the engine speaks in mono figures, an agent in an italic
+   serif quotation, a person in plain type with a name. The recommendation is the agent's. */
+.mantine-Card-root.cognos-rec { border-top: 0; padding: 2px 0 2px 34px; }
+.cognos-rec .rec-summary {
+  position: relative; font-family: var(--font-display); font-style: italic;
+  font-size: 17.5px; line-height: 1.5;
 }
-.cognos-rec .rec-summary { font-family: var(--font-display); font-size: 16px; line-height: 1.55; }
+.cognos-rec .rec-summary::before {
+  content: "\201C"; position: absolute; left: -32px; top: -10px;
+  font-family: var(--font-display); font-style: normal; font-size: 52px; line-height: 1;
+  color: var(--accent);
+}
 
 /* ── Activity feed ── */
 .activity-item { padding: 8px 0; border-bottom: 1px solid var(--hair); display: grid; grid-template-columns: 58px 1fr; gap: 0 8px; }
 .activity-time { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); padding-top: 2px; }
-.activity-text { font-size: 12.5px; line-height: 1.45; color: var(--ink); }
+.activity-text { font-size: 13px; line-height: 1.45; color: var(--ink); }
 .activity-item[data-tone="accent"] .activity-text { color: var(--accent); font-weight: 600; }
 .activity-item[data-tone="bad"] .activity-text { color: var(--mantine-color-red-6); }
 .activity-item[data-tone="quiet"] .activity-text { color: var(--ink-2); }
@@ -339,3 +360,74 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 .mantine-Tabs-tab[data-variant="outline"][data-active] { border-bottom-color: var(--ink); }
 .mantine-Tabs-tab[data-variant="outline"]::before, .mantine-Tabs-tab[data-variant="outline"]::after { display: none; }
+
+/* ── The join canvas (data gate): tables you can arrange, links the engine measured ──
+   Line styles say who stands behind a link: dotted, the engine measured it; dashed oxblood,
+   the Data Analyst suggested it and it is not in the join; solid ink, it is in the join. */
+.jc { display: grid; gap: 8px; margin: 4px 0 10px; }
+.jc-wrap { overflow-x: auto; border: 1px solid var(--line-strong);
+  background: radial-gradient(circle, var(--line) 1px, transparent 1.2px) 0 0 / 22px 22px, var(--bg-raised); }
+.jc-canvas { position: relative; touch-action: none; }
+.jc-svg-host, .jc-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.jc-line { fill: none; stroke-width: 1.4; vector-effect: non-scaling-stroke; transition: stroke 0.25s var(--ease); }
+.jc-line.measured { stroke: var(--ink-3); stroke-dasharray: 1 4; stroke-linecap: round; }
+.jc-line.proposed { stroke: var(--accent); stroke-dasharray: 6 5; animation: jc-flow 1.4s linear infinite; }
+.jc-line.chosen { stroke: var(--ink); stroke-width: 2; }
+.jc-line.off, .jc-chip[hidden] { display: none; }
+@keyframes jc-flow { to { stroke-dashoffset: -22; } }
+.jc-tile { position: absolute; width: 214px; background: var(--bg-base); border: 1px solid var(--line-strong);
+  cursor: grab; user-select: none; transition: box-shadow 0.2s var(--ease), border-color 0.2s; }
+.jc-tile.base { border-color: var(--ink); border-top-width: 3px; }
+.jc-tile.dragging { cursor: grabbing; box-shadow: var(--shadow-menu); z-index: 3; }
+.jc-tile header { display: flex; flex-wrap: wrap; gap: 2px 8px; justify-content: space-between; align-items: baseline;
+  padding: 8px 10px 6px; border-bottom: 1px solid var(--line); }
+.jc-tile header b { font-family: var(--font-mono); font-weight: 500; font-size: 12.5px; }
+.jc-tile header span { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+.jc-tile ul { list-style: none; margin: 0; padding: 6px 10px 4px; display: grid; gap: 1px; }
+.jc-tile li { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-2); display: flex; justify-content: space-between; gap: 6px; }
+.jc-tile li.jc-key { color: var(--ink); }
+.jc-tile li.jc-key::after { content: "key"; color: var(--ink-3); }
+.jc-tile li.jc-target { color: var(--accent); }
+.jc-tile li.jc-target::after { content: "● target"; }
+.jc-tile li.jc-more { color: var(--ink-3); }
+.jc-make-base { margin: 2px 10px 8px; padding: 2px 0; font: 500 11px var(--font-mono); letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-3); background: none; border: 0; border-bottom: 1px dotted var(--line-strong); cursor: pointer; }
+.jc-make-base:hover:not(:disabled) { color: var(--accent); border-bottom-color: var(--accent); }
+.jc-tile.base .jc-make-base { color: var(--ink); border-bottom-color: transparent; cursor: default; }
+.jc-chip { position: absolute; transform: translate(-50%, -50%); z-index: 2; white-space: nowrap; cursor: pointer;
+  font: 500 11px var(--font-mono); padding: 3px 8px; background: var(--bg-base); color: var(--ink-2);
+  border: 1px solid var(--line-strong); transition: background 0.2s var(--ease), color 0.2s, border-color 0.2s; }
+.jc-chip:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
+.jc-chip.proposed { border-color: var(--accent); color: var(--accent); }
+.jc-chip.chosen { background: var(--ink); border-color: var(--ink); color: var(--bg-base); }
+.jc-chip.chosen.suggested::before { content: "● "; color: var(--accent); }
+.jc-chip:disabled, .jc-make-base:disabled { cursor: default; }
+.jc-chip:focus-visible, .jc-make-base:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.jc-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 12px; color: var(--ink-2); }
+.jc-legend i { display: inline-block; width: 24px; height: 0; vertical-align: middle; margin-right: 7px; border-top: 2px solid var(--ink); }
+.jc-legend i.m { border-top: 2px dotted var(--ink-3); }
+.jc-legend i.p { border-top: 2px dashed var(--accent); }
+@media (prefers-reduced-motion: reduce) { .jc-line.proposed { animation: none; } }
+
+/* ── The decision as one card (panels.gate_block): what accepting means, the engine's
+   figures as evidence, then the reason and the buttons. Choosing differently folds away. ── */
+.gate-proposal { font-family: var(--font-display); font-style: italic; font-size: 17px; line-height: 1.45; margin: 2px 0 10px; }
+.gate-evidence { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.gate-evidence span { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); border: 1px solid var(--line-strong); padding: 3px 8px; }
+.gate-evidence b { font-weight: 500; color: var(--ink); }
+.gate-more { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.gate-fold { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink); list-style: none; padding: 4px 0; }
+.gate-fold::-webkit-details-marker { display: none; }
+.gate-fold::before { content: "+ "; color: var(--accent); }
+.gate-more[open] > .gate-fold::before { content: "− "; }
+.gate-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gate-more[open] > .gate-fold { margin-bottom: 8px; }
+.gate-done { display: grid; gap: 6px; justify-items: start; }
+.gate-stamp { display: inline-block; font: 500 11.5px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent); border: 1.5px solid var(--accent); padding: 4px 10px; transform: rotate(-2deg);
+  animation: gate-stamp 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+.gate-stamp.sealed { display: inline-flex; align-items: center; gap: 8px; }
+.gate-stamp.sealed::before { content: ""; width: 26px; height: 26px; margin: -6px 0 -6px -4px; background: var(--accent);
+  -webkit-mask: url("seal.svg") center / contain no-repeat; mask: url("seal.svg") center / contain no-repeat; }
+@keyframes gate-stamp { from { transform: rotate(-6deg) scale(1.4); opacity: 0; } to { transform: rotate(-2deg) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .gate-stamp { animation: none; } }

@@ -453,6 +453,155 @@ def make_loss_forecast_dataset(n: int = 120, seed: int = 11) -> pd.DataFrame:
     return df.round(5)
 
 
+
+def make_catalog_tables(n_obligors: int = 400, seed: int = 26) -> dict[str, pd.DataFrame]:
+    """The default data catalog's tables (ADR-0020): the tables a commercial-credit team keeps, with keys
+    that join. Obligors are observed at quarter ends from 2014 to 2023:
+
+    - ``obligors``: one row per obligor (industry, region, public or private);
+    - ``obligor_quarters``: financial ratios at each quarter end, and the outcome
+      ``default_12m`` (default within the next four quarters);
+    - ``facilities``: one row per facility and quarter end (several per obligor): limit,
+      drawn, utilization and collateral. High utilization raises the default rate, so joining
+      this table adds signal;
+    - ``market_equity``: equity value and volatility and the face value of debt for public
+      obligors, consistent with their default risk;
+    - ``macro_quarterly``: macro drivers and the portfolio net charge-off rate per quarter;
+    - ``rating_history``: an agency-rated panel (external data, its own obligors);
+    - ``resolved_defaults``: realized LGD per defaulted facility (default dates at quarter
+      end, so macro conditions join);
+    - ``revolver_defaults``: realized CCF per defaulted revolving facility.
+
+    Deterministic given the seed. Dates are ``YYYY-MM-DD`` strings, so keys match exactly."""
+    rng = np.random.default_rng(seed)
+    macro = make_loss_forecast_dataset(n=120, seed=seed).rename(columns={"date": "as_of_date"})
+    quarters = [d for d in macro["as_of_date"] if "2014-03-31" <= d <= "2023-12-31"]
+    unemp = dict(zip(macro["as_of_date"], macro["unemployment_rate"], strict=True))
+    industries = np.array(["manufacturing", "wholesale_trade", "services", "construction",
+                           "healthcare", "energy", "transportation"])
+    regions = np.array(["northeast", "midwest", "south", "west"])
+    ids = [f"OB{i:05d}" for i in range(1, n_obligors + 1)]
+    ind = rng.choice(industries, n_obligors)
+    public = rng.random(n_obligors) < 0.5
+    obligors = pd.DataFrame({
+        "obligor_id": ids, "industry": ind, "region": rng.choice(regions, n_obligors),
+        "public": public, "year_established": rng.integers(1950, 2012, n_obligors)})
+    ind_risk = {"energy": 0.35, "construction": 0.3, "transportation": 0.15}
+
+    o_rows, f_rows, e_rows = [], [], []
+    fac_id = 0
+    for i, oid in enumerate(ids):
+        start = int(rng.integers(0, len(quarters) - 8))
+        size = rng.normal(18.5, 1.3)  # log total assets
+        lev0, cov0 = rng.normal(0.45, 0.13), rng.lognormal(1.2, 0.5)
+        n_fac = int(rng.integers(1, 4))
+        facs = []
+        for _ in range(n_fac):
+            fac_id += 1
+            limit = float(np.exp(size - 3.2 + rng.normal(0, 0.4)))
+            facs.append({"facility_id": f"FC{fac_id:06d}", "limit": limit,
+                         "type": rng.choice(["revolver", "term_loan", "revolver"]),
+                         "seniority": rng.choice(["senior_secured", "senior_unsecured"],
+                                                 p=[0.7, 0.3]),
+                         "util": float(np.clip(rng.beta(2, 3), 0.02, 0.98)),
+                         "coll": float(np.clip(rng.normal(1.1, 0.35), 0.0, 2.5))})
+        stress = 0.0
+        for q in quarters[start:]:
+            stress = 0.8 * stress + rng.normal(0, 0.25)
+            lev = float(np.clip(lev0 + 0.06 * stress + rng.normal(0, 0.02), 0.05, 0.98))
+            cov = float(np.clip(cov0 * np.exp(-0.25 * stress) + rng.normal(0, 0.2), 0.1, 30))
+            margin = float(rng.normal(0.11, 0.05) - 0.03 * stress)
+            current = float(np.clip(rng.normal(1.6, 0.4) - 0.15 * stress, 0.3, 5))
+            d2e = float(np.clip(lev * 9 + rng.normal(0, 0.6), 0.2, 15))
+            for f in facs:
+                f["util"] = float(np.clip(f["util"] + 0.03 * stress + rng.normal(0, 0.03),
+                                          0.0, 1.0))
+            util = float(np.mean([f["util"] for f in facs]))
+            coll = float(np.mean([f["coll"] for f in facs]))
+            z = (-4.7 + 3.2 * lev - 0.18 * np.log(cov) + 0.7 * stress - 0.25 * (size - 18.5)
+                 - 4.0 * margin - 0.35 * current + 2.0 * util - 0.4 * coll
+                 + 0.25 * (unemp[q] - 5.5) + ind_risk.get(ind[i], 0.0))
+            pd12 = 1.0 / (1.0 + np.exp(-z))
+            default = bool(rng.random() < pd12)
+            o_rows.append({"obligor_id": oid, "as_of_date": q, "leverage": round(lev, 4),
+                           "debt_to_ebitda": round(d2e, 3), "interest_coverage": round(cov, 3),
+                           "current_ratio": round(current, 3),
+                           "operating_margin": round(margin, 4),
+                           "log_total_assets": round(float(size), 3),
+                           "default_12m": int(default)})
+            for f in facs:
+                f_rows.append({"facility_id": f["facility_id"], "obligor_id": oid,
+                               "as_of_date": q, "facility_type": f["type"],
+                               "seniority": f["seniority"], "limit": round(f["limit"], 2),
+                               "drawn": round(f["limit"] * f["util"], 2),
+                               "utilization_rate": round(f["util"], 4),
+                               "collateral_coverage": round(f["coll"], 3)})
+            if public[i]:
+                debt = float(np.exp(size) * lev)
+                equity = float(np.exp(size) * (1 - lev) * np.exp(rng.normal(0, 0.15)))
+                vol = float(np.clip(0.2 + 1.4 * pd12 ** 0.5 + rng.normal(0, 0.03), 0.08, 1.5))
+                e_rows.append({"obligor_id": oid, "as_of_date": q,
+                               "equity_value": round(equity, 2),
+                               "equity_vol": round(vol, 4), "debt_face": round(debt, 2)})
+            if default:
+                break  # a defaulted obligor leaves the book
+            size += rng.normal(0.01, 0.03)
+
+    # Resolved defaults (LGD): defaults across the cycle, at quarter ends so macro joins.
+    lgd_q = [d for d in macro["as_of_date"] if "2004-03-31" <= d <= "2022-12-31"]
+    n_lgd = 700
+    when = rng.choice(lgd_q, n_lgd)
+    coll = np.clip(rng.normal(0.9, 0.45, n_lgd), 0.0, 2.5)
+    secured = rng.random(n_lgd) < 0.65
+    u_at = np.array([unemp[d] for d in when])
+    lgd = np.clip(0.62 - 0.28 * np.minimum(coll, 1.5) * secured - 0.12 * secured
+                  + 0.035 * (u_at - 5.5) + rng.normal(0, 0.12, n_lgd), 0.0, 1.0)
+    resolved = pd.DataFrame({
+        "facility_id": [f"FD{i:06d}" for i in range(1, n_lgd + 1)],
+        "obligor_id": rng.choice(ids, n_lgd), "default_date": when,
+        "facility_type": rng.choice(["revolver", "term_loan"], n_lgd),
+        "seniority": np.where(secured, "senior_secured", "senior_unsecured"),
+        "collateral_type": np.where(secured, rng.choice(["real_estate", "receivables",
+                                                        "equipment", "inventory"], n_lgd),
+                                    "none"),
+        "collateral_coverage": np.where(secured, coll, 0.0).round(3),
+        "exposure_at_default": np.exp(rng.normal(14.5, 1.0, n_lgd)).round(2),
+        "industry": rng.choice(industries, n_lgd), "realized_lgd": lgd.round(4)})
+
+    # Defaulted revolvers (EAD): observed 12 months before default.
+    n_ead = 600
+    obs = rng.choice([d for d in macro["as_of_date"] if "2005-03-31" <= d <= "2022-12-31"],
+                     n_ead)
+    limit = np.exp(rng.normal(14.0, 0.9, n_ead))
+    util = np.clip(rng.beta(2.5, 2.5, n_ead), 0.0, 0.99)
+    age = rng.uniform(0.5, 9.0, n_ead)
+    covenants = rng.integers(0, 5, n_ead)
+    ccf = np.clip(0.75 - 0.55 * util + 0.02 * (4 - covenants) - 0.01 * age
+                  + rng.normal(0, 0.15, n_ead), 0.0, 1.0)
+    revolver = pd.DataFrame({
+        "facility_id": [f"FR{i:06d}" for i in range(1, n_ead + 1)],
+        "obligor_id": rng.choice(ids, n_ead), "observation_date": obs,
+        "limit": limit.round(2), "drawn": (limit * util).round(2),
+        "undrawn": (limit * (1 - util)).round(2), "utilization_rate": util.round(4),
+        "facility_age_years": age.round(2), "covenant_count": covenants,
+        "obligor_rating": rng.choice(["BBB", "BB", "B", "CCC"], n_ead, p=[0.2, 0.4, 0.3, 0.1]),
+        "log_total_assets": rng.normal(18.0, 1.2, n_ead).round(3),
+        "realized_ccf": ccf.round(4)})
+
+    rating = make_rating_migration_dataset(n_obligors=300, start_year=1995, end_year=2023,
+                                           seed=seed)
+    return {
+        "obligors": obligors,
+        "obligor_quarters": pd.DataFrame(o_rows),
+        "facilities": pd.DataFrame(f_rows),
+        "market_equity": pd.DataFrame(e_rows),
+        "macro_quarterly": macro,
+        "rating_history": rating,
+        "resolved_defaults": resolved,
+        "revolver_defaults": revolver,
+    }
+
+
 GENERATORS = {
     "regression": make_regression_dataset,
     "classification": make_classification_dataset,

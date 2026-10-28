@@ -34,7 +34,7 @@ on a *public*-obligor book, see [`examples/public_obligor_pd/`](../public_obligo
    interpretability **required**). Ideate now produces the full
    [`design_brief.md`](sample_output/design_brief.md):
    - **Data structure** — vintage panel, event support, EPV;
-   - **Framework assessment** ("alternatives considered" for SR 11-7): reduced-form PD **primary**;
+   - **Framework assessment** (the comparison of alternative methodologies SR 26-2 asks for): reduced-form PD **primary**;
      discrete-time hazard **partial** (vintage panel → period-indexed logit, Shumway 2001);
      structural Merton **rejected** — no market observables for private obligors (Merton 1974,
      KMV); rating migration **rejected** — no rating history (CreditMetrics); ML **challenger
@@ -49,7 +49,7 @@ on a *public*-obligor book, see [`examples/public_obligor_pd/`](../public_obligo
    pool is compared on the out-of-time sample and **the champion is chosen there** (a
    five-factor ridge logit; validation AUC 0.83, out-of-time 0.75), with the labelled ensemble
    challenger stated as "the price of interpretability" →
-   **out-of-time SR 11-7 outcomes analysis** (Gini ≈ 0.49, KS ≈ 0.46, PSI ≈ 0.09) → **Vasicek
+   **out-of-time SR 26-2 outcomes analysis** (Gini ≈ 0.49, KS ≈ 0.46, PSI ≈ 0.09) → **Vasicek
    one-factor portfolio simulation** (EL/VaR/ES + closed-form Basel IRB capital) →
    **macro-scenario stress** (adverse and severely-adverse unemployment/GDP shocks re-scored
    deterministically; baseline ≈ 4.2% mean PD rising to ≈ 10.3% severely adverse) →
@@ -60,7 +60,7 @@ on a *public*-obligor book, see [`examples/public_obligor_pd/`](../public_obligo
    [`sample_output/run_summary.txt`](sample_output/run_summary.txt).
 
    (Structural Merton stays **rejected — no market observables** for this private middle-market
-   portfolio; that recorded rejection is the SR 11-7 "alternatives considered" evidence. On a
+   portfolio; that recorded rejection is the SR 26-2 evidence for the comparison of alternative methodologies. On a
    public-obligor book, `synth.make_cni_portfolio_dataset(include_market=True)` plus the
    `structural:` config block turn on the distance-to-default hybrid + benchmark.)
 

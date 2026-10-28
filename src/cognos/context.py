@@ -47,12 +47,14 @@ class RunContext:
         runs_root: str | Path | None = None,
         runner: AgentRunner | None = None,
     ) -> None:
-        self.base_config = config
         self.run_id = run_id or new_run_id()
         root = Path(runs_root or config.runs_dir)
         self.run_dir = root / self.run_id
         self._runner = runner
         self.overrides = self._load_overrides()
+        # The profile as the run has it: with the data given at gate_source, when it started
+        # without (ADR-0018).
+        self.base_config = config = config.with_data(self.overrides.data)
         self.config = self._effective_config(config, self.overrides).with_target(
             *self._decided_target(config))
         self._results: dict[str, StageResult] = {}

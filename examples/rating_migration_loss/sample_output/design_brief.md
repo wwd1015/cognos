@@ -26,11 +26,11 @@
 
 | Framework | Applicable | Role | Reason | Reference |
 |---|---|---|---|---|
-| Reduced-form PD (obligor scorecard / GLM) | True | primary | Binary outcome with obligor-level financial and facility covariates — the standard framework for commercial PD at origination or surveillance. | Altman (1968); Ohlson (1980); Basel IRB PD; SR 11-7 |
+| Reduced-form PD (obligor scorecard / GLM) | True | primary | Binary outcome with obligor-level financial and facility covariates — the standard framework for commercial PD at origination or surveillance. | Altman (1968); Ohlson (1980); Basel IRB PD; SR 26-2 |
 | Discrete-time hazard (survival) | partial | candidate | Time-indexed cohorts present — a period-indexed logit reads as a discrete-time hazard; set data.event_time_col (default period per obligor) to unlock the full hazard families and PD term structure. | Shumway (2001) hazard bankruptcy model |
 | Structural (Merton distance-to-default) | False | rejected | Requires traded-market observables (equity value/volatility, liability structure) to compute distance-to-default; none present — typical for private middle-market obligors. | Merton (1974); KMV/Moody's EDF |
 | Rating-transition matrix (migration) | True | candidate | Rating columns detected (rating, next_rating); the migration: config block is enabled — the engine estimates a cohort transition matrix on the training partition (NR-adjusted), feeds the rating-implied horizon PD to the champion (hybrid), scores the pure-migration PD as a challenger benchmark, and reports a by-rating expected-loss forecast. | CreditMetrics (1997); S&P CreditPro rating-migration practice |
-| Machine-learning challenger (trees/boosting) | True | challenger | Interpretability is required for the deployed model, so nonlinear learners serve as challenger benchmarks quantifying the predictive ceiling. | champion–challenger practice; SR 11-7 benchmarking |
+| Machine-learning challenger (trees/boosting) | True | challenger | Interpretability is required for the deployed model, so nonlinear learners serve as challenger benchmarks quantifying the predictive ceiling. | champion–challenger practice; SR 26-2 benchmarking |
 
 ## Design Lead decisions
 

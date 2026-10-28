@@ -1,4 +1,4 @@
-"""Credit-risk model validation metrics (SR 11-7 "outcomes analysis").
+"""Credit-risk model validation metrics (SR 26-2 "outcomes analysis").
 
 The right toolkit for validating a PD/scoring model — discrimination, calibration, and population
 stability — as opposed to the trading-strategy metrics (PBO, Deflated Sharpe) that presume a returns

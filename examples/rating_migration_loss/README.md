@@ -39,7 +39,7 @@ findings and open questions:
 Five annual cohorts also cannot pin down a through-the-cycle matrix (no full credit cycle
 observed). The sponsor's decision — *license the S&P long-run history and develop on the agency
 universe mapped to the internal master scale* — is recorded in the design brief, which is exactly
-the "alternatives considered / data sufficiency" evidence SR 11-7 documentation wants.
+the evidence on alternative methodologies and data sufficiency that SR 26-2 model testing asks for.
 
 ### 2. Framework unlock — ideate names the capability; the human flips the switch
 

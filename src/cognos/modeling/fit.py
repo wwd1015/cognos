@@ -310,7 +310,7 @@ def build_inference_design(Xf: pd.DataFrame) -> pd.DataFrame:
     The prediction pipeline deliberately uses all-K one-hot for serving robustness, but all-K dummies
     plus an intercept are perfectly collinear (the dummy-variable trap), which makes coefficients,
     standard errors and p-values ill-defined. K-1 coding here yields a full-rank design so the
-    inference COGNOS reports is statistically valid — a hard requirement for SR 11-7 model validation.
+    inference COGNOS reports is statistically valid — which SR 26-2 model validation relies on.
     Inference runs on training data only, so `handle_unknown` robustness is not needed.
     """
     import statsmodels.api as sm

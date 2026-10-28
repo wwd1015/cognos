@@ -93,6 +93,9 @@ Ordered by impact-per-effort for a regulated commercial-PD system. "Stage" = whe
 interagency guidance ("SR 26-2", per ValidMind's docs). If confirmed, `comply`'s regime list and
 skill pack should reference both.
 
+*Resolved 2026-10-24:* confirmed. SR 26-2 (April 17, 2026) supersedes SR 11-7; COGNOS now
+names SR 26-2 throughout ([ADR-0019](../adr/0019-sr-26-2-replaces-sr-11-7.md)).
+
 **License discipline:** OptBinning, Evidently, InterpretML, Great Expectations are Apache/MIT
 (usable as dependencies). deepchecks, pypbo, ValidMind are AGPL — borrow *ideas*, never vendor code.
 

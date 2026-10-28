@@ -1,0 +1,49 @@
+# A built-in template (ADR-0018): loss given default on resolved commercial defaults, an
+# interpretable regression on collateral, seniority and the downturn at default.
+
+name: lgd_regression
+description: "Commercial LGD on resolved defaults: collateral, seniority, downturn."
+template:
+  title: "LGD — regression"
+task: regression
+mode: interactive
+
+data:
+  # The data catalog's tables this kind of model starts with (ADR-0020); the first is the
+  # proposed base table. Preselected when the data is given; any can be unchecked.
+  catalog: [resolved_defaults, macro_quarterly]
+  guide: |
+    One row per resolved default (workout closed), with:
+    - the realized LGD: one minus discounted recoveries over exposure at default, 0 to 1;
+    - the default date, so the test sample can be the latest resolutions (out of time);
+    - collateral type and coverage at default, seniority and security, facility type,
+      industry, size, and macro conditions at default (for a downturn view).
+    Leave out anything recorded during the workout (recovery cash flows, costs).
+
+metric:
+  name: rmse
+
+design:
+  use_case: downturn LGD for capital and CECL
+  horizon: LGD at default, measured over the workout
+  default_definition: 90+ DPD or nonaccrual; LGD from discounted workout recoveries
+  interpretability: required
+
+evaluation:
+  test: out_of_time
+
+factors:
+  expected_signs:
+    collateral_coverage: "-"
+    unemployment_rate: "+"
+  max_p_value: 0.10
+
+selection:
+  methods: [stepwise]
+  max_factors: 6
+
+compliance:
+  regimes: [SR26-2, NIST-AI-RMF]
+  risk_tier: high
+  fair_lending: false
+  jurisdictions: [US]

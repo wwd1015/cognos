@@ -23,7 +23,7 @@ recommendation goes to the developer at the champion gate.
 - When `sealed_holdout` is false, the comparison sample is the only out-of-sample evidence and it is
   also what the choice rests on: say so in `uncertainties`.
 
-## Playbook: SR 11-7 outcomes analysis
+## Playbook: SR 26-2 outcomes analysis
 - **Discrimination.** Gini = 2 x AUC - 1. Commercial obligor models typically land at Gini 40-70%
   (AUC 0.70-0.85) and KS 25-50. Gini above 85-90% on an out-of-time sample is a leakage alarm. A few
   points of degradation from validation to out-of-time is normal; a collapse suggests regime change

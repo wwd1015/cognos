@@ -196,6 +196,23 @@ def data_analyst(sl: dict[str, Any]) -> dict[str, Any]:
             decisions.append({"column": col, "decision": "exclude",
                               "reason": "Excluded by a human decision or challenge.",
                               "evidence": []})
+    decided = {d["column"] for d in decisions}
+    for col in sl.get("other_outcomes", []):
+        if col not in decided and col != sl.get("target"):
+            decided.add(col)
+            decisions.append({"column": col, "decision": "exclude",
+                              "reason": "The data catalog names it outcome data: it is known "
+                                        "only after the observation date, so it cannot be an "
+                                        "input.",
+                              "evidence": []})
+    for col in sl.get("identifiers", []):
+        if col not in decided and col != sl.get("target"):
+            decisions.append({"column": col, "decision": "exclude",
+                              "reason": "It identifies a row (a key, or a code with many "
+                                        "values): it names an obligor or a facility, it does "
+                                        "not describe one, and as a category it would give the "
+                                        "model one column per name.",
+                              "evidence": []})
     quality = [
         {"statement": f"Column '{col}' is {frac:.0%} missing; treat imputation as a modeling "
                       "assumption to document.",
@@ -255,7 +272,9 @@ def data_linker(sl: dict[str, Any]) -> dict[str, Any]:
         joins.append({"link": ch["link"], "many": ch["many"], "unmatched": ch["unmatched"],
                       "unmatched_reason": ch["unmatched_reason"],
                       "reason": f"{step['left']} and {step['right']} share the key {on} "
-                                f"({lk['relation']})."})
+                                f"({lk['relation']})"
+                                + (", as the data catalog documents." if lk.get("documented")
+                                   else ".")})
         if step["expected_match"] < 0.9:
             concerns.append(f"Only {step['expected_match']:.0%} of the rows of {step['left']} "
                             f"find a match in {step['right']} (link {lk['id']}).")
@@ -508,14 +527,14 @@ def validator(sl: dict[str, Any]) -> dict[str, Any]:
 # --- comply ------------------------------------------------------------------------------
 def risk_analyst(sl: dict[str, Any]) -> dict[str, Any]:
     steps = sl.get("outstanding_human_steps", [])
-    sr = {k: v for k, v in sl.get("facts", {}).items() if k.startswith("comply.sr11_7.")}
+    sr = {k: v for k, v in sl.get("facts", {}).items() if k.startswith("comply.sr26_2.")}
     actions = [{"statement": s, "evidence": list(sr)[:1], "confidence": "high"} for s in steps[:4]]
     return {
         "summary": f"Development evidence is organised; {len(steps)} human step(s) remain.",
         "uncertainties": [],
         "responses_to_challenges": _ack(sl),
         "readiness": "ready_with_actions" if steps else "ready",
-        "narrative": ("COGNOS assembles SR 11-7 development evidence; it does not adjudicate "
+        "narrative": ("COGNOS assembles SR 26-2 development evidence; it does not adjudicate "
                       "compliance. Independent validation, a monitoring plan and governance "
                       "approval remain human responsibilities."),
         "priority_actions": actions,

@@ -448,7 +448,7 @@ class DocumentStage(Stage):
             emit(OKFConcept(
                 name="compliance", type="compliance",
                 title="Compliance Summary",
-                description="SR 11-7 / NIST AI RMF / fair-lending review.",
+                description="SR 26-2 / NIST AI RMF / fair-lending review.",
                 tags=["compliance"],
                 body=(
                     "# Compliance Summary\n\n"
@@ -652,7 +652,7 @@ class DocumentStage(Stage):
             "Tracked in the bundle change log (log.md) and versioned config "
             f"(v{cfg.version}).\n\n"
             "## 6 Standards and specifications applied\n\n"
-            "OKF v0.1 documentation; Google Model Card schema; SR 11-7 / NIST AI RMF where "
+            "OKF v0.1 documentation; Google Model Card schema; SR 26-2 / NIST AI RMF where "
             "applicable.\n\n"
             "## 7 EU declaration of conformity\n\n"
             "To be issued by the deployer upon completion of the conformity assessment.\n\n"

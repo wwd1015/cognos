@@ -53,7 +53,7 @@ TASKS = {
                   "metric, or set stop=true if none is worth running.",
     "outcomes_analyst": "Interpret the outcomes analysis (discrimination, calibration, stability) of "
                         "the champion on the evaluation sample and raise findings.",
-    "validator": "Independently challenge this model (SR 11-7 effective challenge). Raise findings the "
+    "validator": "Independently challenge this model (SR 26-2 effective challenge). Raise findings the "
                  "decision-maker must see, each with evidence, the stage that must change, and a remedy.",
     "risk_analyst": "Assess model-risk readiness from the evidence and list the priority actions "
                     "humans must take before use.",

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 120" role="img" aria-label="COGNOS">
+  <title>COGNOS</title>
+  <!-- The two O's are the creed: the dashed one suggests (the agents), the solid one decides (a person). -->
+  <g font-family="'Source Serif 4', Georgia, 'Times New Roman', serif" font-weight="600" font-size="112" fill="#f0ede4">
+    <text x="50" y="100" text-anchor="middle">C</text>
+    <text x="232" y="100" text-anchor="middle">G</text>
+    <text x="326" y="100" text-anchor="middle">N</text>
+    <text x="504" y="100" text-anchor="middle">S</text>
+    <circle cx="140" cy="64" r="31" fill="none" stroke="#f0ede4" stroke-width="11" stroke-dasharray="13.5 9"/>
+    <circle cx="418" cy="64" r="37" fill="#e0939e"/>
+  </g>
+</svg>

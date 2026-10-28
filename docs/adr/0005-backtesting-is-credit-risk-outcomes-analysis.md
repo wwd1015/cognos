@@ -1,6 +1,6 @@
 # Backtesting means credit-risk outcomes analysis, not trading-strategy overfitting metrics
 
-For the primary (commercial credit-risk) domain, the backtest stage produces SR 11-7 **outcomes
+For the primary (commercial credit-risk) domain, the backtest stage produces SR 26-2 **outcomes
 analysis**, computed on an **out-of-time (OOT)** sample by default:
 
 - **Discrimination** — Gini / AUC and the KS statistic.
@@ -15,7 +15,7 @@ metrics (they presume a returns series) and are **demoted to an opt-in "trading/
 ## Why
 
 PBO/DSR answer "is this strategy's Sharpe an artifact of multiple testing?" — meaningless for a
-PD/LGD model, which has no P&L. SR 11-7 outcomes analysis asks "do predicted risks match realized
+PD/LGD model, which has no P&L. SR 26-2 outcomes analysis asks "do predicted risks match realized
 outcomes, and is the population stable?" — which is exactly Gini/KS + calibration + PSI on an
 out-of-time sample.
 

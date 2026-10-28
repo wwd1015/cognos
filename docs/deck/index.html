@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>COGNOS: how it works and why it is built this way</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%20role%3D%22img%22%20aria-label%3D%22COGNOS%22%3E%3Ctitle%3ECOGNOS%3C/title%3E%3Ccircle%20cx%3D%2230%22%20cy%3D%2250%22%20r%3D%2219%22%20fill%3D%22none%22%20stroke%3D%22%2316140f%22%20stroke-width%3D%228%22%20stroke-dasharray%3D%228.5%205.4%22/%3E%3Ccircle%20cx%3D%2271%22%20cy%3D%2250%22%20r%3D%2223%22%20fill%3D%22%237d2230%22/%3E%3C/svg%3E">
 <!--
   The COGNOS deck. One self-contained file: open it in a browser, no build step.
 
@@ -112,6 +113,54 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .panel { background: var(--raised); border: 1px solid var(--line); padding: 44px 48px;
          display: flex; flex-direction: column; gap: 28px; }
 
+/* drawn figures: an object, not a diagram. Isometric solids in the paper's own tones, one
+   thing lit in the accent, a framed card with a live readout in its corner. Built by the small
+   isometric helper in the script (Iso). */
+:root { --top: #fffefb; --sh1: #ebe7dd; --sh2: #ddd8cb; --edge: #3a352b; --lit-top: #f6e9ea; --halo: rgba(60, 50, 30, 0.16); }
+[data-theme="dark"] { --top: #2a261e; --sh1: #221f18; --sh2: #1c1913; --edge: #b8b09c; --lit-top: #3a2629; --halo: rgba(0, 0, 0, 0.45); }
+.fig { position: relative; background: var(--raised); border: 1px solid var(--line-strong); padding: 52px 24px 56px; }
+.fig .corner { position: absolute; font-family: var(--font-mono); font-size: 16px; letter-spacing: 0.08em; color: var(--ink-3); white-space: nowrap; }
+.fig .c-fig { top: 18px; left: 22px; color: var(--ink-2); }
+.fig .c-title { top: 18px; right: 22px; text-transform: uppercase; }
+.fig .c-hint { bottom: 18px; left: 22px; text-transform: uppercase; }
+.fig .c-ro { bottom: 18px; right: 22px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.fig svg { display: block; width: 100%; height: auto; overflow: visible; }
+.f { stroke: var(--edge); stroke-width: 0.8; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.t { fill: var(--top); } .r { fill: var(--sh1); } .l, .s { fill: var(--sh2); }
+.lit .f { stroke: var(--accent); stroke-width: 1.2; } .lit .t { fill: var(--lit-top); }
+.dash .f { stroke-dasharray: 4 3; stroke: var(--ink-2); }
+.dash .t, .dash .l, .dash .r, .dash .s { fill: var(--paper); }
+.person .f { fill: var(--ink); stroke: var(--ink); }
+.ln { fill: none; stroke: var(--edge); stroke-width: 0.8; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.ln.faint { stroke: var(--ink-3); opacity: 0.7; }
+.halo { fill: var(--halo); filter: blur(12px); }
+.glow { fill: var(--accent-tint); }
+.ftext { font-family: var(--font-mono); fill: var(--ink); }
+.ftext.lit { fill: var(--accent); font-weight: 500; }
+.ring { fill: none; stroke: var(--accent); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.hide { opacity: 0; }
+.fade { transition: opacity 0.5s var(--ease); }
+/* the picture beside its key */
+.picture { flex: 1; min-height: 0; display: grid; grid-template-columns: 1040px 1fr; gap: 64px; align-items: center; }
+.keys { display: flex; flex-direction: column; border-top: 1px solid var(--line-strong); }
+.keys div { display: grid; grid-template-columns: 34px 1fr; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.keys .glyph { margin-top: 9px; }
+.keys b { display: block; font-size: 27px; font-weight: 600; line-height: 1.25; }
+.keys span.what { display: block; font-size: 22px; color: var(--ink-2); line-height: 1.35; margin-top: 4px; }
+.glyph { display: inline-block; flex: none; }
+/* the three voices, everywhere in the deck: a square for the engine, a dashed circle for an
+   agent, a filled circle for a person. Put g-m, g-a or g-p on a label. */
+.g-m::before, .g-a::before, .g-p::before { content: ""; display: inline-block; width: 0.8em; height: 0.8em;
+  margin-right: 0.6em; vertical-align: -0.1em; box-sizing: border-box; }
+.g-m::before { border: 1.5px solid currentColor; }
+.g-a::before { border: 1.5px dashed currentColor; border-radius: 50%; }
+.g-p::before { background: currentColor; border-radius: 50%; }
+.glyph.m { width: 18px; height: 18px; border: 1.5px solid var(--ink); }
+.glyph.a { width: 18px; height: 18px; border-radius: 50%; border: 1.5px dashed var(--ink-2); }
+.glyph.p { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); }
+.glyph.s { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--accent); }
+.glyph.r { width: 18px; height: 18px; border: 1.5px solid var(--accent); background: var(--accent-tint); }
+
 /* ===========================================
    REVEALS: content arrives in order when a slide becomes active
    =========================================== */
@@ -130,6 +179,13 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .title-slide { padding-top: 0; padding-bottom: 0; }
 .title-grid { flex: 1; display: grid; grid-template-columns: 1fr 640px; gap: 120px; align-items: center; }
 .title-grid h1 { margin: 28px 0 0; }
+/* the logo (docs/brand/cognos-logo.svg): the two O's are the creed, dashed for the agents and solid
+   for the person who decides */
+.wordmark { font-weight: 600; letter-spacing: 0.02em; }
+.wm-o { display: inline-block; width: 0.7em; height: 0.7em; margin: 0 0.04em; border-radius: 50%; box-sizing: border-box; }
+.wm-o.agent { background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2233%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2211%22%20stroke-dasharray%3D%2216%209.9%22/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2233%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2211%22%20stroke-dasharray%3D%2216%209.9%22/%3E%3C/svg%3E") center / contain no-repeat; }
+.wm-o.person { background: var(--accent); }
 .title-rule { height: 3px; width: 360px; background: var(--accent); margin: 52px 0 44px; }
 .title-slide .lede { font-size: 32px; max-width: 880px; color: var(--ink-2); }
 .creed { border-top: 1px solid var(--line-strong); }
@@ -143,22 +199,20 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
    =========================================== */
 /* numbered findings: 2 x 2 */
 .grid-2x2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 96px; }
-.grid-3x2 { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 64px; }
 .item { display: grid; grid-template-columns: 76px 1fr; padding: 30px 0; border-top: 1px solid var(--line-strong); }
 .item .n { font-family: var(--font-mono); font-size: 22px; color: var(--accent); padding-top: 3px; }
 .item p { font-size: 26px; color: var(--ink-2); line-height: 1.45; }
 .item p b { color: var(--ink); display: block; font-size: 28px; margin-bottom: 6px; }
-.grid-3x2 .item { grid-template-columns: 1fr; gap: 14px; align-content: start; padding: 36px 0 40px; }
 .callout { display: grid; grid-template-columns: 1fr 1fr; gap: 96px; align-items: start;
-           padding: 36px 44px; background: var(--surface); border-left: 4px solid var(--accent); }
+           padding: 32px 0 0; border-top: 4px double var(--accent); }
 .callout p { font-size: 26px; color: var(--ink-2); }
-.callout p.strong { color: var(--ink); }
+.callout p.strong { color: var(--ink); font-family: var(--font-display); font-size: 32px; line-height: 1.35; }
 
 /* three roles */
 .roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; flex: 1; }
 .role { background: var(--raised); border: 1px solid var(--line); border-top: 4px solid var(--ink);
         padding: 44px 44px 40px; display: flex; flex-direction: column; gap: 22px; }
-.role:nth-child(2) { border-top-color: var(--accent); }
+.role:nth-child(3) { border-top-color: var(--accent); }
 .role .who { font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); }
 .role .verb { font-family: var(--font-display); font-style: italic; font-size: 88px; line-height: 0.95; color: var(--accent); margin-bottom: 6px; }
 .role p { font-size: 25px; color: var(--ink-2); line-height: 1.45; }
@@ -186,15 +240,18 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .step .node { width: 60px; height: 60px; display: grid; place-items: center; background: var(--paper);
               border: 2px solid var(--line-strong); font-family: var(--font-mono); font-size: 20px; color: var(--ink-2);
               transition: all 0.35s var(--ease); position: relative; z-index: 1; }
-.step.gate .node { width: 30px; height: 30px; margin-top: 15px; transform: rotate(45deg); }
+.step.gate .node { width: 34px; height: 20px; margin-top: 22px; border-radius: 17px 17px 2px 2px; }
+.step.gate .node::before { content: ""; position: absolute; left: 50%; top: -10px; width: 8px; height: 8px; margin-left: -4px;
+                           border-radius: 50%; background: inherit; border: 2px solid var(--line-strong); }
+.step.gate.done .node::before { border-color: var(--ink); } .step.gate.on .node::before { border-color: var(--accent); }
 .step .lab { font-size: 19px; color: var(--ink-3); white-space: nowrap; transition: color 0.35s; }
 .step.gate .lab { display: none; }
 .step.done .node { background: var(--ink); border-color: var(--ink); color: var(--paper); }
 .step.on .node { background: var(--accent); border-color: var(--accent); color: var(--paper); transform: scale(1.12); }
-.step.gate.on .node { transform: rotate(45deg) scale(1.25); }
+.step.gate.on .node { transform: scale(1.25); }
 .step.on .lab { color: var(--ink); font-weight: 600; }
 .step:hover .node { border-color: var(--accent); }
-.token { position: absolute; top: 0; left: 0; width: 14px; height: 14px; border-radius: 50%; background: var(--accent);
+.token { position: absolute; top: 2px; left: -6px; width: 26px; height: 10px; border-radius: 50%; background: var(--accent);
          transition: transform 0.6s var(--ease); z-index: 2; }
 .caption { background: var(--raised); border: 1px solid var(--line); padding: 40px 48px 44px; display: flex; flex-direction: column; gap: 32px; }
 .caption-head { display: flex; align-items: center; gap: 28px; }
@@ -204,6 +261,7 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .lane { border-top: 3px solid var(--line); padding-top: 20px; display: flex; flex-direction: column; gap: 12px;
         min-height: 230px; transition: opacity 0.35s, border-color 0.35s; }
 .lane p { font-size: 24px; line-height: 1.45; }
+#cap-agent { font-family: var(--font-display); font-style: italic; font-size: 26px; line-height: 1.4; }
 .lane.hot { border-top-color: var(--accent); }
 .lane.dim { opacity: 0.38; }
 .controls { display: flex; align-items: center; gap: 14px; }
@@ -214,129 +272,13 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .hint { font-size: 20px; color: var(--ink-3); margin-left: 16px; }
 
 /* ===========================================
-   5. INSIDE ONE STAGE
+   THE KITCHEN SLIDES: one sentence in the kitchen, and one line saying what it is in COGNOS
    =========================================== */
-.loop { display: grid; grid-template-columns: repeat(5, 1fr); gap: 32px; }
-.cell { position: relative; background: var(--raised); border: 1px solid var(--line); padding: 32px 30px 36px;
-        display: flex; flex-direction: column; gap: 14px; min-height: 360px; opacity: 0.45;
-        transition: all 0.4s var(--ease); }
-.cell:not(:last-child)::after { content: "→"; position: absolute; right: -27px; top: 40px; font-size: 24px; color: var(--ink-3); }
-.cell .n { font-family: var(--font-mono); font-size: 17px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
-.cell h3 { font-family: var(--font-display); font-weight: 400; font-size: 42px; }
-.cell p { font-size: 25px; color: var(--ink-2); line-height: 1.45; }
-.cell.was { opacity: 1; }
-.cell.on { opacity: 1; border-color: var(--accent); background: var(--accent-tint); box-shadow: inset 0 4px 0 var(--accent); }
-.cell.on .n { color: var(--accent); }
-.retry { position: relative; height: 150px; }
-.retry .arc { position: absolute; left: 832px; width: 339px; top: 0; height: 56px;
-              border: 2px dashed var(--line-strong); border-top: 0; border-radius: 0 0 28px 28px; transition: border-color 0.3s; }
-.retry .arc::before { content: ""; position: absolute; left: -9px; top: -2px; border: 8px solid transparent;
-                      border-bottom: 12px solid var(--line-strong); border-top: 0; transition: border-color 0.3s; }
-.retry .txt { position: absolute; left: 600px; right: 0; top: 82px; font-size: 24px; color: var(--ink-3); transition: color 0.3s; }
-.retry.on .arc { border-color: var(--accent); }
-.retry.on .arc::before { border-bottom-color: var(--accent); }
-.retry.on .txt { color: var(--ink); }
-
-/* ===========================================
-   6. NO LLM MATH
-   =========================================== */
-.sentence { font-family: var(--font-display); font-size: 38px; line-height: 1.6; }
-.slot { font-family: var(--font-mono); font-size: 25px; padding: 3px 10px; background: var(--sunken);
-        border: 1px dashed var(--line-strong); color: var(--ink-2); white-space: nowrap; transition: all 0.35s; }
-.slot.filled { font-family: var(--font-display); font-size: 38px; background: var(--accent-tint); border: 1px solid var(--accent-border);
-               color: var(--accent); font-weight: 600; }
-.ledger { border-top: 1px solid var(--line-strong); }
-.ledger-row { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--line);
-              font-family: var(--font-mono); font-size: 22px; }
-.ledger-row span:first-child { color: var(--ink-2); }
-
-/* ===========================================
-   7. THE SEALED HOLDOUT
-   =========================================== */
-.vault { display: grid; grid-template-columns: 1fr 260px; height: 150px; border: 1px solid var(--line-strong); }
-.vault > div:first-child { display: flex; align-items: center; padding: 0 32px; font-family: var(--font-mono); font-size: 20px; color: var(--ink-2);
-  background: repeating-linear-gradient(135deg, var(--surface) 0 14px, var(--paper) 14px 28px); }
-.sealed { display: grid; place-items: center; text-align: center; background: var(--ink); color: var(--paper);
-          font-family: var(--font-mono); font-size: 20px; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.4;
-          transition: all 0.5s var(--ease); }
-.sealed.open { background: var(--accent-tint); color: var(--accent); box-shadow: inset 0 0 0 3px var(--accent); }
-.steps-mini { list-style: none; border-top: 1px solid var(--line); }
-.steps-mini li { display: flex; gap: 24px; padding: 16px 0; border-bottom: 1px solid var(--line);
-                 font-family: var(--font-mono); font-size: 21px; color: var(--ink-3); transition: color 0.35s; }
-.steps-mini li.on { color: var(--ink); }
-.steps-mini li.on b { color: var(--accent); }
-.steps-mini b { font-weight: 500; }
-
-/* ===========================================
-   8. TWO VIEWS
-   =========================================== */
-.two-eyes { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
-.eye h3 { font-family: var(--font-mono); font-weight: 500; font-size: 19px; letter-spacing: 0.12em; text-transform: uppercase;
-          padding-bottom: 14px; border-bottom: 2px solid var(--ink); }
-.eye:last-child h3 { border-bottom-color: var(--accent); color: var(--accent); }
-.eye ul { list-style: none; }
-.eye li { display: flex; gap: 16px; padding: 15px 0; border-bottom: 1px solid var(--line); font-size: 24px; }
-.eye li::before { content: "✓"; color: var(--good); font-weight: 600; width: 20px; }
-.eye li.no { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-strong); }
-.eye li.no::before { content: "✕"; color: var(--bad); text-decoration: none; }
-
-/* ===========================================
-   9 / 11. THE LADDER
-   =========================================== */
-.ladder { border-top: 1px solid var(--line-strong); }
-.rung { display: grid; grid-template-columns: 150px 1fr; gap: 28px; align-items: start; padding: 22px 0; border-bottom: 1px solid var(--line); }
-.rung .tag { width: 128px; }
-.rung p { font-size: 24px; line-height: 1.45; padding-top: 2px; }
-
-/* ===========================================
-   10. THREE WAYS
-   =========================================== */
-.three-ways { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.way { text-align: left; border: 1px solid var(--line-strong); padding: 26px 26px 30px; display: flex; flex-direction: column; gap: 8px;
-       transition: all 0.35s var(--ease); }
-.way h3 { font-family: var(--font-display); font-weight: 400; font-size: 38px; }
-.way p { font-size: 22px; color: var(--ink-2); }
-.way.on { border-color: var(--accent); background: var(--accent-tint); box-shadow: inset 0 4px 0 var(--accent); }
-.way.on h3 { color: var(--accent); }
-.outcome { min-height: 150px; padding: 26px 32px; background: var(--surface); border-left: 4px solid var(--accent);
-           font-size: 25px; color: var(--ink); line-height: 1.5; }
-.fixed4 { padding: 26px 32px; border: 1px dashed var(--line-strong); font-size: 22px; color: var(--ink-2); }
-.fixed4 b { color: var(--ink); }
-
-/* ===========================================
-   11. THE CHAIN
-   =========================================== */
-.chain { display: flex; flex-wrap: wrap; gap: 12px 10px; align-items: center; }
-.chain .link { font-family: var(--font-mono); font-size: 19px; padding: 10px 16px; border: 1px solid var(--line-strong);
-               color: var(--ink-3); transition: all 0.3s; }
-.chain .link.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.chain .arrow { color: var(--ink-3); font-size: 20px; }
-
-/* ===========================================
-   12. STALE
-   =========================================== */
-.mini-track { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; }
-.mini-track div { height: 96px; border: 1px solid var(--line-strong); display: grid; place-items: center; text-align: center;
-                  font-family: var(--font-mono); font-size: 15px; line-height: 1.2; padding: 0 4px; transition: all 0.35s; }
-.mini-track .ok { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.mini-track .stale { background: transparent; color: var(--warn); border-color: var(--warn); border-style: dashed; }
-.mini-track .run { background: var(--accent-tint); color: var(--accent); border-color: var(--accent); }
-.legend { display: flex; gap: 32px; font-family: var(--font-mono); font-size: 17px; color: var(--ink-2); }
-.legend span::before { content: ""; display: inline-block; width: 16px; height: 16px; margin-right: 10px; vertical-align: -2px; }
-.legend .l-ok::before { background: var(--ink); }
-.legend .l-stale::before { border: 1px dashed var(--warn); }
-.legend .l-run::before { background: var(--accent-tint); border: 1px solid var(--accent); }
-.why { min-height: 120px; font-size: 25px; line-height: 1.5; padding: 24px 30px; background: var(--surface); border-left: 4px solid var(--accent); }
-
-/* ===========================================
-   13. OFFLINE
-   =========================================== */
-.twin { display: grid; grid-template-columns: 1fr 120px 1fr; align-items: center; }
-.twin .box { border: 1px solid var(--line-strong); padding: 18px 24px; display: flex; flex-direction: column; gap: 6px; }
-.twin .box b { font-family: var(--font-display); font-weight: 400; font-size: 30px; }
-.twin .box span { font-size: 21px; color: var(--ink-2); }
-.twin .box.dashed { border-style: dashed; }
-.twin .eq { text-align: center; font-family: var(--font-mono); font-size: 17px; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.4; }
+.gloss { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line-strong); padding-top: 24px; }
+.gloss span { font-family: var(--font-mono); font-size: 17px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.gloss p { font-size: 25px; color: var(--ink-2); line-height: 1.45; }
+.flame { fill: var(--accent); }
+.smoke { fill: none; stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 
 /* ===========================================
    15. FIGURES
@@ -358,8 +300,8 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 table.log { width: 100%; border-collapse: collapse; }
 .log th { text-align: left; font-family: var(--font-mono); font-weight: 500; font-size: 17px; letter-spacing: 0.12em; text-transform: uppercase;
           color: var(--ink-2); padding: 0 24px 16px 0; border-bottom: 2px solid var(--ink); }
-.log td { padding: 24px 24px 24px 0; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 24px; line-height: 1.45; }
-.log td.mono { font-size: 21px; white-space: nowrap; }
+.log td { padding: 11px 24px 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 20px; line-height: 1.35; }
+.log td.mono { font-size: 19px; white-space: nowrap; }
 .repo { display: inline-block; font-family: var(--font-mono); font-size: 22px; padding: 4px 12px; background: var(--sunken); color: var(--ink); }
 
 /* ===========================================
@@ -390,7 +332,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 3, "system_version": "1.0.0", "date": "2026-10-12"}</script>
+<script type="application/json" id="edition">{"edition": 7, "system_version": "1.0.0", "date": "2026-10-25"}</script>
 
 <div class="stage" id="stage">
 
@@ -400,14 +342,14 @@ body.moving .chrome { opacity: 1; }
   <div class="title-grid">
     <div>
       <div class="kicker reveal d1">How it works, and why it is built this way</div>
-      <h1 class="reveal d2">COGNOS</h1>
+      <h1 class="reveal d2 wordmark" aria-label="COGNOS">C<span class="wm-o agent"></span>GN<span class="wm-o person"></span>S</h1>
       <div class="title-rule draw"></div>
       <p class="lede reveal d3">A multi-agent workbench for developing models that have to stand up to validation, audit and a regulator.</p>
     </div>
     <div class="creed">
-      <div class="reveal d3"><span class="who">Agents</span><em>recommend.</em></div>
-      <div class="reveal d4"><span class="who">People</span><em>decide.</em></div>
-      <div class="reveal d5"><span class="who">The engine</span><em>disposes.</em></div>
+      <div class="reveal d3"><span class="who g-m">The engine</span><em>disposes.</em></div>
+      <div class="reveal d4"><span class="who g-a">Agents</span><em>recommend.</em></div>
+      <div class="reveal d5"><span class="who g-p">People</span><em>decide.</em></div>
     </div>
   </div>
   <div class="foot"><span>→ or Space to advance · D for dark</span><span class="pg"></span></div>
@@ -428,7 +370,7 @@ body.moving .chrome { opacity: 1; }
       <div class="item"><span class="n">04</span><p><b>Nobody is accountable.</b>A decision that no person made is a decision no person can defend.</p></div>
     </div>
     <div class="callout reveal d3">
-      <p>Model risk rules (SR 11-7 and its relatives) ask for the opposite of all four: reproducible results, documented choices, effective challenge and named owners.</p>
+      <p>Model risk guidance (SR 26-2, which replaced SR 11-7 in April 2026) asks for the opposite of all four: reproducible results, documented choices, effective challenge and named owners.</p>
       <p class="strong">COGNOS keeps the speed of agents and removes those four failures by <b class="a">construction</b>, not by asking the agents to behave.</p>
     </div>
   </div>
@@ -445,66 +387,86 @@ body.moving .chrome { opacity: 1; }
     </div>
     <div class="roles">
       <div class="role reveal d2">
-        <div class="who">Agents</div><div class="verb">recommend</div>
+        <div class="who g-m">The engine</div><div class="verb">disposes</div>
+        <p>Mechanics: plain code that sequences, computes every number, guards the holdout, applies decisions and keeps the record.</p>
+        <ul><li>deterministic</li><li>no judgment, no "smart supervisor"</li><li>runs with no network at all</li></ul>
+      </div>
+      <div class="role reveal d3">
+        <div class="who g-a">Agents</div><div class="verb">recommend</div>
         <p>Judgment: reading a business intent, naming a target, ranking designs, picking a champion, challenging a model, writing prose.</p>
         <ul><li>no tools of their own</li><li>cite facts, never type numbers</li><li>every answer checked before it counts</li></ul>
       </div>
-      <div class="role reveal d3">
-        <div class="who">People</div><div class="verb">decide</div>
+      <div class="role reveal d4">
+        <div class="who g-p">People</div><div class="verb">decide</div>
         <p>Accountability: a named person in a named seat accepts, changes, sends back or rejects at every gate.</p>
         <ul><li>model developer</li><li>independent reviewer</li><li>approver</li></ul>
-      </div>
-      <div class="role reveal d4">
-        <div class="who">The engine</div><div class="verb">disposes</div>
-        <p>Mechanics: plain code that sequences, computes every number, guards the holdout, applies decisions and keeps the record.</p>
-        <ul><li>deterministic</li><li>no judgment, no "smart supervisor"</li><li>runs with no network at all</li></ul>
       </div>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
+<!-- ===================== THE KITCHEN PASS (animated) ===================== -->
+<section class="slide" data-title="The kitchen pass" data-anim="kitchen">
+  <div class="folio"><span>The picture</span><b>COGNOS</b></div>
+  <div class="slide-content" style="gap: 36px">
+    <div class="head">
+      <div class="kicker reveal d1">If you remember one picture</div>
+      <h2 class="reveal d1">A restaurant kitchen. Nothing leaves without the chef's nod.</h2>
+    </div>
+    <div class="picture">
+      <div class="fig reveal d2" id="kitchen">
+        <span class="corner c-fig">Fig 1</span><span class="corner c-title">The kitchen pass</span>
+        <span class="corner c-hint">Watch one plate</span><span class="corner c-ro" id="kitchen-ro">Plate 7 leaves the line</span>
+        <svg viewBox="0 0 600 330" role="img" aria-label="A restaurant pass: cooks behind the counter send a plate along it; a scale weighs it, a cook leaves a suggestion card, the head chef rings the bell to send it, and the ticket joins the rail above."></svg>
+      </div>
+      <div class="keys reveal d3">
+        <div><i class="glyph m"></i><p><b>The scale</b><span class="what">The engine. Weighed, never guessed.</span></p></div>
+        <div><i class="glyph a"></i><p><b>The cooks</b><span class="what">The agents. They prepare and suggest.</span></p></div>
+        <div><i class="glyph p"></i><p><b>The head chef</b><span class="what">The people. Send it out or send it back.</span></p></div>
+        <div><i class="glyph r"></i><p><b>The ticket rail</b><span class="what">The record. Every order, every nod.</span></p></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span></span><span class="pg"></span></div>
+</section>
 <!-- ===================== 4. THE WORKFLOW (animated) ===================== -->
 <section class="slide" data-title="The workflow" data-anim="flow">
   <div class="folio"><span>How a run moves</span><b>COGNOS</b></div>
   <div class="slide-content" style="gap: 36px">
-    <h2 class="reveal d1">Nine stages. Seven gates where the run stops for a person.</h2>
+    <h2 class="reveal d1">Nine stations down the line. At eight bells, the plate waits for a person.</h2>
     <div class="track reveal d2" id="track"><div class="token" id="token"></div></div>
     <div class="caption reveal d3">
       <div class="caption-head"><span class="n" id="cap-n"></span><h3 id="cap-title"></h3><span class="tag" id="cap-kind"></span></div>
       <div class="lanes">
-        <div class="lane" id="lane-engine"><span class="eyebrow">The engine</span><p id="cap-engine"></p></div>
-        <div class="lane" id="lane-agent"><span class="eyebrow" id="cap-agent-name">The agent</span><p id="cap-agent"></p></div>
-        <div class="lane" id="lane-person"><span class="eyebrow" id="cap-person-name">A person</span><p id="cap-person"></p></div>
+        <div class="lane" id="lane-engine"><span class="eyebrow g-m">The scale</span><p id="cap-engine"></p></div>
+        <div class="lane" id="lane-agent"><span class="eyebrow g-a" id="cap-agent-name">The agent</span><p id="cap-agent"></p></div>
+        <div class="lane" id="lane-person"><span class="eyebrow g-p" id="cap-person-name">A person</span><p id="cap-person"></p></div>
       </div>
     </div>
     <div class="controls reveal d4">
       <button class="btn a" id="flow-play">Pause</button>
       <button class="btn" id="flow-prev">Back</button>
       <button class="btn" id="flow-next">Step</button>
-      <span class="hint">Squares are stages, diamonds are gates. Click any of them.</span>
+      <span class="hint">Squares are stations, bells are where a person decides. Click any of them.</span>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== 5. ONE STAGE ===================== -->
-<section class="slide" data-title="Inside one stage" data-anim="loop">
+<section class="slide" data-title="Inside one stage" data-anim="ticket">
   <div class="folio"><span>Inside one stage</span><b>COGNOS</b></div>
-  <div class="slide-content center" style="gap: 64px">
-    <div class="head">
-      <div class="kicker reveal d1">The same five moves, nine times</div>
-      <h2 class="reveal d1">The agent only sees what it is allowed to see, and only answers in a form the engine can check.</h2>
+  <div class="split">
+    <div class="argue">
+      <div class="kicker reveal d1">The same five moves at every station</div>
+      <h2 class="reveal d1">The cook sees only the ticket, and plates to it. The scale checks before the chef looks.</h2>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>An agent is handed only the facts in its scope and answers in a strict form. The engine checks the answer and sends it back with the reasons if it fails. Every try is kept.</p></div>
     </div>
-    <div>
-      <div class="loop reveal d2" id="loop">
-        <div class="cell"><span class="n">01 · engine</span><h3>Compute</h3><p>Run the stage's mechanics. Every result becomes a fact with an id.</p></div>
-        <div class="cell"><span class="n">02 · engine</span><h3>Slice</h3><p>Hand the agent only the facts in its scope. Nothing else exists for it.</p></div>
-        <div class="cell"><span class="n">03 · agent</span><h3>Recommend</h3><p>Answer in a strict contract, citing facts by id.</p></div>
-        <div class="cell"><span class="n">04 · engine</span><h3>Check</h3><p>Unknown fact, typed number, option outside the allowed set: rejected.</p></div>
-        <div class="cell"><span class="n">05 · person</span><h3>Decide</h3><p>The gate shows evidence beside the recommendation. The decision is recorded with a name.</p></div>
-      </div>
-      <div class="retry reveal d3" id="retry"><span class="arc"></span><span class="txt">A rejected answer goes back to the agent with the reasons. Every attempt is kept in the audit trail.</span></div>
+    <div class="fig reveal d3" id="ticket">
+      <span class="corner c-fig">Fig 3</span><span class="corner c-title">One ticket, one plate</span>
+      <span class="corner c-hint">Watch one stage</span><span class="corner c-ro" id="ticket-ro">The order comes in</span>
+      <svg viewBox="0 0 600 340" role="img" aria-label="A cook reads the one ticket clipped above the station and plates to it; the scale checks the plate and sends it back once; plated again it passes, the head chef rings the bell, and both tries go on the rail."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
@@ -517,230 +479,196 @@ body.moving .chrome { opacity: 1; }
     <div class="argue">
       <div class="pips reveal d1"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><span>01 / 08</span></div>
       <div class="kicker reveal d1">No LLM math</div>
-      <h2 class="reveal d1">An agent never writes a number. It points at one.</h2>
-      <p class="lede reveal d2">Every recorded figure comes from the engine. The writer leaves a placeholder; the engine fills it from the fact it names. An unknown fact id, or a bare metric typed into prose, is rejected.</p>
+      <h2 class="reveal d1">The cook writes the menu. The scale prints every number on it.</h2>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>Agents cite facts by id and the writer leaves placeholders. The engine renders every number from the record; a typed number or an unknown fact is rejected.</p></div>
     </div>
-    <div class="panel reveal d3">
-      <span class="eyebrow">What the writer writes, and what is printed · demo run</span>
-      <p class="sentence">The champion reaches a cross-validated AUC of <span class="slot" data-fill="0.8487" data-raw="{{fact:model.cv_mean}}">{{fact:model.cv_mean}}</span> on <span class="slot" data-fill="1,940" data-raw="{{fact:explore.n_rows}}">{{fact:explore.n_rows}}</span> loans with <span class="slot" data-fill="91" data-raw="{{fact:explore.n_events}}">{{fact:explore.n_events}}</span> defaults.</p>
-      <div class="ledger">
-        <div class="ledger-row"><span>model.cv_mean</span><span>0.8487</span></div>
-        <div class="ledger-row"><span>explore.n_rows</span><span>1,940</span></div>
-        <div class="ledger-row"><span>explore.n_events</span><span>91</span></div>
-      </div>
+    <div class="fig reveal d3" id="letter">
+      <span class="corner c-fig">Fig 2</span><span class="corner c-title">The menu card</span>
+      <span class="corner c-hint">Demo run</span><span class="corner c-ro" id="letter-ro">0 of 3 filled</span>
+      <svg viewBox="0 0 600 340" role="img" aria-label="A menu card written by a cook lies on the counter with three blanks; the scale beside it prints each number from the record on a label, and the label drops into its blank."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== 7. THE FROZEN SUBSTRATE ===================== -->
-<section class="slide" data-title="The sealed holdout" data-anim="vault">
+<section class="slide" data-title="The sealed holdout" data-anim="critic">
   <div class="folio"><span>Principle 2 of 8</span><b>COGNOS</b></div>
   <div class="split">
     <div class="argue">
       <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><span>02 / 08</span></div>
       <div class="kicker reveal d1">The frozen substrate stays frozen</div>
-      <h2 class="reveal d1">The champion is chosen before the holdout opens. Every look is counted.</h2>
-      <p class="lede reveal d2">The holdout and the metric definitions are not editable by any agent. Candidates are compared on a test sample, and each look at it is counted. The sealed holdout is scored once, after the choice, and no agent that chooses sees a holdout fact. Exports never carry the data.</p>
+      <h2 class="reveal d1">Taste as often as you like, and count every spoon. The critic eats once, after the dish is chosen.</h2>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>Every look at the test sample is counted. The sealed holdout is scored once, for the champion a person has already chosen. No agent can edit it or the metrics.</p></div>
     </div>
-    <div class="panel reveal d3">
-      <span class="eyebrow">The data, through one run</span>
-      <div class="vault"><div>development and test samples</div><div class="sealed" id="sealed">sealed<br>holdout</div></div>
-      <ul class="steps-mini" id="vault-steps">
-        <li><b>01</b><span>Search under a frozen metric, end on a pool of candidates</span></li>
-        <li><b>02</b><span>Pool compared on the test sample · every look counted</span></li>
-        <li><b>03</b><span>A person chooses the champion at the gate</span></li>
-        <li><b>04</b><span>Holdout scored once · holdout_evaluations = 1</span></li>
-      </ul>
+    <div class="fig reveal d3" id="critic">
+      <span class="corner c-fig">Fig 4</span><span class="corner c-title">The critic's table</span>
+      <span class="corner c-hint">The pool, then the holdout</span><span class="corner c-ro" id="critic-ro">Three plates on the pass</span>
+      <svg viewBox="0 0 600 340" role="img" aria-label="Three candidate plates on the pass are tasted again and again, and each taste adds a mark to the tally board. The chef chooses one plate; only then is it carried to the critic's table, where a sealed envelope opens once."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== 8. INDEPENDENT CHALLENGE ===================== -->
-<section class="slide" data-title="Independent challenge">
+<section class="slide" data-title="Independent challenge" data-anim="taster">
   <div class="folio"><span>Principle 3 of 8</span><b>COGNOS</b></div>
   <div class="split">
     <div class="argue">
       <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><span>03 / 08</span></div>
       <div class="kicker reveal d1">Independent challenge</div>
-      <h2 class="reveal d1">The validator is never told why the modeler liked the model.</h2>
-      <p class="lede reveal d2">Validation, readiness and review re-derive risk from the artifacts themselves. Independence is a property of what each agent is handed, so it does not depend on an instruction being obeyed.</p>
+      <h2 class="reveal d1">A second taster gets the plate, never the cook's notes.</h2>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>The validator re-derives risk from the model and its results. It is never handed the modeler's reasoning, so independence does not depend on an instruction being obeyed.</p></div>
     </div>
-    <div class="panel reveal d3">
-      <span class="eyebrow">Two agents, two views of the same run</span>
-      <div class="two-eyes">
-        <div class="eye"><h3>Modeler sees</h3><ul><li>the leading candidates</li><li>development and validation scores</li><li>coefficient signs</li><li class="no">test or holdout results</li><li class="no">the earlier model's scores</li></ul></div>
-        <div class="eye"><h3>Validator sees</h3><ul><li>the champion and its features</li><li>the engine's rubric and findings</li><li>test and holdout results</li><li>every analysis script, re-run</li><li class="no">the modeler's rationale</li></ul></div>
-      </div>
+    <div class="fig reveal d3" id="taster">
+      <span class="corner c-fig">Fig 5</span><span class="corner c-title">The second taster</span>
+      <span class="corner c-hint">Through the hatch</span><span class="corner c-ro" id="taster-ro">The plate is ready</span>
+      <svg viewBox="0 0 600 340" role="img" aria-label="A screen splits two counters. The plate passes through a hatch to a second taster; the cook's notes slide toward the screen and stop."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== 9. GATES BLOCK RARELY ===================== -->
-<section class="slide" data-title="When a run is blocked">
+<section class="slide" data-title="When a run is blocked" data-anim="alarm">
   <div class="folio"><span>Principle 4 of 8</span><b>COGNOS</b></div>
   <div class="split">
     <div class="argue">
       <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><span>04 / 08</span></div>
       <div class="kicker reveal d1">Block only on high-confidence harm</div>
-      <h2 class="reveal d1">A system that blocks on noise teaches people to ignore it.</h2>
-      <p class="lede reveal d2">Only the engine can block, and only on two things it can prove. An agent can warn or fail, never block. A person can accept a fail with a recorded reason. Nobody can accept a block.</p>
+      <h2 class="reveal d1">An alarm that rings for burnt toast gets its battery pulled. Ours rings for fire.</h2>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>An agent can warn or fail, and a person may accept a fail with a written reason. Only the engine blocks, on confirmed leakage or documents that no longer match the code, and nobody can accept a block.</p></div>
     </div>
-    <div class="panel reveal d3">
-      <span class="eyebrow">The verdict ladder</span>
-      <div class="ladder">
-        <div class="rung"><span class="tag good">Pass</span><p>Nothing to raise.</p></div>
-        <div class="rung"><span class="tag warn">Warn</span><p>Something a reviewer should read: a noisy overfitting signal, an unconfirmed assumption, a recorded limitation.</p></div>
-        <div class="rung"><span class="tag bad">Fail</span><p>A high-severity finding. A person may accept it, in writing, or send the work back.</p></div>
-        <div class="rung"><span class="tag a">Block</span><p>Confirmed target leakage, or documents that no longer match the code. Fix it or reject the run.</p></div>
-      </div>
+    <div class="fig reveal d3" id="alarm">
+      <span class="corner c-fig">Fig 6</span><span class="corner c-title">The kitchen alarm</span>
+      <span class="corner c-hint">Toast, then fire</span><span class="corner c-ro" id="alarm-ro">Breakfast service</span>
+      <svg viewBox="0 0 600 340" role="img" aria-label="Smoke from a toaster puts a note on the rail, which the chef signs off. Then a pan catches fire: the alarm rings and the shutter comes down over the pass."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== 10. NOTHING SILENTLY ASSUMED ===================== -->
-<section class="slide" data-title="Nothing silently assumed" data-anim="ways">
+<section class="slide" data-title="Nothing silently assumed" data-anim="order">
   <div class="folio"><span>Principle 5 of 8</span><b>COGNOS</b></div>
   <div class="split">
     <div class="argue">
       <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><span>05 / 08</span></div>
       <div class="kicker reveal d1">Nothing is silently assumed</div>
-      <h2 class="reveal d1">What the sponsor has not decided is a question on the record, not a guess in the model.</h2>
-      <p class="lede reveal d2">Agents raise questions for the business sponsor at the stage where they arise. Each one closes in one of three ways, and each way has a consequence.</p>
+      <h2 class="reveal d1">The waiter asks how you want it cooked, and writes the answer on the ticket.</h2>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>What the sponsor has not decided becomes a question on the record. It closes as answered, assumed or a limitation, never as a guess. Use, horizon, default definition and segment can only be answered.</p></div>
     </div>
-    <div class="panel reveal d3">
-      <span class="eyebrow">Three ways to close a question</span>
-      <div class="three-ways" id="ways">
-        <button class="way" data-out="The answer fills the design brief. The stage that asked runs again with it, and so does everything after."><h3>Answer</h3><p>The sponsor's own position.</p></button>
-        <button class="way" data-out="Nothing re-runs. The white paper lists it under assumptions. Validation asks: how much does the result move if this is wrong?"><h3>Assumption</h3><p>The model rests on it.</p></button>
-        <button class="way" data-out="Nothing re-runs. The white paper lists it under limitations. Validation asks: how is this mitigated or monitored?"><h3>Limitation</h3><p>The model does not cover it.</p></button>
-      </div>
-      <p class="outcome" id="ways-out"></p>
-      <p class="fixed4"><b>Four can only be answered:</b> use, horizon, default definition and segment.</p>
+    <div class="fig reveal d3" id="order">
+      <span class="corner c-fig">Fig 7</span><span class="corner c-title">The waiter's ticket</span>
+      <span class="corner c-hint">Three ways to close it</span><span class="corner c-ro" id="order-ro">A question for the guest</span>
+      <svg viewBox="0 0 600 340" role="img" aria-label="At a table the waiter asks the guest how the dish should be cooked. The ticket is stamped answered, assumed or not served, one after another."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== 11. AGENTS HAVE NO HANDS ===================== -->
-<section class="slide" data-title="Agents have no tools" data-anim="chain">
+<section class="slide" data-title="Agents have no tools" data-anim="weigh">
   <div class="folio"><span>Principle 6 of 8</span><b>COGNOS</b></div>
   <div class="split">
     <div class="argue">
       <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><span>06 / 08</span></div>
       <div class="kicker reveal d1">Agents ask, the engine runs</div>
-      <h2 class="reveal d1">An agent cannot execute anything. Even its own code is an artifact someone reads.</h2>
-      <p class="lede reveal d2">An agent asks for an analysis by naming a reviewed tool, or by writing a short script. The engine runs it, in a restricted process, and keeps the result. Every chart says which of the three it came from.</p>
+      <h2 class="reveal d1">A cook can ask for anything to be weighed. Only the scale weighs it.</h2>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>An agent names a reviewed tool or writes a short script. The engine runs it in a restricted process, keeps it with its hash, and runs it again at validation.</p></div>
     </div>
-    <div class="panel reveal d3">
-      <span class="eyebrow">Where an analysis comes from</span>
-      <div class="ladder">
-        <div class="rung"><span class="tag">Built-in</span><p>Reviewed COGNOS code: <span data-fact="n_explore_tools">14</span> exploration tools, from a data overview to weight of evidence and drift.</p></div>
-        <div class="rung"><span class="tag">Plugin</span><p>Reviewed code a team adds. A plugin brings tools and data sources, never prompt text.</p></div>
-        <div class="rung"><span class="tag a">Script</span><p>Written by the agent for this run. It follows a chain:</p></div>
-      </div>
-      <div class="chain" id="chain">
-        <span class="link">checked</span><span class="arrow">→</span><span class="link">saved with hash</span><span class="arrow">→</span><span class="link">run restricted</span><span class="arrow">→</span><span class="link">read at the gate</span><span class="arrow">→</span><span class="link">re-run at validation</span><span class="arrow">→</span><span class="link">printed in the paper</span>
-      </div>
+    <div class="fig reveal d3" id="weigh">
+      <span class="corner c-fig">Fig 8</span><span class="corner c-title">Ask the scale</span>
+      <span class="corner c-hint">One request</span><span class="corner c-ro" id="weigh-ro">A cook has a question</span>
+      <svg viewBox="0 0 600 340" role="img" aria-label="A cook hands a request slip to the scale. The scale weighs, prints a label, the slip is stapled to the label, and the pair goes on the ticket rail."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== 12. CHANGE IS TRACEABLE ===================== -->
-<section class="slide" data-title="A changed decision" data-anim="stale">
+<section class="slide" data-title="A changed decision" data-anim="sauce">
   <div class="folio"><span>Principle 7 of 8</span><b>COGNOS</b></div>
   <div class="split">
     <div class="argue">
       <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><span>07 / 08</span></div>
       <div class="kicker reveal d1">A change always says why</div>
-      <h2 class="reveal d1">Change your mind at any gate. The run works out what is now out of date, and why.</h2>
-      <p class="lede reveal d2">A person's decision never edits the project profile. It is stored as an override, everything downstream is marked stale with the reason, and the engine re-runs it. The previous result is kept so the two can be compared.</p>
+      <h2 class="reveal d1">Change the sauce, and every dish that uses it goes back on the stove, with the reason on the ticket.</h2>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>A decision is stored beside the profile, never in it. Everything after it is marked out of date with the reason and runs again, and the previous result is kept to compare.</p></div>
     </div>
-    <div class="panel reveal d3">
-      <span class="eyebrow">The developer excludes a column at the data gate</span>
-      <div class="mini-track" id="mini"></div>
-      <div class="legend"><span class="l-ok">up to date</span><span class="l-stale">out of date</span><span class="l-run">re-running</span></div>
-      <p class="why" id="why"></p>
-      <div class="controls"><button class="btn" id="stale-go">Replay</button></div>
+    <div class="fig reveal d3" id="sauce">
+      <span class="corner c-fig">Fig 9</span><span class="corner c-title">Change the sauce</span>
+      <span class="corner c-hint">At the data gate</span><span class="corner c-ro" id="sauce-ro">Every dish is served</span>
+      <svg viewBox="0 0 600 300" role="img" aria-label="Nine plates in a row, one per stage. The chef changes the second; the seven after it turn to outlines and are cooked again one by one."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== TRIAL RUNS ===================== -->
-<section class="slide" data-title="A decision taken differently">
+<section class="slide" data-title="A decision taken differently" data-anim="sidepan">
   <div class="folio"><span>Principles 2 and 7, together</span><b>COGNOS</b></div>
   <div class="split">
     <div class="argue">
       <div class="kicker reveal d1">Trial runs</div>
-      <h2 class="reveal d1">Try a decision another way. Lose nothing, hide nothing.</h2>
-      <p class="lede reveal d2">A developer copies a run at any of their gates and decides it differently. The first result stays as it was, and the two are compared side by side. What would make this dangerous is a quiet best-of-many, so every run of a model is on one record that validation reads.</p>
+      <h2 class="reveal d1">Try it in a side pan. Only the pot is served, and every taste is counted.</h2>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>A trial run is a copy of a run with one gate decided differently. It stops before validation, its looks at the test sample count for the model, and its line stays on record when it is deleted. To serve it, the developer makes it the main run.</p></div>
     </div>
-    <div class="panel reveal d3">
-      <span class="eyebrow">Three rules for a trial run</span>
-      <div class="ladder">
-        <div class="rung"><span class="tag good">Stops</span><p>It ends once a champion is chosen. Only the main run goes to validation, so a trial run can never open the sealed holdout.</p></div>
-        <div class="rung"><span class="tag warn">Counted</span><p>Every look at the test sample is added up for the model, across all of its runs. Validation and the white paper report the total.</p></div>
-        <div class="rung"><span class="tag bad">Kept</span><p>Deleting a trial run removes its files. Its line stays: what it tried, how far it went, what it found.</p></div>
-        <div class="rung"><span class="tag a">Main</span><p>To carry a trial run forward, the developer makes it the main run. The run it replaces stays on record.</p></div>
-      </div>
+    <div class="fig reveal d3" id="sidepan">
+      <span class="corner c-fig">Fig 10</span><span class="corner c-title">The side pan</span>
+      <span class="corner c-hint">A trial run</span><span class="corner c-ro" id="sidepan-ro">The pot is on</span>
+      <svg viewBox="0 0 600 340" role="img" aria-label="A ladle copies some of the pot into a side pan. The chef tastes it, each taste goes on the rail, and when the pan is tipped out its ticket stays."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== 13. OFFLINE AND REPRODUCIBLE ===================== -->
-<section class="slide" data-title="Offline and reproducible">
+<section class="slide" data-title="Offline and reproducible" data-anim="card">
   <div class="folio"><span>Principle 8 of 8</span><b>COGNOS</b></div>
   <div class="split">
     <div class="argue">
       <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><span>08 / 08</span></div>
       <div class="kicker reveal d1">Always runnable with no model at all</div>
-      <h2 class="reveal d1">Take the language model away and the system still runs end to end.</h2>
-      <p class="lede reveal d2">A missing key or network makes a provider unavailable. It never makes a run crash. That is what makes the system testable, and why the language model is an accelerator here, not a dependency.</p>
-      <div class="reveal d3" style="display:flex;flex-direction:column;gap:16px">
-        <span class="eyebrow">Every agent has a deterministic twin</span>
-        <div class="twin">
-          <div class="box"><b>Agent</b><span>a language model, given the slice</span></div>
-          <div class="eq">same slice<br>same checks</div>
-          <div class="box dashed"><b>Twin</b><span>a plain function of the same slice</span></div>
-        </div>
-      </div>
+      <h2 class="reveal d1">Send the clever cook home and the kitchen still cooks, from the recipe card.</h2>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>Every agent has a deterministic twin, a plain function of the same slice under the same checks. With no key or network a run still goes end to end, reproduces exactly and survives a restart.</p></div>
     </div>
-    <div class="panel reveal d3">
-      <div>
-        <div class="item"><span class="n">A</span><p><b>The result reproduces exactly.</b>Data snapshot, seed, frozen metric and the recorded decisions give the same model.</p></div>
-        <div class="item"><span class="n">B</span><p><b>The reasoning is recorded.</b>What each agent was shown and answered is kept for every attempt, and replays offline.</p></div>
-        <div class="item"><span class="n">C</span><p><b>The run survives a restart.</b>All state is on disk. Any process can pick a run up from its files.</p></div>
-      </div>
+    <div class="fig reveal d3" id="card">
+      <span class="corner c-fig">Fig 11</span><span class="corner c-title">The recipe card</span>
+      <span class="corner c-hint">No language model</span><span class="corner c-ro" id="card-ro">The cook is at the station</span>
+      <svg viewBox="0 0 600 340" role="img" aria-label="The cook leaves the station and a recipe card takes its place. Plates keep coming down the line, and the scale reads the same weight every time."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
 <!-- ===================== 14. WHAT A RUN LEAVES BEHIND ===================== -->
-<section class="slide" data-title="What a run leaves behind">
+<section class="slide" data-title="What a run leaves behind" data-anim="papers">
   <div class="folio"><span>The output</span><b>COGNOS</b></div>
-  <div class="slide-content center" style="gap: 64px">
+  <div class="slide-content" style="gap: 36px">
     <div class="head">
       <div class="kicker reveal d1">The model is half of the deliverable</div>
-      <h2 class="reveal d1">A run ends with a model and with the file a validator would otherwise have to ask for.</h2>
+      <h2 class="reveal d1">The dish leaves with its paperwork. Nobody has to ask for it.</h2>
     </div>
-    <div class="grid-3x2">
-      <div class="item reveal d2"><span class="n">01</span><p><b>The white paper.</b>Methodology, model card, limitations and assumptions, every number rendered from a recorded fact.</p></div>
-      <div class="item reveal d2"><span class="n">02</span><p><b>The run record.</b>Who did what and when: each recommendation, decision, question and challenge, with names.</p></div>
-      <div class="item reveal d2"><span class="n">03</span><p><b>The agent calls.</b>The full input and raw output of every attempt by every agent.</p></div>
-      <div class="item reveal d3"><span class="n">04</span><p><b>The analysis code.</b>Every script an agent wrote, with its hash, as it was run.</p></div>
-      <div class="item reveal d3"><span class="n">05</span><p><b>The readiness report.</b>Evidence organised against model-risk expectations, with the human-only steps listed.</p></div>
-      <div class="item reveal d3"><span class="n">06</span><p><b>The sealed package.</b>Written once at sign-off. A later change supersedes it and never rewrites it.</p></div>
+    <div class="picture">
+      <div class="fig reveal d2" id="papers">
+        <span class="corner c-fig">Fig 12</span><span class="corner c-title">The dish and its paperwork</span>
+        <span class="corner c-hint">At sign-off</span><span class="corner c-ro" id="papers-ro">The dish is ready</span>
+        <svg viewBox="0 0 600 330" role="img" aria-label="A plate stands beside six sheets that fan out one by one: the recipe, the tickets, the cooks' notes, the measuring slips, the inspection and the seal."></svg>
+      </div>
+      <div class="keys reveal d3">
+        <div><i class="glyph r"></i><p><b>The recipe</b><span class="what">The white paper. Every number from the record.</span></p></div>
+        <div><i class="glyph r"></i><p><b>The tickets</b><span class="what">The run record. Who did what, with names.</span></p></div>
+        <div><i class="glyph r"></i><p><b>The cooks' notes</b><span class="what">Every agent call, what went in and what came out.</span></p></div>
+        <div><i class="glyph r"></i><p><b>The measuring slips</b><span class="what">Every script an agent wrote, with its hash.</span></p></div>
+        <div><i class="glyph r"></i><p><b>The inspection</b><span class="what">The readiness report, human steps listed.</span></p></div>
+        <div><i class="glyph r"></i><p><b>The seal</b><span class="what">The package, written once at sign-off.</span></p></div>
+      </div>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
+
 
 <!-- ===================== 15. BY THE NUMBERS ===================== -->
 <section class="slide" data-title="The system today">
@@ -752,7 +680,7 @@ body.moving .chrome { opacity: 1; }
     </div>
     <div class="figures reveal d2">
       <div class="figure"><div class="k">Stages</div><div class="v" data-fact="n_stages">9</div><div class="h">2 of them can block a run</div></div>
-      <div class="figure"><div class="k">Human gates</div><div class="v" data-fact="n_gates">7</div><div class="h">the run stops at each</div></div>
+      <div class="figure"><div class="k">Human gates</div><div class="v" data-fact="n_gates">8</div><div class="h">the run stops at each</div></div>
       <div class="figure"><div class="k">Agents</div><div class="v" data-fact="n_agents">8</div><div class="h">each with an offline twin</div></div>
       <div class="figure"><div class="k">Seats</div><div class="v" data-fact="n_seats">3</div><div class="h">developer, reviewer, approver</div></div>
       <div class="figure"><div class="k">Exploration tools</div><div class="v" data-fact="n_explore_tools">14</div><div class="h">plus plugins and scripts</div></div>
@@ -768,22 +696,26 @@ body.moving .chrome { opacity: 1; }
 <!-- ===================== 16. THE DECK IS PART OF THE SYSTEM ===================== -->
 <section class="slide" data-title="Editions">
   <div class="folio"><span>This deck</span><b>COGNOS</b></div>
-  <div class="slide-content center" style="gap: 64px">
-    <div class="head">
+  <div class="slide-content" style="gap: 32px">
+    <div class="head" style="gap: 16px">
       <div class="kicker reveal d1">Kept with the code</div>
       <h2 class="reveal d1">This deck changes when the system does.</h2>
-      <p class="lede reveal d2">It lives in the repository at <span class="repo">docs/deck/index.html</span>. A test compares its workflow, its figures and its version with the code, so a change to the system that the deck does not describe fails the build.</p>
+      <p class="note reveal d2">It lives at <span class="repo">docs/deck/index.html</span>, and a test holds its workflow, figures and version to the code.</p>
     </div>
     <table class="log reveal d3" id="edition-log">
-      <thead><tr><th style="width: 150px">Edition</th><th style="width: 170px">System</th><th style="width: 220px">Date</th><th>What changed</th></tr></thead>
+      <thead><tr><th style="width: 120px">Edition</th><th style="width: 130px">System</th><th style="width: 180px">Date</th><th>What changed</th></tr></thead>
       <tbody>
         <tr><td class="mono">1</td><td class="mono">v1.0.0</td><td class="mono">2026-10-11</td><td>First edition. The three roles, the animated workflow, eight principles. Covers intake, linked sources, stage tools, the standard exploration tools, run-wide views, and limitations beside assumptions.</td></tr>
         <tr><td class="mono">2</td><td class="mono">v1.0.0</td><td class="mono">2026-10-11</td><td>Seven gates. The search ends on a candidate pool, the champion is chosen on outcomes analysis, and the sealed holdout is scored once at validation (ADR-0016).</td></tr>
         <tr><td class="mono">3</td><td class="mono">v1.0.0</td><td class="mono">2026-10-12</td><td>Trial runs: a decision taken differently in a copy of the run. A trial run stops before validation, every look at the test sample is counted for the model, and a deleted trial run keeps its line (ADR-0017).</td></tr>
+        <tr><td class="mono">4</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>Eight gates. A run starts from a template or from scratch, and the developer gives the data once the intent is confirmed (Provide the data). A finished run can be kept as a team template (ADR-0018).</td></tr>
+        <tr><td class="mono">5</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>Model risk guidance is SR 26-2 (April 2026), which replaced SR 11-7. The readiness report and the agents cite it; a profile that names SR 11-7 is read as SR 26-2 (ADR-0019).</td></tr>
+        <tr><td class="mono">6</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>The data catalog: the developer chooses the team's tables (the template's are checked) and adds any other data; documented links are offered and measured, never imposed (ADR-0020).</td></tr>
+        <tr><td class="mono">7</td><td class="mono">v1.0.0</td><td class="mono">2026-10-25</td><td>The engine comes first: the engine disposes, agents recommend, people decide. COGNOS is pictured as a restaurant kitchen (the scale weighs, cooks suggest, the chef decides, the ticket rail keeps the record), and every slide after it is drawn in that kitchen. The logo's two O's carry the creed.</td></tr>
       </tbody>
     </table>
   </div>
-  <div class="foot"><span>Agents recommend. People decide. The engine disposes.</span><span class="pg"></span></div>
+  <div class="foot"><span>The engine disposes. Agents recommend. People decide.</span><span class="pg"></span></div>
 </section>
 
 <div class="progress" id="progress"></div>
@@ -809,6 +741,8 @@ const FLOW = [
     person: "" },
   { id: "gate_intent", label: "Confirm the intent", seat: "Model developer",
     person: "Records the sponsor's answers and confirms the intent. The stated design becomes part of the run." },
+  { id: "gate_source", label: "Provide the data", seat: "Model developer",
+    person: "Gives the data once the intent stands: tables from the team's data catalog (the template's are checked), plus any file, Snowflake table or query to add." },
   { id: "explore", label: "Explore data", short: "Data", agentName: "Data Analyst",
     engine: "Fetches the data once and keeps a snapshot. Measures how several sources connect. Runs every analysis that is asked for.",
     agent: "Proposes the join and the target, asks for analyses or writes a script, names candidate features and columns to exclude.",
@@ -998,6 +932,134 @@ function cycle(n, ms, fn, pause = 0) {
 })();
 
 /* ===========================================
+   DRAWN FIGURES: a small isometric helper. World x runs right-down, y left-down, z up; every
+   solid is painted back to front by the order it is drawn in.
+   =========================================== */
+function Iso(svg, pts3, pad = 26) {
+  const NS = "http://www.w3.org/2000/svg", COS = Math.cos(Math.PI / 6), SIN = 0.5;
+  const [W, H] = svg.getAttribute("viewBox").split(" ").slice(2).map(Number);
+  const raw = pts3.map(([x, y, z]) => [(x - y) * COS, (x + y) * SIN - z]);
+  const xs = raw.map(p => p[0]), ys = raw.map(p => p[1]);
+  const s = Math.min((W - pad * 2) / (Math.max(...xs) - Math.min(...xs)), (H - pad * 2) / (Math.max(...ys) - Math.min(...ys)));
+  const ox = W / 2 - (Math.max(...xs) + Math.min(...xs)) / 2 * s, oy = H / 2 - (Math.max(...ys) + Math.min(...ys)) / 2 * s;
+  const P = (x, y, z) => [ox + (x - y) * COS * s, oy + (x + y) * SIN * s - z * s];
+  const str = a => a.map(p => P(...p).map(n => n.toFixed(1)).join(",")).join(" ");
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); (parent || svg).appendChild(e); return e; };
+  const g = (parent, cls = "") => el("g", cls ? { class: cls } : {}, parent);
+  const poly = (parent, a, cls) => el("polygon", { points: str(a), class: cls }, parent);
+  const line = (parent, a, cls = "ln") => el("polyline", { points: str(a), class: cls }, parent);
+  function box(parent, x, y, z, w, d, h, cls = "") {
+    const gg = g(parent, "solid " + cls);
+    poly(gg, [[x + w, y, z], [x + w, y + d, z], [x + w, y + d, z + h], [x + w, y, z + h]], "f r");
+    poly(gg, [[x, y + d, z], [x + w, y + d, z], [x + w, y + d, z + h], [x, y + d, z + h]], "f l");
+    poly(gg, [[x, y, z + h], [x + w, y, z + h], [x + w, y + d, z + h], [x, y + d, z + h]], "f t");
+    return gg;
+  }
+  const arc = (cx, cy, r, z, a0, a1, n = 24) => Array.from({ length: n + 1 }, (_, i) => { const a = a0 + (a1 - a0) * i / n; return [cx + r * Math.cos(a), cy + r * Math.sin(a), z]; });
+  function cyl(parent, cx, cy, z, r, h, cls = "") {
+    const gg = g(parent, "solid " + cls);
+    poly(gg, [...arc(cx, cy, r, z, -Math.PI / 4, 3 * Math.PI / 4), ...arc(cx, cy, r, z + h, 3 * Math.PI / 4, -Math.PI / 4)], "f s");
+    poly(gg, arc(cx, cy, r, z + h, 0, Math.PI * 2, 40), "f t");
+    return gg;
+  }
+  function pawn(parent, cx, cy, z, cls) {
+    const gg = g(parent, cls);
+    cyl(gg, cx, cy, z, 11, 3, cls); cyl(gg, cx, cy, z + 3, 7, 46, cls); cyl(gg, cx, cy, z + 49, 9, 4, cls);
+    const [hx, hy] = P(cx, cy, z + 63);
+    el("circle", { cx: hx, cy: hy, r: (8.5 * s).toFixed(1), class: "f t" }, gg);
+    return gg;
+  }
+  const halo = (parent, x, y, w, d) => poly(parent, [[x, y, 0], [x + w, y, 0], [x + w, y + d, 0], [x, y + d, 0]], "halo");
+  function text(parent, words, [x, y, z], size, plane = "top", cls = "ftext") {
+    const [ex, ey] = P(x, y, z);
+    const m = plane === "top" ? [COS * s, SIN * s, -COS * s, SIN * s] : [COS * s, SIN * s, 0, s];
+    const t = el("text", { transform: `matrix(${m.map(n => n.toFixed(3)).join(" ")} ${ex.toFixed(1)} ${ey.toFixed(1)})`, "font-size": size, class: cls }, parent);
+    t.textContent = words; return t;
+  }
+  const shift = ([dx, dy, dz]) => `translate(${((dx - dy) * COS * s).toFixed(2)} ${((dx + dy) * SIN * s - dz * s).toFixed(2)})`;
+  return { P, el, g, poly, line, box, cyl, pawn, halo, text, shift, s };
+}
+
+/* a time-based loop for a drawn figure, started and stopped with its slide */
+function timeline(length, frame) {
+  let raf = 0, t0 = 0;
+  const tick = now => { if (!t0) t0 = now; frame(((now - t0) / 1000) % length); raf = requestAnimationFrame(tick); };
+  return { start() { this.stop(); t0 = 0; raf = requestAnimationFrame(tick); }, stop() { cancelAnimationFrame(raf); raf = 0; } };
+}
+const easeOut = t => 1 - Math.pow(1 - Math.min(Math.max(t, 0), 1), 4);
+const span = (t, a, b) => easeOut((t - a) / (b - a));
+
+/* ===========================================
+   THE KITCHEN PASS: a plate goes down the pass. The scale weighs it (the engine), a cook
+   leaves a suggestion (an agent), the head chef rings the bell (a person), and the ticket joins
+   the rail (the record).
+   =========================================== */
+(function kitchen() {
+  const svg = $("#kitchen svg"), ro = $("#kitchen-ro");
+  const K = Iso(svg, [[0, -40, 0], [262, 52, 0], [12, 2, 104], [216, 2, 104], [0, 58, 0], [262, 30, 75]], 8);
+  const { box, cyl, pawn, g, poly, line, text, shift, P, el } = K;
+  K.halo(svg, -6, -8, 250, 80);
+  pawn(svg, 46, -26, 0, "dash");
+  const cook = pawn(svg, 96, -30, 0, "dash");
+  box(svg, 18, 6, 46, 4, 4, 50); box(svg, 206, 6, 46, 4, 4, 50);
+  box(svg, 12, 2, 96, 204, 10, 6);
+  line(svg, [[16, 12.4, 93], [212, 12.4, 93]]);
+  const tickets = [];
+  for (let i = 0; i < 9; i++) {
+    const tk = g(svg, "fade hide");
+    box(tk, 24 + i * 20, 12.6, 76, 13, 0.8, 16);
+    line(tk, [[26 + i * 20, 13.4, 86], [35 + i * 20, 13.4, 86]], "ln faint");
+    line(tk, [[26 + i * 20, 13.4, 82], [33 + i * 20, 13.4, 82]], "ln faint");
+    tickets.push(tk);
+  }
+  for (const [x, y] of [[4, 4], [226, 4], [4, 50], [226, 50]]) box(svg, x, y, 0, 6, 6, 40);
+  box(svg, 6, 6, 10, 222, 48, 2);
+  box(svg, 0, 0, 40, 234, 58, 6);
+  poly(svg, [[20, 8, 46.1], [208, 8, 46.1], [208, 50, 46.1], [20, 50, 46.1]], "glow");
+  box(svg, 96, 16, 46, 32, 26, 9);
+  box(svg, 100, 41.6, 48, 24, 0.6, 5);
+  const weight = text(svg, "   0 g", [101.5, 42.4, 49.4], 3.6, "front");
+  cyl(svg, 112, 29, 55, 11, 1.5);
+  const plate = g(svg); cyl(plate, 34, 29, 46, 10, 1.6, "lit"); cyl(plate, 34, 29, 47.6, 6, 3.2, "lit");
+  plate.style.transition = "opacity .4s";
+  const note = g(svg, "fade hide"); box(note, 126, 36, 46, 0.8, 12, 12, "dash"); line(note, [[127, 39, 54], [127, 45, 54]], "ln faint");
+  cyl(svg, 196, 40, 46, 6, 1.2); cyl(svg, 196, 40, 47.2, 4.2, 4); cyl(svg, 196, 40, 51.2, 1.2, 1.6);
+  const [bx, by] = P(196, 40, 53);
+  const rings = [0, 1].map(() => el("ellipse", { cx: bx, cy: by, rx: 10, ry: 5, class: "ring", opacity: 0 }));
+  pawn(svg, 250, 40, 0, "person");
+  let shown = 0, plateNo = 7;
+  const say = t => { if (ro.textContent !== t) ro.textContent = t; };
+  anims.kitchen = timeline(9, t => {
+    let x = 78, z = 0;
+    if (t < 1.6) { x = 78 * span(t, 0.2, 1.6); say(`Plate ${plateNo} leaves the line`); }
+    else if (t < 4) z = 10.5 * span(t, 1.6, 2.0);
+    else if (t < 5.4) { x = 78 + 82 * span(t, 4, 5.4); z = 10.5 * (1 - span(t, 4, 4.4)); }
+    else x = 160;
+    plate.setAttribute("transform", shift([x, 0, z]));
+    plate.style.opacity = t > 8.4 ? "0" : "1";
+    const w = t < 2 ? 0 : t < 3 ? Math.round(412 * span(t, 2, 3)) : t < 4.4 ? 412 : 0;
+    weight.textContent = String(w).padStart(4, " ") + " g";
+    weight.setAttribute("class", t > 2 && t < 4.4 ? "ftext lit" : "ftext");
+    if (t >= 2 && t < 3) say(`The scale weighs it: ${w} g`);
+    note.classList.toggle("hide", !(t > 3 && t < 5.6));
+    cook.setAttribute("transform", t > 3 && t < 3.6 ? "translate(0 -5)" : "");
+    if (t >= 3 && t < 4) say("A cook suggests: a little more salt");
+    if (t >= 4 && t < 5.6) say("The plate reaches the pass");
+    const k = t > 5.8 && t < 7.2 ? (t - 5.8) / 1.4 : -1;
+    rings.forEach((r, i) => {
+      const q = k - i * 0.25;
+      r.setAttribute("opacity", q > 0 ? Math.max(0, 1 - q).toFixed(2) : 0);
+      r.setAttribute("rx", 10 + 30 * Math.max(q, 0)); r.setAttribute("ry", 5 + 15 * Math.max(q, 0));
+    });
+    if (k >= 0) say(`Chef: send it · plate ${plateNo}`);
+    const n = t > 7 ? Math.min(9, shown + 1) : shown;
+    tickets.forEach((tk, i) => tk.classList.toggle("hide", i >= n));
+    if (t > 7) say(`Ticket ${plateNo} on the rail · ${n} today`);
+    if (t > 8.9) { shown = n >= 9 ? 0 : n; plateNo += 1; }
+  });
+})();
+
+/* ===========================================
    SLIDE 5: the five moves, with one rejected answer per loop
    =========================================== */
 (function loop() {
@@ -1012,80 +1074,475 @@ function cycle(n, ms, fn, pause = 0) {
 })();
 
 /* ===========================================
-   SLIDE 6: placeholders fill from facts
+   THE MENU CARD: the cook's card has blanks; the scale prints each number from the record
+   on a label, and the label drops into its blank. The readout names the fact each number comes from.
    =========================================== */
 (function facts() {
-  const slots = $$(".slot");
-  anims.facts = cycle(slots.length + 1, 1100, k => {
-    if (k === 0) slots.forEach(s => { s.textContent = s.dataset.raw; s.classList.remove("filled"); });
-    else { const s = slots[k - 1]; s.textContent = s.dataset.fill; s.classList.add("filled"); }
-  }, 2600);
+  const svg = $("#letter svg"), ro = $("#letter-ro");
+  const K = Iso(svg, [[0, 0, 0], [200, 70, 0], [150, 0, 40], [0, 70, 0], [200, 0, 0]], 16);
+  const { box, g, line, text, shift } = K;
+  K.halo(svg, 4, 4, 196, 66);
+  box(svg, 6, 8, 0, 110, 60, 0.8, "dash");
+  for (const [x, y, w] of [[10, 14, 30], [44, 14, 54], [10, 22, 18], [78, 22, 22], [10, 30, 30], [10, 40, 56], [10, 48, 24], [68, 48, 40], [10, 56, 40]])
+    line(svg, [[x, y, 0.9], [x + w, y, 0.9]], "ln faint");
+  const blanks = [[44, 30, 30], [70, 40, 30], [38, 48, 26]];
+  const vals = ["0.8487", "1,940", "91"], ids = ["model.cv_mean", "explore.n_rows", "explore.n_events"];
+  const fills = blanks.map(([x, y, w], i) => {
+    box(svg, x, y - 3, 0.8, w + 4, 6, 0.3);
+    const gg = g(svg, "fade hide"); text(gg, vals[i], [x + 2, y - 1.2, 1.2], 6, "top", "ftext lit"); return gg;
+  });
+  box(svg, 140, 14, 0, 46, 40, 8); K.cyl(svg, 163, 34, 8, 15, 1.6);
+  box(svg, 174, 16, 8, 10, 36, 26); line(svg, [[174, 26, 14], [174, 42, 14]]);
+  const slip = g(svg); box(slip, 116, 26, 0.8, 26, 14, 0.4);
+  const slipText = text(slip, "", [120, 30.5, 1.3], 5.5);
+  anims.facts = timeline(9, t => {
+    const i = Math.min(2, Math.floor(t / 2.6)), u = t - i * 2.6;
+    slipText.textContent = vals[i];
+    slip.setAttribute("transform", shift([22 * (1 - span(u, 0.1, 0.9)), 0, 0]));
+    slip.style.opacity = u < 0.1 || u > 1.6 || t > 7.8 ? 0 : 1;
+    fills.forEach((f, j) => f.classList.toggle("hide", !(j < i || (j === i && u > 1.5))));
+    const n = fills.filter(f => !f.classList.contains("hide")).length;
+    ro.textContent = n && t < 7.8 ? `{{fact:${ids[n - 1]}}} → ${vals[n - 1]} · ${n} of 3, none typed` : n === 3 ? "3 of 3 filled · none typed by the agent" : "The writer leaves three blanks";
+  });
 })();
 
 /* ===========================================
-   SLIDE 7: the holdout opens at step four
+   THE KITCHEN'S PROPS, shared by every figure after the kitchen pass, so the cast looks the same
+   on each slide: the counter, a plate, the scale (the engine), the bell (a person's nod) and the
+   ticket rail (the record). Cooks are dashed pawns, the chef is a solid one.
    =========================================== */
-(function vault() {
-  const steps = $$("#vault-steps li"), sealed = $("#sealed");
-  anims.vault = cycle(steps.length, 1700, k => {
-    steps.forEach((s, j) => s.classList.toggle("on", j <= k));
-    const open = k === steps.length - 1;
-    sealed.classList.toggle("open", open);
-    sealed.innerHTML = open ? "scored<br>once" : "sealed<br>holdout";
-  }, 1800);
-})();
-
-/* ===========================================
-   SLIDE 10: three ways to close a question
-   =========================================== */
-(function ways() {
-  const ways = $$("#ways .way"), out = $("#ways-out");
-  const pick = k => { ways.forEach((w, j) => w.classList.toggle("on", j === k)); out.textContent = ways[k].dataset.out; };
-  anims.ways = cycle(ways.length, 3400, pick);
-  ways.forEach((w, k) => w.onclick = () => { anims.ways.stop(); pick(k); });
-  pick(0);
-})();
-
-/* ===========================================
-   SLIDE 11: the chain an agent-written script follows
-   =========================================== */
-(function chain() {
-  const links = $$("#chain .link");
-  anims.chain = cycle(links.length, 900, k => links.forEach((l, j) => l.classList.toggle("on", j <= k)), 2200);
-})();
-
-/* ===========================================
-   SLIDE 12: a changed decision marks what follows stale, then it re-runs
-   =========================================== */
-(function stale() {
-  const mini = $("#mini"), why = $("#why");
-  const stages = FLOW.filter(s => !s.id.startsWith("gate_"));
-  mini.innerHTML = stages.map(s => `<div>${s.short}</div>`).join("");
-  const cells = $$("div", mini);
-  const from = 2;   // everything after "Data" depends on the data gate
-  let timers = [];
-  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
-  function run() {
-    timers.forEach(clearTimeout); timers = [];
-    cells.forEach(c => c.className = "ok");
-    why.textContent = "The run is complete. Every stage is up to date.";
-    later(1500, () => {
-      cells.forEach((c, j) => { if (j >= from) c.className = "stale"; });
-      why.textContent = "Out of date: “Review data decisions: column utilization_rate excluded.” Seven stages will run again.";
-    });
-    stages.slice(from).forEach((s, k) => {
-      later(3800 + k * 800, () => {
-        cells.forEach((c, j) => { if (j === from + k) c.className = "run"; else if (j > 1 && j < from + k) c.className = "ok"; });
-        why.textContent = `Re-running: ${s.label}. The previous result is kept for comparison.`;
+function props(K) {
+  const { box, cyl, g, line, text, el, P } = K;
+  return {
+    counter(parent, x, y, w, d) {
+      for (const [a, b] of [[x + 4, y + 4], [x + w - 10, y + 4], [x + 4, y + d - 10], [x + w - 10, y + d - 10]]) box(parent, a, b, 0, 6, 6, 40);
+      box(parent, x + 6, y + 6, 10, w - 12, d - 12, 2);
+      box(parent, x, y, 40, w, d, 6);
+    },
+    table(parent, x, y, w, d, h = 30) {
+      for (const [a, b] of [[x + 4, y + 4], [x + w - 10, y + 4], [x + 4, y + d - 10], [x + w - 10, y + d - 10]]) box(parent, a, b, 0, 6, 6, h - 5);
+      box(parent, x, y, h - 5, w, d, 5);
+    },
+    plate(parent, x, y, z, cls = "") {
+      const p = g(parent, cls); cyl(p, x, y, z, 10, 1.6); cyl(p, x, y, z + 1.6, 6, 3.2); return p;
+    },
+    scale(parent, x, y, z) {
+      box(parent, x, y, z, 32, 26, 9); box(parent, x + 4, y + 25.6, z + 2, 24, 0.6, 5);
+      const w = text(parent, "   0 g", [x + 5.5, y + 26.4, z + 3.4], 3.6, "front");
+      cyl(parent, x + 16, y + 13, z + 9, 11, 1.5);
+      return w;
+    },
+    bell(parent, x, y, z) {
+      cyl(parent, x, y, z, 6, 1.2); cyl(parent, x, y, z + 1.2, 4.2, 4); cyl(parent, x, y, z + 5.2, 1.2, 1.6);
+      return this.rings(parent, x, y, z + 7);
+    },
+    rings(parent, x, y, z) {
+      const [bx, by] = P(x, y, z);
+      return [0, 1].map(() => el("ellipse", { cx: bx, cy: by, rx: 10, ry: 5, class: "ring", opacity: 0 }, parent));
+    },
+    rail(parent, x, w, n) {
+      box(parent, x + 6, 6, 46, 4, 4, 50); box(parent, x + w - 10, 6, 46, 4, 4, 50);
+      box(parent, x, 2, 96, w, 10, 6);
+      line(parent, [[x + 4, 12.4, 93], [x + w - 4, 12.4, 93]]);
+      return Array.from({ length: n }, (_, i) => {
+        const tk = g(parent, "fade hide");
+        box(tk, x + 12 + i * 20, 12.6, 76, 13, 0.8, 16);
+        line(tk, [[x + 14 + i * 20, 13.4, 86], [x + 23 + i * 20, 13.4, 86]], "ln faint");
+        line(tk, [[x + 14 + i * 20, 13.4, 82], [x + 21 + i * 20, 13.4, 82]], "ln faint");
+        return tk;
       });
+    },
+    sheet(parent, x, y, z, w, d, cls = "") { return box(parent, x, y, z, w, d, 0.6, cls); },
+  };
+}
+/* a bell's rings spreading out; k runs 0..1 */
+function ring(rings, k) {
+  rings.forEach((r, i) => {
+    const q = k - i * 0.25;
+    r.setAttribute("opacity", q > 0 ? Math.max(0, 1 - q).toFixed(2) : 0);
+    r.setAttribute("rx", 10 + 30 * Math.max(q, 0)); r.setAttribute("ry", 5 + 15 * Math.max(q, 0));
+  });
+}
+const bob = (pawn, on) => pawn.setAttribute("transform", on ? "translate(0 -5)" : "");
+const sayTo = ro => t => { if (ro.textContent !== t) ro.textContent = t; };
+const showIf = (el, on) => el.classList.toggle("hide", !on);
+
+/* ===========================================
+   INSIDE ONE STAGE: the cook reads the one ticket and plates to it; the scale checks the
+   plate and sends it back once; the second try passes, the chef rings, both tries are kept.
+   =========================================== */
+(function ticket() {
+  const svg = $("#ticket svg"), say = sayTo($("#ticket-ro"));
+  const K = Iso(svg, [[0, -40, 0], [236, 52, 0], [12, 2, 104], [0, 58, 0], [236, 30, 75]], 8);
+  const X = props(K), { pawn, g, box, line, shift } = K;
+  K.halo(svg, -6, -8, 214, 80);
+  const cook = pawn(svg, 40, -28, 0, "dash");
+  const tickets = X.rail(svg, 12, 110, 4);
+  X.counter(svg, 0, 0, 200, 58);
+  const weight = X.scale(svg, 96, 16, 46);
+  const plate = X.plate(svg, 34, 29, 46, "lit");
+  plate.style.transition = "opacity .4s";
+  const note = g(svg, "fade hide"); box(note, 126, 36, 46, 0.8, 12, 12, "dash"); line(note, [[127, 39, 54], [127, 45, 54]], "ln faint");
+  const rings = X.bell(svg, 176, 40, 46);
+  pawn(svg, 222, 40, 0, "person");
+  anims.ticket = timeline(10.5, t => {
+    showIf(tickets[0], true);
+    tickets[0].classList.toggle("lit", t < 2.2);
+    showIf(tickets[1], t > 4); showIf(tickets[2], t > 8); showIf(tickets[3], t > 8.4);
+    bob(cook, (t > 1.2 && t < 1.7) || (t > 4.2 && t < 4.6));
+    let x = 0, z = 0;
+    if (t < 2.2) x = 0;
+    else if (t < 3.6) { x = 78 * span(t, 2.2, 2.9); z = 10.5 * span(t, 2.6, 2.9); }
+    else if (t < 4.2) { x = 78 * (1 - span(t, 3.6, 4.2)); z = 10.5 * (1 - span(t, 3.6, 3.8)); }
+    else if (t < 5.4) { x = 78 * span(t, 4.4, 5.0); z = 10.5 * span(t, 4.7, 5.0); }
+    else if (t < 6.4) { x = 78 + 64 * span(t, 5.6, 6.4); z = 10.5 * (1 - span(t, 5.6, 5.9)); }
+    else x = 142;
+    plate.setAttribute("transform", shift([x, 0, z]));
+    plate.style.opacity = t < 1.2 || t > 10 ? "0" : "1";
+    weight.textContent = t > 2.9 && t < 3.8 ? "  ✗   " : t > 5.0 && t < 5.8 ? " 412 g" : "   0 g";
+    weight.setAttribute("class", t > 2.9 && t < 5.8 ? "ftext lit" : "ftext");
+    showIf(note, t > 2.9 && t < 4.4);
+    ring(rings, t > 6.5 && t < 7.9 ? (t - 6.5) / 1.4 : -1);
+    say(t < 1.2 ? "1 · The ticket: only what this cook may see"
+      : t < 2.2 ? "2 · The cook plates to the ticket"
+      : t < 2.9 ? "3 · The scale checks the plate"
+      : t < 4.2 ? "Sent back: a number typed by hand"
+      : t < 5.6 ? "Plated again: it checks out"
+      : t < 6.5 ? "4 · At the pass"
+      : t < 8 ? "5 · The chef nods"
+      : "On the rail: both tries and the nod");
+  });
+})();
+
+/* ===========================================
+   THE CRITIC'S TABLE: three candidate plates are tasted again and again, each taste a mark on
+   the tally; the chef chooses one; only then is it carried to the critic, who eats once.
+   =========================================== */
+(function critic() {
+  const svg = $("#critic svg"), say = sayTo($("#critic-ro"));
+  const K = Iso(svg, [[0, -40, 0], [276, 96, 0], [14, 2, 96], [0, 58, 0], [276, 66, 75], [150, 2, 96]], 8);
+  const X = props(K), { pawn, g, box, cyl, line, text, shift } = K;
+  K.halo(svg, -6, -8, 280, 110);
+  const chef = pawn(svg, 75, -30, 0, "person");
+  box(svg, 20, 4, 46, 3, 3, 16); box(svg, 140, 4, 46, 3, 3, 16);
+  box(svg, 14, 2, 62, 136, 2, 32);
+  const tallies = Array.from({ length: 10 }, (_, i) => {
+    const x = 26 + i * 8 + Math.floor(i / 5) * 10;
+    return line(svg, [[x, 4.2, 68], [x, 4.2, 88]], "ln fade hide");
+  });
+  X.counter(svg, 0, 0, 160, 58);
+  const xs = [30, 75, 120], names = ["A", "B", "C"];
+  const plates = xs.map(x => X.plate(svg, x, 29, 46));
+  xs.forEach((x, i) => text(svg, names[i], [x - 1.5, 58, 42.2], 3.6, "front"));
+  plates[1].style.transition = "opacity .4s";
+  const rings = X.rings(svg, 75, 29, 51);
+  X.table(svg, 190, 44, 54, 48);
+  const served = X.plate(svg, 230, 70, 30, "lit fade hide");
+  const env = g(svg, "fade"); box(env, 198, 50, 30, 24, 18, 1.2, "lit"); cyl(env, 210, 59, 31.2, 3, 0.8, "lit");
+  const score = g(svg, "fade hide"); text(score, "SCORED ONCE", [198, 58, 30.2], 4, "top", "ftext lit");
+  pawn(svg, 268, 64, 0);
+  const order = [0, 1, 2, 1, 0, 1, 2, 1];
+  anims.critic = timeline(13, t => {
+    const k = Math.floor((t - 0.3) / 0.75);
+    const tasting = t > 0.3 && k < order.length;
+    plates.forEach((p, i) => p.classList.toggle("lit", (tasting && order[k] === i && (t - 0.3) % 0.75 < 0.5) || (i === 1 && t > 6.4 && t < 8.6)));
+    const n = t < 0.3 ? 0 : Math.min(order.length, k + 1);
+    tallies.forEach((l, i) => showIf(l, i < n));
+    bob(chef, t > 6.4 && t < 6.9);
+    ring(rings, t > 6.4 && t < 7.8 ? (t - 6.4) / 1.4 : -1);
+    plates[1].setAttribute("transform", shift([t > 7.8 ? 40 * span(t, 7.8, 8.6) : 0, 0, 0]));
+    plates[1].style.opacity = t > 8.5 && t < 12.8 ? "0" : "1";
+    showIf(served, t > 8.7 && t < 12.8);
+    env.classList.toggle("hide", t > 9.6 && t < 12.8);
+    showIf(score, t > 9.8 && t < 12.8);
+    say(t < 0.3 ? "Three plates on the pass"
+      : tasting ? `Taste ${n} · counted`
+      : t < 7.8 ? "The chef chooses plate B"
+      : t < 9.6 ? "Only now is it carried to the critic"
+      : "The critic eats once · 8 tastes counted before");
+  });
+})();
+
+/* ===========================================
+   THE SECOND TASTER: the plate goes through the hatch; the cook's notes stop at the screen.
+   =========================================== */
+(function taster() {
+  const svg = $("#taster svg"), say = sayTo($("#taster-ro"));
+  const K = Iso(svg, [[0, -40, 0], [214, 58, 0], [100, -36, 106], [0, 58, 0], [214, 30, 75], [36, -30, 75]], 8);
+  const X = props(K), { pawn, g, box, line, shift } = K;
+  K.halo(svg, -6, -8, 220, 80);
+  pawn(svg, 36, -30, 0, "dash");
+  X.counter(svg, 0, 0, 92, 58);
+  const notes = g(svg); box(notes, 10, 30, 46, 30, 22, 0.6);
+  for (const [y, w] of [[34, 20], [39, 24], [44, 16], [48, 22]]) line(notes, [[14, y, 46.8], [14 + w, y, 46.8]], "ln faint");
+  box(svg, 100, -36, 0, 6, 100, 46);
+  box(svg, 100, -36, 46, 6, 30, 18); box(svg, 100, 40, 46, 6, 24, 18);
+  box(svg, 100, -36, 64, 6, 100, 42);
+  const taster = pawn(svg, 154, -30, 0, "dash");
+  X.counter(svg, 112, 0, 92, 58);
+  const plate = X.plate(svg, 40, 18, 46, "lit");
+  anims.taster = timeline(9, t => {
+    plate.setAttribute("transform", shift([t > 7.6 ? 0 : 118 * span(t, 0.4, 2), 0, 0]));
+    plate.style.opacity = t > 7.6 && t < 8.6 ? "0" : "1";
+    const nx = t < 2.2 ? 0 : t < 6 ? 36 * span(t, 2.2, 3.2) : 36 * (1 - span(t, 6, 7));
+    notes.setAttribute("transform", shift([nx, 0, 0]));
+    bob(taster, t > 4 && t < 4.5);
+    say(t < 0.4 ? "The plate is ready"
+      : t < 2.2 ? "The plate goes through the hatch"
+      : t < 4 ? "The cook's notes stop at the screen"
+      : t < 6 ? "The taster judges what is on the plate"
+      : "Independence is what the taster is handed");
+  });
+})();
+
+/* ===========================================
+   THE KITCHEN ALARM: burnt toast is a note the chef signs; a fire shuts the pass.
+   =========================================== */
+(function alarm() {
+  const svg = $("#alarm svg"), say = sayTo($("#alarm-ro"));
+  const K = Iso(svg, [[0, -40, 0], [262, 58, 0], [12, 2, 112], [0, 58, 0], [262, 40, 75], [0, 58, 100]], 8);
+  const X = props(K), { pawn, g, box, cyl, line, el, P, shift } = K;
+  K.halo(svg, -6, -8, 270, 80);
+  const tickets = X.rail(svg, 12, 120, 1);
+  const alarmRings = X.rings(svg, 104, 7, 106);
+  cyl(svg, 104, 7, 102, 5, 2, "lit");
+  X.counter(svg, 0, 0, 220, 58);
+  box(svg, 20, 14, 46, 26, 20, 16);
+  line(svg, [[25, 20, 62.2], [41, 20, 62.2]]); line(svg, [[25, 28, 62.2], [41, 28, 62.2]]);
+  const smoke = [0, 1, 2].map(() => el("circle", { cx: 0, cy: 0, r: 4, class: "smoke", opacity: 0 }, svg));
+  cyl(svg, 130, 29, 46, 12, 5); box(svg, 142, 27, 48, 16, 4, 1.4);
+  const [b1, b2, tip] = [P(122, 29, 51), P(138, 29, 51), P(130, 29, 76)];
+  const flame = el("polygon", { points: "", class: "flame", opacity: 0 }, svg);
+  const chef = pawn(svg, 250, 40, 0, "person");
+  const shutter = g(svg, "fade hide"); box(shutter, 0, 58, 46, 220, 1.2, 54, "lit");
+  for (let z = 56; z < 100; z += 10) line(shutter, [[2, 59.4, z], [218, 59.4, z]], "ln faint");
+  anims.alarm = timeline(12, t => {
+    smoke.forEach((s, i) => {
+      const u = (((t - i * 0.5) % 1.6) + 1.6) % 1.6 / 1.6, on = t > 0.2 && t < 2.6 && t - i * 0.5 > 0;
+      const [sx, sy] = P(33, 24, 64 + u * 30);
+      s.setAttribute("cx", sx); s.setAttribute("cy", sy); s.setAttribute("r", 4 + u * 8);
+      s.setAttribute("opacity", on ? (1 - u).toFixed(2) : 0);
     });
-    later(3800 + (stages.length - from) * 800, () => {
-      cells.forEach(c => c.className = "ok");
-      why.textContent = "Up to date again. Each re-run stage shows what changed and why it ran.";
+    showIf(tickets[0], t > 1.2 && t < 11.6);
+    tickets[0].classList.toggle("lit", t > 3);
+    bob(chef, t > 2.8 && t < 3.3);
+    const f = t > 4.2 && t < 11.6 ? span(t, 4.2, 5) : 0;
+    flame.setAttribute("points", `${b1.join(",")} ${b2.join(",")} ${tip[0]},${(b2[1] + (tip[1] - b2[1]) * f).toFixed(1)}`);
+    flame.setAttribute("opacity", f ? 0.85 : 0);
+    ring(alarmRings, t > 5.4 && t < 7.2 ? ((t - 5.4) % 0.9) / 0.9 : -1);
+    showIf(shutter, t > 6.6 && t < 11.6);
+    shutter.setAttribute("transform", shift([0, 0, t > 6.6 ? 30 * (1 - span(t, 6.6, 7.6)) : 30]));
+    say(t < 1.2 ? "Breakfast service"
+      : t < 2.8 ? "Burnt toast: a note on the rail"
+      : t < 4.2 ? "The chef signs it off, with a reason"
+      : t < 5.4 ? "Fire"
+      : t < 7.6 ? "The alarm rings and the pass shuts"
+      : "Nobody can sign a fire away");
+  });
+})();
+
+/* ===========================================
+   THE WAITER'S TICKET: the waiter asks the guest; the ticket closes three ways.
+   =========================================== */
+(function order() {
+  const svg = $("#order svg"), say = sayTo($("#order-ro"));
+  const K = Iso(svg, [[0, -40, 0], [176, 84, 0], [0, 84, 0], [176, 40, 75], [30, -28, 75]], 8);
+  const X = props(K), { pawn, g, box, line, text } = K;
+  K.halo(svg, -6, -8, 180, 100);
+  const waiter = pawn(svg, 30, -28, 0, "dash");
+  X.table(svg, 0, 0, 124, 84);
+  X.sheet(svg, 20, 14, 30, 60, 54);
+  text(svg, "HOW COOKED?", [25, 24, 30.7], 5);
+  line(svg, [[25, 34, 30.7], [70, 34, 30.7]], "ln faint");
+  const words = ["ANSWERED", "ASSUMED", "NOT SERVED"];
+  const stamps = words.map(w => {
+    const s = g(svg, "fade hide"); box(s, 30, 44, 30.7, 46, 14, 0.8, "lit");
+    text(s, w, [33, 53, 31.6], 4.6, "top", "ftext lit"); return s;
+  });
+  pawn(svg, 150, 42, 0);
+  const lines = ["Answered: the dish is cooked again with it",
+                 "Assumed: printed on the bill, then tested",
+                 "Not served: printed as a limitation"];
+  anims.order = timeline(13, t => {
+    bob(waiter, t > 0.3 && t < 0.8);
+    const k = t < 1.6 ? -1 : Math.min(2, Math.floor((t - 1.6) / 3.8));
+    stamps.forEach((s, i) => showIf(s, i === k));
+    say(k < 0 ? "The waiter asks: how would you like it cooked?" : lines[k]);
+  });
+})();
+
+/* ===========================================
+   ASK THE SCALE: a cook's request is weighed by the scale alone, printed, stapled to its
+   result and kept on the rail.
+   =========================================== */
+(function weigh() {
+  const svg = $("#weigh svg"), say = sayTo($("#weigh-ro"));
+  const K = Iso(svg, [[0, -40, 0], [236, 58, 0], [12, 2, 104], [0, 58, 0], [236, 30, 75]], 8);
+  const X = props(K), { pawn, g, box, cyl, line, shift } = K;
+  K.halo(svg, -6, -8, 230, 80);
+  const cook = pawn(svg, 40, -28, 0, "dash");
+  const tickets = X.rail(svg, 12, 130, 5);
+  X.counter(svg, 0, 0, 220, 58);
+  const weight = X.scale(svg, 96, 16, 46);
+  const label = g(svg, "fade hide"); box(label, 150, 22, 46, 24, 16, 0.6, "lit");
+  line(label, [[154, 27, 46.7], [168, 27, 46.7]], "ln faint");
+  const staple = g(svg, "fade hide"); cyl(staple, 160, 30, 47.6, 1.6, 0.6, "lit");
+  const slip = g(svg, "fade hide"); box(slip, 20, 22, 46, 22, 14, 0.5, "dash");
+  line(slip, [[23, 26, 46.6], [36, 26, 46.6]], "ln faint"); line(slip, [[23, 30, 46.6], [32, 30, 46.6]], "ln faint");
+  pawn(svg, 252, 40, 0, "person");
+  anims.weigh = timeline(11, t => {
+    bob(cook, t > 0.3 && t < 0.8);
+    showIf(slip, t > 0.5 && t < 10.6);
+    const sx = t < 1.5 ? 0 : t < 4.8 ? 81 * span(t, 1.5, 2.4) : 81 + 50 * span(t, 4.8, 5.6);
+    const sz = t < 1.5 ? 0 : t < 4.8 ? 10.5 * span(t, 2.0, 2.4) : 10.5 * (1 - span(t, 4.8, 5.2)) + 1.2 * span(t, 5.2, 5.6);
+    slip.setAttribute("transform", shift([sx, 0, sz]));
+    const w = t < 2.6 ? 0 : t < 3.6 ? Math.round(412 * span(t, 2.6, 3.6)) : t < 6 ? 412 : 0;
+    weight.textContent = String(w).padStart(4, " ") + " g";
+    weight.setAttribute("class", t > 2.6 && t < 6 ? "ftext lit" : "ftext");
+    showIf(label, t > 3.9 && t < 10.6);
+    showIf(staple, t > 5.8 && t < 10.6);
+    tickets.forEach((tk, i) => showIf(tk, i === 0 ? t > 6.6 && t < 10.6 : false));
+    say(t < 1.5 ? "The cook asks: weigh the income column"
+      : t < 2.6 ? "Only the scale weighs it"
+      : t < 3.9 ? `Weighed in a closed room: ${w} g`
+      : t < 5.8 ? "The result is printed"
+      : t < 6.6 ? "The request is stapled to the result"
+      : t < 8.6 ? "On the rail, with its hash"
+      : "Weighed again at validation: 412 g");
+  });
+})();
+
+/* ===========================================
+   CHANGE THE SAUCE: nine plates, one per stage. A changed decision at the data gate sends the
+   seven after it back on the stove, one by one, with the reason on the ticket.
+   =========================================== */
+(function sauce() {
+  const svg = $("#sauce svg"), say = sayTo($("#sauce-ro"));
+  const stages = FLOW.filter(s => !s.id.startsWith("gate_"));
+  const K = Iso(svg, [[0, -40, 0], [330, 58, 0], [0, 58, 0], [12, 2, 104], [330, 0, 46]], 6);
+  const X = props(K), { pawn, text } = K;
+  K.halo(svg, -6, -8, 330, 80);
+  const chef = pawn(svg, 54, -30, 0, "person");
+  const tickets = X.rail(svg, 12, 60, 1);
+  X.counter(svg, 0, 0, 330, 58);
+  const cx = i => 19 + i * 36.5;
+  const plates = stages.map((s, i) => X.plate(svg, cx(i), 29, 46));
+  stages.forEach((s, i) => text(svg, s.short, [cx(i) - s.short.length * 1.05, 58, 42.2], 3.4, "front"));
+  const rings = X.rings(svg, cx(1), 29, 51);
+  const from = 2;   // everything after the data depends on the data gate
+  const per = 0.8, back = 4 + (stages.length - from) * per;
+  anims.sauce = timeline(back + 2.6, t => {
+    bob(chef, t > 1.5 && t < 2);
+    ring(rings, t > 1.5 && t < 2.9 ? (t - 1.5) / 1.4 : -1);
+    showIf(tickets[0], t > 1.8);
+    tickets[0].classList.toggle("lit", t > 1.8);
+    const k = Math.floor((t - 4) / per);
+    plates.forEach((p, i) => {
+      const out = i >= from && t > 2.9 && t < back && i - from >= k;
+      const cooking = i >= from && t >= 4 && i - from === k;
+      p.setAttribute("class", cooking ? "lit" : out ? "dash" : "");
     });
-  }
-  $("#stale-go").onclick = run;
-  anims.stale = { start: run, stop() { timers.forEach(clearTimeout); timers = []; } };
+    say(t < 1.5 ? "Every dish is served"
+      : t < 2.9 ? "Less salt: utilization_rate excluded"
+      : t < 4 ? `${stages.length - from} dishes use the sauce: back on the stove`
+      : t < back ? `Cooking again: ${stages[from + Math.min(k, stages.length - from - 1)].label}`
+      : "Up to date · the last plates kept to compare");
+  });
+})();
+
+/* ===========================================
+   THE SIDE PAN: a trial run copied from the pot, tasted (every taste counted), never served,
+   and its ticket stays on the rail when it is tipped out.
+   =========================================== */
+(function sidepan() {
+  const svg = $("#sidepan svg"), say = sayTo($("#sidepan-ro"));
+  const K = Iso(svg, [[0, -40, 0], [236, 58, 0], [12, 2, 104], [0, 58, 0], [236, 30, 75]], 8);
+  const X = props(K), { pawn, g, box, cyl, shift } = K;
+  K.halo(svg, -6, -8, 230, 80);
+  const chef = pawn(svg, 110, -30, 0, "person");
+  const tickets = X.rail(svg, 12, 110, 4);
+  X.counter(svg, 0, 0, 200, 58);
+  cyl(svg, 46, 29, 46, 18, 22); cyl(svg, 46, 29, 68, 19.5, 1.5, "lit");
+  const pan = g(svg, "fade hide"); cyl(pan, 132, 29, 46, 12, 6, "lit"); box(pan, 144, 27, 49, 18, 4, 1.4);
+  const drop = g(svg, "fade hide"); cyl(drop, 46, 29, 72, 3, 2, "lit");
+  anims.sidepan = timeline(11, t => {
+    showIf(pan, t > 0.4 && t < 7.4);
+    const u = span(t, 0.6, 1.8);
+    drop.setAttribute("transform", shift([86 * u, 0, -18 * u + 14 * Math.sin(Math.PI * u)]));
+    showIf(drop, t > 0.6 && t < 1.8);
+    const n = t < 2.4 ? 0 : Math.min(3, 1 + Math.floor((t - 2.4) / 0.9));
+    bob(chef, n > 0 && t < 5 && ((t - 2.4) % 0.9) < 0.4);
+    tickets.forEach((tk, i) => showIf(tk, i < n && t < 10.6));
+    say(t < 0.6 ? "The pot is on"
+      : t < 2.4 ? "A side pan, copied from the pot"
+      : t < 5.2 ? `Taste ${n} · counted for the dish`
+      : t < 6.6 ? "Never served: it stops before the critic"
+      : t < 8 ? "Tipped out"
+      : "Its tickets stay on the rail");
+  });
+})();
+
+/* ===========================================
+   THE RECIPE CARD: the cook goes home, the card takes the station, and every plate weighs the
+   same.
+   =========================================== */
+(function card() {
+  const svg = $("#card svg"), say = sayTo($("#card-ro"));
+  const K = Iso(svg, [[0, -40, 0], [236, 58, 0], [12, 2, 104], [0, 58, 0], [236, 30, 75]], 8);
+  const X = props(K), { pawn, g, box, line, shift } = K;
+  K.halo(svg, -6, -8, 230, 80);
+  const cook = pawn(svg, 40, -28, 0, "dash fade");
+  const recipe = g(svg, "fade hide"); box(recipe, 30, 4, 46, 26, 1.2, 34, "lit");
+  for (let z = 56; z < 76; z += 5) line(recipe, [[33, 5.4, z], [52, 5.4, z]], "ln faint");
+  X.counter(svg, 0, 0, 220, 58);
+  const weight = X.scale(svg, 96, 16, 46);
+  const plate = X.plate(svg, 34, 29, 46, "lit"); plate.style.transition = "opacity .3s";
+  pawn(svg, 252, 40, 0, "person");
+  anims.card = timeline(12.5, t => {
+    cook.classList.toggle("hide", t > 0.6 && t < 12);
+    showIf(recipe, t > 1.6 && t < 12);
+    const i = Math.floor((t - 2.8) / 3), u = t - 2.8 - i * 3, on = t > 2.8 && i < 3;
+    const x = !on ? 0 : u < 1.6 ? 78 * span(u, 0, 0.7) : 78 + 80 * span(u, 1.6, 2.4);
+    const z = !on ? 0 : u < 1.6 ? 10.5 * span(u, 0.4, 0.7) : 10.5 * (1 - span(u, 1.6, 1.9));
+    plate.setAttribute("transform", shift([x, 0, z]));
+    plate.style.opacity = on && u < 2.6 ? "1" : "0";
+    const w = on && u > 0.7 && u < 1.8 ? Math.round(412 * span(u, 0.7, 1.3)) : 0;
+    weight.textContent = String(w).padStart(4, " ") + " g";
+    weight.setAttribute("class", w ? "ftext lit" : "ftext");
+    say(t < 0.6 ? "The cook is at the station"
+      : t < 1.6 ? "The cook goes home: no key, no network"
+      : t < 2.8 ? "The recipe card takes the station"
+      : on ? `Plate ${i + 1} · ${w || 412} g · the same dish`
+      : "Same ticket in, same dish out");
+  });
+})();
+
+/* ===========================================
+   THE DISH AND ITS PAPERWORK: six sheets fan out beside the plate, one at a time.
+   =========================================== */
+(function papers() {
+  const svg = $("#papers svg"), say = sayTo($("#papers-ro"));
+  const K = Iso(svg, [[0, 0, 30], [214, 96, 0], [0, 96, 0], [214, 0, 30], [40, 40, 50]], 14);
+  const X = props(K), { g, cyl, text } = K;
+  K.halo(svg, -4, -4, 220, 104);
+  X.table(svg, 0, 0, 214, 96);
+  X.plate(svg, 30, 46, 30, "lit");
+  const names = ["RECIPE", "TICKETS", "NOTES", "SLIPS", "INSPECTION", "SEAL"];
+  const what = ["the white paper", "the run record", "the agent calls", "the analysis code", "the readiness report", "the sealed package"];
+  const sheets = names.map((n, i) => {
+    const s = g(svg, "fade hide");
+    X.sheet(s, 62 + i * 22, 12 + i * 8, 30 + i * 0.7, 46, 56, i === 5 ? "lit" : "");
+    text(s, n, [66 + i * 22, 20 + i * 8, 30.7 + i * 0.7], 4.4, "top", i === 5 ? "ftext lit" : "ftext");
+    if (i === 5) cyl(s, 85 + i * 22, 48 + i * 8, 30.7 + i * 0.7, 7, 0.8, "lit");
+    return s;
+  });
+  anims.papers = timeline(11, t => {
+    const n = Math.max(0, Math.min(6, Math.floor((t - 0.6) / 1.1) + 1));
+    sheets.forEach((s, i) => showIf(s, i < n && t < 10.6));
+    say(n === 0 ? "The dish is ready"
+      : n < 6 || t < 7.9 ? `${n} of 6 · the ${names[n - 1].toLowerCase()}: ${what[n - 1]}`
+      : "6 of 6 · nobody had to ask");
+  });
 })();
 
 /* open at the slide in the address (#5), else the first */

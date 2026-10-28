@@ -9,7 +9,7 @@ routed to its stage. Scope rules:
 - ``prior.`` facts (what an earlier COGNOS run recorded about the model being updated, its holdout
   result included) reach only the agents that read results: outcomes analyst, validator, model-risk
   analyst and writer. The design lead and the modeler learn the incumbent's family, not its scores.
-- The **validator** sees engine artifacts and metrics, never the modeler's rationale (SR 11-7
+- The **validator** sees engine artifacts and metrics, never the modeler's rationale (SR 26-2
   independence): it re-derives risk from evidence, not from the developer's story.
 """
 

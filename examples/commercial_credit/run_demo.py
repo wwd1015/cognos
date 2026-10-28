@@ -14,7 +14,7 @@ real model-development engagement:
      econometric framework assessment (reduced-form PD primary; discrete-time hazard partial;
      structural Merton rejected — no market observables for private obligors; trees as challengers
      because interpretability is required), and a ranked hypothesis slate.
-  4. THE FULL PIPELINE runs: ratchet search → single interpretable champion → out-of-time SR 11-7
+  4. THE FULL PIPELINE runs: ratchet search → single interpretable champion → out-of-time SR 26-2
      outcomes analysis (Gini/KS, calibration, PSI) → independent validation → readiness report →
      OKF white paper → docs↔code review.
 
@@ -83,7 +83,7 @@ def _config(csv: str, *, drop: list[str], design: dict, full: bool = False) -> C
         "metric": {"name": "roc_auc"},
         "search": {"max_candidates": 12, "cv_folds": 5, "holdout_fraction": 0.2,
                    "ensemble": True},
-        "compliance": {"regimes": ["SR11-7", "NIST-AI-RMF"], "risk_tier": "high",
+        "compliance": {"regimes": ["SR26-2", "NIST-AI-RMF"], "risk_tier": "high",
                        "jurisdictions": ["US"]},
     }
     if full:

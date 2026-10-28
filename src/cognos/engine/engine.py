@@ -24,6 +24,7 @@ from ..fsutil import atomic_write
 from ..identity import stamp, whoami
 from . import events, gates, process
 from .graph import (
+    GATE_BEFORE_STAGE,
     GATE_OF_STAGE,
     GATES,
     LABELS,
@@ -102,6 +103,8 @@ class Engine:
             if stage not in enabled:
                 state.set_step(stage, "skipped", "disabled in this profile")
         for gate in GATES:
+            if gate in GATE_BEFORE_STAGE:  # always part of a run (the data has to come from somewhere)
+                continue
             if gate not in cfg.workflow.gates or STAGE_OF_GATE[gate] not in enabled:
                 state.set_step(gate, "skipped", "gate disabled")
         return state
@@ -137,6 +140,8 @@ class Engine:
 
     # --- scheduling --------------------------------------------------------------------
     def _gate_ready(self, state: RunState, gate: str) -> bool:
+        if gate in GATE_BEFORE_STAGE:  # reviews no stage: it opens when the steps before it are done
+            return state.deps_satisfied(gate)
         stage_status = state.status_of(STAGE_OF_GATE[gate])
         # A blocked stage still reaches its gate in interactive mode: the human must send the work
         # back or reject — the only ways past a BLOCK.
@@ -336,6 +341,19 @@ class Engine:
             state = self.state
             if state.status_of(gate) != "running":
                 return
+            if gate == "gate_source":
+                if self._data_given(state):
+                    state.set_step(gate, "done", "the data came with the run")
+                    self._save(state)
+                    events.publish(self.run_dir, "gate_decision",
+                                   f"{LABELS[gate]}: the data came with the run.", step=gate)
+                    return
+                # Nobody can give data for the developer: autonomous mode waits here too.
+                state.set_step(gate, "awaiting", "waiting for the data")
+                self._save(state)
+                events.publish(self.run_dir, "gate_waiting",
+                               f"{LABELS[gate]}: waiting for the data.", step=gate)
+                return
             stage = STAGE_OF_GATE[gate]
             if state.mode == "autonomous":
                 if state.status_of(stage) == "blocked":
@@ -365,6 +383,14 @@ class Engine:
             self._save(state)
         events.publish(self.run_dir, "gate_waiting", f"{LABELS[gate]}: waiting for your decision.",
                        step=gate)
+
+    def _data_given(self, state: RunState) -> bool:
+        return self.config.data.given or bool(state.overrides.data)
+
+    def _drop_snapshot(self) -> None:
+        """New data: the snapshot of the old one goes, so explore fetches the new one."""
+        for name in ("dataset.parquet", "source.json"):
+            (self.run_dir / "data" / name).unlink(missing_ok=True)
 
     @staticmethod
     def _answered(state: RunState) -> dict[str, str | None]:
@@ -397,8 +423,11 @@ class Engine:
                     raise gates.GateError(
                         "The design brief is still open (" + ", ".join(missing) + "). "
                         "Answer use, horizon, default definition and segment before anyone can sign.")
+            data_before = state.overrides.data
             invalidate, done = gates.handle(state, gate, action, payload, reason,
-                                            self.results())
+                                            self.results(), config=self.config)
+            if state.overrides.data != data_before:
+                self._drop_snapshot()
             self._sign_answers(state, answered, by)
             state.decisions.append(GateDecision(
                 gate=gate, action=action, actor="human", seat=seat, by=by,

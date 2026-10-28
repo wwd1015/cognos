@@ -55,7 +55,7 @@ The engine's KMV fixed-point solver turns equity value/vol + debt face into asse
 - **Pure-structural benchmark**: PD = N(−DD) alone scores test AUC 0.649 — real signal, but
   well below the hybrid candidate's validation AUC of 0.820. The gap is the documented case
   for reduced-form + DD over pure structural on this book, exactly the "alternatives
-  considered" evidence SR 11-7 wants.
+  considered" evidence SR 26-2 wants.
 
 ### 5. Full pipeline — all families compete, simulation layer reports
 

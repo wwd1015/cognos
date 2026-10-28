@@ -9,7 +9,7 @@ developer accepts or chooses another member at the champion gate.
 
 For the champion in force the stage then does what it always did: embeds the model as an IMPACT
 derived field and runs ``EntityPipeline`` (transparent built-in fallback when IMPACT is absent),
-and reports the SR 11-7 outcomes analysis, the portfolio simulation and stress when enabled.
+and reports the SR 26-2 outcomes analysis, the portfolio simulation and stress when enabled.
 Trading-strategy metrics (PBO, Deflated Sharpe) are computed only in an explicit returns mode,
 since they presume a P&L series. See ADR-0005.
 

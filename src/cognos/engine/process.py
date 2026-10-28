@@ -28,6 +28,7 @@ CORE_DESIGN = ("use_case", "horizon", "default_definition", "segment")
 
 SEAT_OF_GATE = {
     "gate_intent": "developer",
+    "gate_source": "developer",
     "gate_data": "developer",
     "gate_design": "developer",
     "gate_candidates": "developer",
@@ -47,7 +48,7 @@ SEAT_LABEL = {
 # the workbench says who a page belongs to.
 MAP = (
     ("Intent", ("intake", "gate_intent"), "developer"),
-    ("Data & design", ("explore", "gate_data", "ideate", "gate_design"), "developer"),
+    ("Data & design", ("gate_source", "explore", "gate_data", "ideate", "gate_design"), "developer"),
     ("Model", ("model", "gate_candidates", "backtest", "gate_champion"), "developer"),
     ("Challenge", ("validate", "gate_validation"), "reviewer"),
     ("Decision", ("comply", "document", "review", "gate_signoff"), "approver"),

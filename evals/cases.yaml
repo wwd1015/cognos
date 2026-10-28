@@ -16,7 +16,7 @@
 #                                                    non-gating report (verdict.comply PASS), so the
 #                                                    run never halts (ADR-0006). final in {PASS,WARN}.
 #   commercial      a commercial credit-risk model with an out-of-time (vintage) sample -> all 8
-#                                                    stages; backtest is SR 11-7 outcomes analysis
+#                                                    stages; backtest is SR 26-2 outcomes analysis
 #                                                    on the OOT sample (verdict.backtest PASS/WARN,
 #                                                    ADR-0004/0005). final in {PASS,WARN}.
 #

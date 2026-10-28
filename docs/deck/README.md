@@ -36,5 +36,10 @@ When the system changes:
 3. Raise `edition` and `date` in the edition block and add a row to the edition log on the
    last slide saying what changed.
 
+From slide 4 on, every picture happens in one restaurant kitchen with one cast: the scale is
+the engine, the cooks (dashed) are the agents, the head chef (solid) is a person, and the ticket
+rail is the record. A new slide stays in that kitchen: draw it with the shared props
+(`props(K)` in the script) and give it one sentence, plus a line saying what it is in COGNOS.
+
 The look is the workbench's Ledger design system; the tokens at the top of the file are the
 same values as `src/cognos/ui/assets/cognos.css`.

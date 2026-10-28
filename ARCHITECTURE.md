@@ -50,7 +50,7 @@ playbooks are the agents' role prompts (`src/cognos/agents/prompts/`).
 Before any reasoning enters, `ideate` does the *design* work deterministically: it assesses the
 data structure (cross-sectional vs vintage/panel, event support), judges which econometric
 frameworks apply (structural vs reduced-form vs hazard vs ML challenger — rejected ones recorded
-with reasons as SR 11-7 "alternatives considered"), and triangulates the config's `design:` brief
+with reasons as the SR 26-2 comparison of alternative methodologies), and triangulates the config's `design:` brief
 with the model sponsor — every unanswered design point becomes an open question in the run's
 `design_brief.md`, never a silent assumption.
 
@@ -87,7 +87,7 @@ the judgment, never to reproduce the result.
 | `autoresearch` (Karpathy) | The ratchet hill-climb; the **frozen-substrate / mutable-surface** split (sealed metric + holdout the search can't touch); fixed-budget experiments; TSV experiment ledger; auditability from *provenance* (every change committed) plus a *frozen evaluator*; the LLM as the mutation function proposing the next experiment from the ledger ([ADR-0001](docs/adr/0001-reasoning-proposes-engine-disposes.md)). |
 | `IMPACT` | In-process integration via `EntityPipeline`: the model is embedded as a **derived field** (`cognos.runtime.score.score_row`) so IMPACT builds a standardized scored feature table. A kept target-hidden transform round-trips verbatim to a derived field so train- and serve-time feature logic are identical ([ADR-0002](docs/adr/0002-llm-authored-transforms-safe-execution.md)). |
 | Cyber Credit Officer | Engine-run agents with role prompts + Pydantic output contracts + context slices; validate-and-retry against deterministic tools; human decision gates (accept / edit / override); a challenger whose high-severity findings loop back to the responsible agent (bounded); information gaps with targeted re-entry; per-call audit (prompt hash, context hash, raw I/O, cost); `claude -p` / Anthropic / OpenAI-compatible backends; practice (mock) mode ([ADR-0010](docs/adr/0010-agents-recommend-humans-decide.md)). |
-| Prior-art research | Orchestrator-worker with a sequential dependent pipeline; interrupt/checkpoint/resume for HITL; independent critic/validator agents (avoid "degeneration of thought"); CASH search + leakage-safe cross-validation + the single interpretable champion (Caruana ensembling kept only as an opt-in labelled challenger benchmark, [ADR-0007](docs/adr/0007-single-interpretable-champion-no-silent-ensemble.md)); statistical diagnostic battery; SR 11-7 outcomes analysis (Gini/KS, calibration, PSI) with PBO/Deflated-Sharpe demoted to opt-in trading mode ([ADR-0005](docs/adr/0005-backtesting-is-credit-risk-outcomes-analysis.md)); SR 11-7 × NIST AI RMF; Model Cards + EU Annex IV; OKF docs + AST drift detection. |
+| Prior-art research | Orchestrator-worker with a sequential dependent pipeline; interrupt/checkpoint/resume for HITL; independent critic/validator agents (avoid "degeneration of thought"); CASH search + leakage-safe cross-validation + the single interpretable champion (Caruana ensembling kept only as an opt-in labelled challenger benchmark, [ADR-0007](docs/adr/0007-single-interpretable-champion-no-silent-ensemble.md)); statistical diagnostic battery; SR 26-2 outcomes analysis (Gini/KS, calibration, PSI) with PBO/Deflated-Sharpe demoted to opt-in trading mode ([ADR-0005](docs/adr/0005-backtesting-is-credit-risk-outcomes-analysis.md)); SR 26-2 × NIST AI RMF; Model Cards + EU Annex IV; OKF docs + AST drift detection. |
 
 ## Control flow
 
@@ -309,11 +309,11 @@ enforces a per-call time limit and a per-run spend budget. Provider resolution:
   one main run; a trial run stops before validation, so it cannot open the holdout. Looks at
   the test sample are summed over every run of the model, and a deleted run keeps its line
   in the model's record.
-- **Primary domain is commercial** model development under SR 11-7
+- **Primary domain is commercial** model development under SR 26-2
   ([ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md)). Fair-lending scans
   are an optional, off-by-default module (`compliance.fair_lending: false`) — out of scope for a
   commercial profile by choice, not a default-pipeline feature.
-- **Backtest = SR 11-7 outcomes analysis** ([ADR-0005](docs/adr/0005-backtesting-is-credit-risk-outcomes-analysis.md)):
+- **Backtest = SR 26-2 outcomes analysis** ([ADR-0005](docs/adr/0005-backtesting-is-credit-risk-outcomes-analysis.md)):
   discrimination (Gini/KS), calibration (expected-vs-observed by band + ECE), and stability (PSI) on an
   **out-of-time** sample by default (`modeling/credit_metrics.py`). The holdout is time-ordered when a
   datetime column is set. PBO + Deflated Sharpe are demoted to an opt-in trading mode

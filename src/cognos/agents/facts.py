@@ -201,8 +201,8 @@ def collect(ctx, *, fresh: dict | None = None,
     if co is not None and co.payload:
         p = co.payload
         _put(f, "comply.n_outstanding", len(p.get("outstanding_human_steps", [])))
-        for k, e in (p.get("sr11_7") or {}).items():
-            _put(f, f"comply.sr11_7.{k}", e.get("status"))
+        for k, e in (p.get("sr26_2") or p.get("sr11_7") or {}).items():  # sr11_7: before SR 26-2
+            _put(f, f"comply.sr26_2.{k}", e.get("status"))
         fl = p.get("fair_lending") or {}
         _put(f, "comply.disparate_impact", fl.get("disparate_impact"))
     # What each stage's requested tools found (analysis/consult.py). A tool is reviewed code

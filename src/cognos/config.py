@@ -56,6 +56,13 @@ class SourceConfig(BaseModel):
     query: str | None = None  # a single read-only SELECT (instead of table)
     limit: int | None = None  # row cap applied by the engine
     options: dict[str, str] = Field(default_factory=dict)
+    # From the data catalog (catalog.py, ADR-0020): the table's id, what it is for, and what its
+    # columns mean, copied when the data is given so the run keeps them if the catalog changes.
+    catalog: str | None = None
+    description: str = ""
+    columns: dict[str, str] = Field(default_factory=dict)
+    keys: list[str] = Field(default_factory=list)  # the columns that identify a row
+    outcomes: list[str] = Field(default_factory=list)  # outcome columns, never features
 
 
 class NamedSource(SourceConfig):
@@ -84,6 +91,7 @@ class JoinStep(BaseModel):
     many: Literal["aggregate", "first", "refuse"] = "refuse"
     # A base row with no match: keep it with missing values, or drop it (counted, reported).
     unmatched: Literal["keep", "drop"] = "keep"
+    note: str = ""  # why the link exists, in the data owner's words (a documented link)
 
     @field_validator("left_on", "right_on", mode="before")
     @classmethod
@@ -107,6 +115,11 @@ class DataConfig(BaseModel):
     sources: list[NamedSource] = Field(default_factory=list)
     base: str | None = None  # the table whose rows the model is built on
     join: list[JoinStep] = Field(default_factory=list)
+    # Links the data catalog documents between the sources: always offered at explore and
+    # measured like any other, never binding (ADR-0020).
+    links: list[JoinStep] = Field(default_factory=list)
+    # The catalog tables a template starts with: preselected at gate_source (ADR-0020).
+    catalog: list[str] = Field(default_factory=list)
     # The dependent variable. Leave it empty and the Data Analyst proposes it from the business
     # intent; the model developer confirms it at the data gate.
     target: str = ""
@@ -119,6 +132,15 @@ class DataConfig(BaseModel):
     # the label's *timing*, consumed only by the hazard families (modeling/hazard.py).
     event_time_col: str | None = None
     horizon_periods: int | None = None  # outcome window in periods; None => max observed event time
+    # What data this kind of model is usually built on, in a template's words (ADR-0018). Shown
+    # to the developer when the data is given; never read by the engine.
+    guide: str = ""
+
+    @property
+    def given(self) -> bool:
+        """Whether the profile says where the data comes from. A run started from a template
+        has none until the developer gives it at gate_source."""
+        return bool(self.path or self.source is not None or self.sources)
 
     @model_validator(mode="after")
     def _sources_consistent(self) -> DataConfig:
@@ -127,10 +149,11 @@ class DataConfig(BaseModel):
             raise ValueError("data.sources: every source needs its own name")
         if self.sources and (self.source is not None or self.path):
             raise ValueError("give data.sources, or one data.source / data.path, not both")
-        if (self.base or self.join) and len(self.sources) < 2:
-            raise ValueError("data.base and data.join need two or more data.sources")
+        if (self.base or self.join or self.links) and len(self.sources) < 2:
+            raise ValueError("data.base, data.join and data.links need two or more data.sources")
         known = set(names)
-        for name in [self.base, *(t for j in self.join for t in (j.left, j.right))]:
+        for name in [self.base, *(t for j in [*self.join, *self.links]
+                                  for t in (j.left, j.right))]:
             if name and name not in known:
                 raise ValueError(f"data.join names an unknown source {name!r}; known: {sorted(known)}")
         return self
@@ -147,7 +170,7 @@ class DesignConfig(BaseModel):
 
     use_case: str = ""  # e.g. origination | surveillance | CECL/IFRS9 | IRB | stress-testing
     horizon: str = ""  # outcome window, e.g. "12-month PD", "lifetime"
-    default_definition: str = ""  # e.g. "90+ DPD or nonaccrual, per SR 11-7 documentation"
+    default_definition: str = ""  # e.g. "90+ DPD or nonaccrual, per SR 26-2 documentation"
     segment: str = ""  # e.g. "C&I middle-market", "CRE income-producing", "small business"
     interpretability: str = "required"  # required | preferred | flexible
     notes: str = ""  # free-form sponsor guidance (sign expectations, exclusions, priors)
@@ -359,14 +382,26 @@ class MigrationConfig(BaseModel):
     ead_column: str | None = None  # exposure-at-default column; None => equal-weighted
 
 
+# Regime ids that a later letter replaced, mapped to the one in force.
+SUPERSEDED_REGIMES = {"SR11-7": "SR26-2"}
+
+
 class ComplianceConfig(BaseModel):
-    regimes: list[str] = Field(default_factory=lambda: ["SR11-7", "NIST-AI-RMF"])
+    regimes: list[str] = Field(default_factory=lambda: ["SR26-2", "NIST-AI-RMF"])
     risk_tier: str = "medium"  # low | medium | high — drives validation intensity
     intended_use: str = ""
     out_of_scope_use: str = ""
     fair_lending: bool = False  # run ECOA/Reg B SCAN + disparate-impact checks
     disparate_impact_threshold: float = 0.8  # 4/5ths rule
     jurisdictions: list[str] = Field(default_factory=lambda: ["US"])  # US | EU
+
+    @field_validator("regimes")
+    @classmethod
+    def _current_guidance(cls, v: list[str]) -> list[str]:
+        """SR 26-2 (April 2026) supersedes SR 11-7: a profile or run that names the old letter
+        is read as the guidance in force (ADR-0019)."""
+        out = [SUPERSEDED_REGIMES.get(r, r) for r in v]
+        return list(dict.fromkeys(out))
 
 
 class ImpactConfig(BaseModel):
@@ -427,7 +462,8 @@ class AgentsConfig(BaseModel):
 
 
 class WorkflowConfig(BaseModel):
-    """Human gates and the automatic challenge loop (engine/graph.py)."""
+    """Human gates and the automatic challenge loop (engine/graph.py). ``gate_source`` is not
+    listed: it is always part of a run, and closes by itself when the profile gives the data."""
 
     gates: list[str] = Field(default_factory=lambda: [
         "gate_intent", "gate_data", "gate_design", "gate_candidates", "gate_champion",
@@ -455,6 +491,20 @@ class StagesConfig(BaseModel):
     halt_on_block: bool = True  # autonomous mode: stop the run when a gate BLOCKs
 
 
+class TemplateInfo(BaseModel):
+    """What a template is (ADR-0018): a profile with no data, a starting point for one kind of
+    model. Built in (``cognos/templates/``) or saved by a team from a finished run
+    (``<runs>/_templates/``). A run started from one keeps this section, so it says where it
+    started."""
+
+    id: str = ""  # the file name without .yaml
+    title: str = ""  # what a person picks, e.g. "PD — logistic scorecard"
+    origin: Literal["built-in", "team"] = "built-in"
+    saved_by: str = ""
+    saved_at: str = ""
+    from_run: str = ""  # the run it was saved from
+
+
 class CognosConfig(BaseModel):
     """The complete COGNOS project profile."""
 
@@ -463,7 +513,8 @@ class CognosConfig(BaseModel):
     version: str = "0.1.0"
     task: TaskType | None = None  # None => inferred from the confirmed target column
     mode: Mode = Mode.AUTONOMOUS
-    data: DataConfig
+    data: DataConfig = Field(default_factory=DataConfig)  # empty in a template (gate_source)
+    template: TemplateInfo | None = None
     engagement: EngagementConfig = Field(default_factory=EngagementConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     plugins: list[str] = Field(default_factory=list)  # modules exposing register(registry)
@@ -513,6 +564,16 @@ class CognosConfig(BaseModel):
                 Direction.MAXIMIZE if self.metric.name in maximize else Direction.MINIMIZE
             )
         return self
+
+    def with_data(self, data: dict[str, Any] | None) -> CognosConfig:
+        """The profile with the data given at gate_source (``overrides.data``) in its data
+        section: where the data comes from is replaced, everything else is kept."""
+        if not data:
+            return self
+        raw = self.model_dump(mode="json")
+        raw["data"] = {**raw["data"], "path": None, "source": None, "sources": [], "base": None,
+                       "join": [], "links": [], **data}
+        return CognosConfig.model_validate(raw)
 
     def with_target(self, target: str | None, task: str | None) -> CognosConfig:
         """The config once the dependent variable is decided: target and task filled where the

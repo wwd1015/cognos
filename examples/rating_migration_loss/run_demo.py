@@ -23,7 +23,7 @@ decision for auditable reasons:
      on the training partition only (NR-adjusted, PAVA rank-ordered), the rating-implied PD feeds
      the champion as the hybrid feature, the pure-migration PD is scored on the sealed out-of-time
      holdout as a labelled challenger benchmark, and the by-rating expected-loss forecast is
-     reported under the pooled and the recession-conditioned matrices — then backtest (SR 11-7
+     reported under the pooled and the recession-conditioned matrices — then backtest (SR 26-2
      outcomes analysis + Vasicek portfolio + macro stress), the independent validate gate, the
      non-gating compliance report, the white paper, and the docs<->code review gate.
 
@@ -84,7 +84,7 @@ def _config(csv: str, *, migration: bool = True, stages: list[str] | None = None
         "design": DESIGN,
         "metric": {"name": "roc_auc"},
         "search": {"max_candidates": max_candidates, "cv_folds": 5, "holdout_fraction": 0.2},
-        "compliance": {"regimes": ["SR11-7", "NIST-AI-RMF"], "risk_tier": "high",
+        "compliance": {"regimes": ["SR26-2", "NIST-AI-RMF"], "risk_tier": "high",
                        "jurisdictions": ["US"]},
     }
     if migration:
@@ -206,7 +206,7 @@ def step3_full_pipeline(workdir: Path, csv: str):
     oa = bt.get("outcomes_analysis") or {}
     pa = bt.get("portfolio_analysis") or {}
     st = bt.get("stress_testing") or {}
-    print("\n  --- Backtest: SR 11-7 outcomes analysis + portfolio + macro stress ---")
+    print("\n  --- Backtest: SR 26-2 outcomes analysis + portfolio + macro stress ---")
     print(f"    OOT outcomes: Gini={oa.get('gini'):.3f} KS={oa.get('ks'):.3f} "
           f"PSI={oa.get('psi'):.3f} ({oa.get('psi_label')})")
     if pa:

@@ -4,7 +4,7 @@
 Shows the pipeline working across three scenarios:
 
   1. AUTONOMOUS commercial credit model — the full 8-stage pipeline runs unattended and produces
-     SR 11-7 outcomes analysis (Gini/KS, calibration, PSI) on an out-of-time sample, a non-gating
+     SR 26-2 outcomes analysis (Gini/KS, calibration, PSI) on an out-of-time sample, a non-gating
      model-risk readiness report, and a white paper (OKF bundle).
   2. The VALIDATION GATE firing — a model that uses a leaking feature is BLOCKed by the independent
      validation gate before it can be documented (confirmed leakage is the hard BLOCK).
@@ -60,7 +60,7 @@ def demo_autonomous_commercial(workdir: Path) -> None:
         "data": {"path": csv, "target": "default", "datetime_col": "vintage"},
         "metric": {"name": "roc_auc"},
         "search": {"max_candidates": 12, "cv_folds": 5, "holdout_fraction": 0.2},
-        "compliance": {"regimes": ["SR11-7", "NIST-AI-RMF"], "risk_tier": "high",
+        "compliance": {"regimes": ["SR26-2", "NIST-AI-RMF"], "risk_tier": "high",
                        "jurisdictions": ["US"]},
     })
     orch = Orchestrator(cfg, runs_root=str(workdir / "runs"))

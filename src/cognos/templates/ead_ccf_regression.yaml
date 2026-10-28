@@ -1,0 +1,47 @@
+# A built-in template (ADR-0018): exposure at default for revolving commercial facilities,
+# modeled as the credit conversion factor on the undrawn amount.
+
+name: ead_ccf_regression
+description: "Revolving commercial EAD through the credit conversion factor (CCF)."
+template:
+  title: "EAD — credit conversion factor"
+task: regression
+mode: interactive
+
+data:
+  # The data catalog's tables this kind of model starts with (ADR-0020); the first is the
+  # proposed base table. Preselected when the data is given; any can be unchecked.
+  catalog: [revolver_defaults, macro_quarterly]
+  guide: |
+    One row per defaulted revolving facility, observed 12 months before default, with:
+    - the realized CCF: (drawn at default − drawn at observation) / undrawn at observation;
+    - the observation date;
+    - utilization, limit, undrawn amount, facility age, covenants, obligor rating and size at
+      the observation date. Leave out anything from after the observation date.
+
+metric:
+  name: rmse
+
+design:
+  use_case: EAD for capital and CECL on revolving facilities
+  horizon: 12 months before default to default
+  default_definition: 90+ DPD or nonaccrual
+  interpretability: required
+
+evaluation:
+  test: out_of_time
+
+factors:
+  expected_signs:
+    utilization_rate: "-"
+  max_p_value: 0.10
+
+selection:
+  methods: [stepwise]
+  max_factors: 5
+
+compliance:
+  regimes: [SR26-2, NIST-AI-RMF]
+  risk_tier: high
+  fair_lending: false
+  jurisdictions: [US]

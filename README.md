@@ -1,11 +1,19 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/cognos-logo-dark.svg">
+    <img src="docs/brand/cognos-logo.svg" alt="COGNOS" width="360">
+  </picture>
+</p>
+
 # COGNOS
 
 **A multi-agent workbench for regulated model development: agents recommend, you decide, the
 engine disposes.**
 
 COGNOS takes a business intent and a dataset through the model-development lifecycle for
-**commercial** modeling (e.g. commercial credit risk, validated under SR 11-7): intake of the
-sponsor's intent, data exploration, design, model search and statistical testing, outcomes
+**commercial** modeling (e.g. commercial credit risk, validated under SR 26-2, the interagency
+model risk guidance that replaced SR 11-7 in April 2026): intake of the sponsor's intent, data
+exploration, design, model search and statistical testing, outcomes
 analysis, independent validation, a model-risk readiness report, the white paper, and a docs↔code
 consistency check.
 
@@ -66,7 +74,7 @@ gates, a challenger loop, and an audit trail — on top of COGNOS's econometric 
 | `model` | the plan's samples; the **factor library**; every factor fitted alone and the library cut by the screen; multi-factor models by forward / backward / stepwise / best subset / grid; one ranked ledger; every pool member fitted, tested and saved | **Modeler** — the **pool** of candidates that goes on (no champion yet), economic sign checks; opt-in guided experiments | accept the pool, or add and remove members |
 | `backtest` | every pool member scored on the test sample: forecast error and bias or Gini/KS, calibration, PSI; every scenario for every member; then IMPACT scoring, portfolio sim and stress for the champion | **Outcomes Analyst** — the **champion**, on how the candidates forecast, and its discrimination, calibration, stability | accept the champion, or choose another pool member |
 | `validate` ⛔ | the effective-challenge rubric; the sealed holdout scored once, for the champion; **BLOCKs on confirmed leakage** | **Independent Validator** — findings routed back to the stage that must change (never sees the modeler's reasoning) | accept the risk / send back / reject |
-| `comply` | SR 11-7 / NIST AI RMF readiness report (non-gating) | **Model-Risk Analyst** — readiness and priority human actions | — |
+| `comply` | SR 26-2 / NIST AI RMF readiness report (non-gating) | **Model-Risk Analyst** — readiness and priority human actions | — |
 | `document` | OKF bundle, Model Card, EU Annex IV, decision log | **Technical Writer** — narrative with `{{fact:…}}` placeholders the engine renders | — |
 | `review` ⛔ | AST-verified docs↔code anchors; **BLOCKs on stale references** | — | sign off / reject |
 
@@ -98,6 +106,21 @@ network or OS). That code is a model-development artifact: saved with its hash u
 `stages/explore/analyses/`, shown at the data gate (the decision records which scripts you
 accepted), re-run by validation to confirm it reproduces, printed in the white paper and included
 in the export. `analysis.allow_code: false` turns code off; tools and plugins still work.
+
+### The data catalog
+
+The tables a team keeps live in one catalog in the shared runs folder
+(`<runs>/_catalog/catalog.yaml`): for each table, what it is and what it is for, one row's
+grain, its keys, date and outcome columns, owner, source (a file, a Snowflake table or a query)
+and what every column means, plus the links between tables as their owners document them. When
+the intent is confirmed the Explore page lists them with their size and date range, the
+template's tables checked; you uncheck or add tables, and add data the catalog does not have
+(files, Snowflake tables, queries). The documented links are offered and measured with the
+others; the Data Analyst proposes the join and reads the column meanings, and you confirm the
+join at the data gate. COGNOS ships a default catalog with synthetic commercial-credit tables, so
+every built-in template runs out of the box. It is in force until your runs folder has its own
+`_catalog/catalog.yaml`, which then replaces it entirely; `cognos catalog --init` starts that
+file from the default ([ADR-0020](docs/adr/0020-the-data-catalog.md)).
 
 ### Several sources
 
@@ -183,6 +206,17 @@ cognos demo --task commercial --interactive  # review each gate in the terminal 
 cognos demo --task cni --provider claude_cli # live Claude agents, autonomous
 ```
 
+From a template (the run asks for the data once the intent is confirmed):
+
+```bash
+cognos templates                             # built-in and team templates
+cognos run --template built-in:pd_logistic_scorecard --name cni_pd --intent intent.md --interactive
+cognos catalog                               # the team's tables: what each holds, how they join
+cognos data --run <run-id> --catalog         # the template's catalog tables (or name them)
+cognos data --run <run-id> --catalog obligor_quarters --file covenants.csv   # plus data to add
+cognos save-template --run <run-id> --title "C&I PD — middle market"   # once the run has finished
+```
+
 Your own data:
 
 ```bash
@@ -243,9 +277,10 @@ update = service.create_run(cfg, engagement={          # a model update of that 
 
 `cognos ui` opens a Dash + Mantine app built for model developers: a runs list (each model's
 main run with its trial runs under it) with a new-run drawer
-(new model or model update, demo presets or `projects/*.yaml`, upload of the intent document and
-the existing model's artifacts, a button to download the template, interactive or autonomous, agent
-backend), and a run workspace with the stage rail, each stage's engine evidence (the engagement
+(new model or model update, a model name, a built-in or team template or none, upload of the
+intent document and the existing model's artifacts, a button to download the intent template,
+interactive or autonomous, agent backend; the data is given on the Explore page once the intent
+is confirmed), and a run workspace with the stage rail, each stage's engine evidence (the engagement
 brief and the interview form, profile, framework assessment, slate, experiment
 ledger, the single-factor screen, each selection path, the candidate pool side by side, forecast and
 calibration charts, rubric, findings, the rendered white
@@ -331,7 +366,8 @@ src/cognos/
   cli.py  config.py  context.py  artifacts.py  orchestrator.py (compat)  okf.py  synth.py
   integrations/  impact_adapter, autoforge_loop
   runtime/       deployment scorer (IMPACT derived-field entry point)
-projects/  examples/  evals/  tests/  docs/adr/ (0001–0017)  docs/templates/  CONTEXT.md (glossary)
+src/cognos/templates/ (built-in model templates)  examples/  evals/  tests/  docs/adr/ (0001–0020)
+docs/templates/ (intent document)  CONTEXT.md (glossary)
 ```
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`FEATURES.md`](FEATURES.md), [`CONTEXT.md`](CONTEXT.md),

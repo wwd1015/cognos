@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="COGNOS">
+  <title>COGNOS</title>
+  <!-- The mark: the wordmark's two O's. Dashed, the agents suggest; solid, a person decides. -->
+  <circle cx="30" cy="50" r="19" fill="none" stroke="#16140f" stroke-width="8" stroke-dasharray="8.5 5.4"/>
+  <circle cx="71" cy="50" r="23" fill="#7d2230"/>
+</svg>

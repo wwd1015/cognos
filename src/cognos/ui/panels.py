@@ -225,16 +225,24 @@ def _send_back(gate: str, choose_target: bool) -> Any:
             dmc.Group([dmc.Button("Send back", id=_act(gate, "send_back"), color="oxblood",
                                   variant="light", leftSection=icon("tabler:arrow-back-up"))]),
         ], gap="xs")),
-    ], value="send")], variant="contained", mt="sm")
+    ], value="send")], value=None, variant="contained", mt="sm")
 
 
 def gate_block(gate: str, state: RunState, res: StageResult | None, body: list | None = None,
                primary: list | None = None, *, send_back: bool = True,
-               seat: str = "developer") -> Any:
-    """The human decision for a stage: form when awaiting, record when decided.
+               seat: str = "developer", proposal: str | None = None,
+               evidence: list[tuple[str, str]] | None = None, fold: str | None = None,
+               alternative: list | None = None) -> Any:
+    """The human decision for a stage: a card when awaiting, a stamp when decided.
 
     ``seat`` is the role the workbench is acting as. A page that belongs to another seat
     stays readable and its controls are absent; the engine refuses the action too.
+
+    A choice among things the agent already ranked reads as one card: ``proposal`` (what
+    accepting means, in a line), ``evidence`` (engine figures as chips), the reason and the
+    buttons. With ``fold``, ``body`` and ``alternative`` (controls for choosing differently,
+    shown only to the owning seat) open behind a button of that name instead of filling the
+    card. A gate whose decision is a set of settings passes no ``fold`` and keeps its form.
     """
     status = state.status_of(gate)
     last = state.last_decision(gate)
@@ -266,31 +274,214 @@ def gate_block(gate: str, state: RunState, res: StageResult | None, body: list |
             who = "a person"
         else:
             who = "express preparation"
-        rec = [dmc.Text([dmc.Text(last.action.replace("_", " "), fw=650, span=True),
-                         f" by {who}", f" — {last.reason}" if last and last.reason else ""],
-                        size="sm")] if last else [empty("Decided.")]
+        rec = [html.Div([
+            html.Span(" · ".join(x for x in (
+                last.action.replace("_", " "), last.by or who,
+                last.at[:16].replace("T", " ") + " UTC") if x),
+                      # a person's decision carries the seal; express preparation is not a signature
+                      className="gate-stamp" + (" sealed" if last.actor == "human" else "")),
+            dmc.Text([dmc.Text(last.action.replace("_", " "), fw=650, span=True), f" by {who}",
+                      f" — {last.reason}" if last.reason else ""], size="sm"),
+        ], className="gate-done")] if last else [empty("Decided.")]
         revise = (dmc.Group([dmc.Button("Revise decision", id={"type": "reopen", "gate": gate},
                                         variant="subtle", size="xs",
                                         leftSection=icon("tabler:edit"))], mt="xs")
                   if mine else dmc.Text(f"The {seat_label(owner)} can revise this.",
                                         size="xs", c="dimmed", mt="xs"))
         return dmc.Card([header, *rec, revise], className="cognos-gate")
+    lead = [html.Div(proposal, className="gate-proposal") if proposal else None,
+            html.Div([html.Span([f"{k} ", html.B(v)]) for k, v in evidence],
+                     className="gate-evidence") if evidence else None]
+    lead = [x for x in lead if x is not None]
+
+    def folded(extra: list) -> list:
+        if not fold:
+            return [*(body or []), *extra]
+        return [html.Details([html.Summary(fold, className="gate-fold"), *(body or []), *extra],
+                             className="gate-more")]
+
     if not mine:
         return dmc.Card([
-            header, *(body or []),
+            header, *lead, *folded([]),
             dmc.Alert(f"This decision belongs to the {seat_label(owner)}. "
                       "Switch seat to act. The evidence above stays open to read.",
                       color="gray", variant="light", mt="sm",
                       icon=icon("tabler:lock")),
         ], className="cognos-gate cognos-gate-open")
     # awaiting, and this seat owns it
-    parts = [header, *(body or []),
-             dmc.Textarea(id=_field(gate, "reason"), label="Reason (recorded in the decision log)",
+    parts = [header, *lead, *folded([dmc.Group(alternative, mt="sm", gap="sm")]
+                                    if alternative else []),
+             dmc.Textarea(id=_field(gate, "reason"), label="Why, in a line (kept in the decision log)",
                           autosize=True, minRows=1, mt="sm"),
              dmc.Group(primary or [], mt="sm", gap="sm")]
     if send_back:
         parts.append(_send_back(gate, choose_target=gate == "gate_validation"))
     return dmc.Card(parts, className="cognos-gate cognos-gate-open")
+
+
+# --- the data (gate_source, ADR-0018; the data catalog, ADR-0020) ---------------------------
+def _src_upload(field: str, hint: str, multiple: bool) -> Any:
+    """A drop zone; the callback saves what is dropped and keeps the paths in a hidden field."""
+    return html.Div([
+        dcc.Upload(id={"type": "src-upload", "field": field}, multiple=multiple,
+                   className="cognos-upload",
+                   children=dmc.Group([icon("tabler:upload", 16), dmc.Text(hint, size="xs")],
+                                      gap="xs", justify="center")),
+        html.Div(id={"type": "src-names", "field": field}),
+        dmc.TextInput(id=_field("gate_source", field), value="", style={"display": "none"}),
+    ])
+
+
+def _catalog_table(t: dict) -> Any:
+    m = t.get("summary") or {}
+    cols = [[dmc.Text(c, ff="monospace", size="xs"), dmc.Text(text, size="xs")]
+            for c, text in t.get("columns", {}).items()]
+    cols += [[dmc.Text(c, ff="monospace", size="xs"),
+              dmc.Text("not described in the catalog", size="xs", c="dimmed")]
+             for c in m.get("undescribed", [])]
+    owner = " · ".join(x for x in (t.get("owner"), t.get("refresh") and
+                                   f"refreshed {t['refresh']}", t.get("location")) if x)
+    return dmc.Stack([
+        dmc.Checkbox(value=t["id"], label=dmc.Group([
+            dmc.Text(t.get("title") or t["id"], fw=600, size="sm"),
+            dmc.Text(t["id"], ff="monospace", size="xs", c="dimmed"),
+            *(dmc.Badge(f"outcome: {o}", variant="light", color="gray", size="xs", tt="none")
+              for o in t.get("outcomes", []))], gap="xs")),
+        html.Div(dmc.Stack([
+            dmc.Text(t.get("description", ""), size="xs"),
+            dmc.Text(service.catalog_line(t), size="xs", c="dimmed"),
+            dmc.Text(owner, size="xs", c="dimmed") if owner else None,
+            dmc.Accordion([dmc.AccordionItem([
+                dmc.AccordionControl(dmc.Text(f"What the columns mean ({len(cols)})", size="xs")),
+                dmc.AccordionPanel(table(["Column", "Meaning"], cols)),
+            ], value="cols")], variant="default", chevronPosition="left") if cols else None,
+        ], gap=2), style={"paddingLeft": 30}),
+    ], gap=4, className="cognos-catalog-table")
+
+
+def catalog_origin(cat: dict) -> str:
+    """Which catalog is in force: the default shipped with COGNOS, or the runs folder's own."""
+    if cat.get("origin") == "default":
+        return ("The default catalog shipped with COGNOS, with synthetic data. To use your "
+                f"team's tables, write {cat.get('team_file')} (cognos catalog --init starts it "
+                "from this one).")
+    return f"Your team's catalog: {cat.get('file')}"
+
+
+def source_form(info: dict | None = None) -> list:
+    """Where the data comes from: tables from the team's data catalog, with what each holds,
+    and any data to add (files, Snowflake tables, read-only queries). The engine measures how
+    they connect and the Data Analyst proposes the join at explore."""
+    info = info or {}
+    f = "gate_source"
+    cat = info.get("catalog")
+    if cat and cat.get("tables"):
+        links = cat.get("links") or []
+        catalog_part = [
+            dmc.Text(cat.get("title") or "The data catalog", fw=600, size="sm"),
+            dmc.Text(catalog_origin(cat), size="xs", c="dimmed"),
+            dmc.Text("Checked: what this kind of model is usually built on. The first one checked "
+                     "is proposed as the base table (one row per thing the model scores).",
+                     size="xs", c="dimmed"),
+            dmc.CheckboxGroup(id=_field(f, "catalog"), value=info.get("preselected") or [],
+                              children=dmc.Stack([_catalog_table(t) for t in cat["tables"]],
+                                                 gap="sm", mt="xs")),
+            dmc.Accordion([dmc.AccordionItem([
+                dmc.AccordionControl(dmc.Text(f"How the tables join, as documented "
+                                              f"({len(links)})", size="xs"),
+                                     icon=icon("tabler:link")),
+                dmc.AccordionPanel(table(["Table", "Joins", "On", "Note"], [
+                    [dmc.Text(lk["left"], ff="monospace", size="xs"),
+                     dmc.Text(lk["right"], ff="monospace", size="xs"),
+                     dmc.Text(", ".join(f"{a} = {b}" for a, b in zip(
+                         lk["left_on"], lk["right_on"], strict=False)), ff="monospace",
+                         size="xs"),
+                     dmc.Text(lk.get("note") or "", size="xs")] for lk in links])),
+            ], value="links")], variant="default") if links else None,
+        ]
+    else:
+        catalog_part = [dmc.Alert(
+            "The data catalog cannot be read" + (f": {info['catalog_error']}"
+                                                 if info.get("catalog_error") else ".")
+            + " Add the data below.", color="yellow", variant="light",
+            icon=icon("tabler:alert-triangle"))]
+    return [
+        *catalog_part,
+        dmc.Text("Add data (optional)", fw=600, size="sm", mt="md"),
+        dmc.Text("Data the catalog does not have. The Data Analyst measures how it connects to "
+                 "the tables above and proposes the join; you confirm it at the data gate.",
+                 size="xs", c="dimmed"),
+        _src_upload("add_files", "Drop files, or click to choose (.csv, .xlsx, .parquet)",
+                    multiple=True),
+        dmc.Textarea(id=_field(f, "add_sql"), label="Snowflake tables or read-only queries",
+                     autosize=True, minRows=2,
+                     placeholder="one per line:\ncovenants = RISK.CREDIT.COVENANTS\n"
+                                 "watchlist = SELECT obligor_id, as_of_date, on_watch FROM ..."),
+        dmc.Text("Snowflake connects with the SNOWFLAKE_ACCOUNT / SNOWFLAKE_USER and password or "
+                 "key in this server's environment. Nothing secret is stored in the run.",
+                 size="xs", c="dimmed"),
+        dmc.Group([
+            dmc.TextInput(id=_field(f, "target"), label="Dependent variable (optional)",
+                          description="Left empty, the Data Analyst proposes it", w=260),
+            dmc.TextInput(id=_field(f, "datetime_col"), label="Date column (optional)",
+                          description="Left empty: the base table's, from the catalog", w=260),
+        ], align="flex-start", mt="xs"),
+    ]
+
+
+def guide_text(guide: str) -> Any:
+    """A template's data guide as text: wrapped lines joined, ``- `` lines as a list."""
+    blocks: list[tuple[str, list[str]]] = []  # ("p" | "li", words)
+    for line in guide.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("- "):
+            blocks.append(("li", [line[2:]]))
+        elif blocks and blocks[-1][0] == "li" and not blocks[-1][1][-1].endswith((";", ".")):
+            blocks[-1][1].append(line)  # a wrapped list item
+        elif blocks and blocks[-1][0] == "p" and not blocks[-1][1][-1].endswith((":", ".")):
+            blocks[-1][1].append(line)
+        else:
+            blocks.append(("p", [line]))
+    out: list[Any] = []
+    for kind, words in blocks:
+        text = " ".join(words)
+        if kind == "li":
+            if not out or not isinstance(out[-1], dmc.List):
+                out.append(dmc.List([], size="xs", spacing=2, withPadding=True))
+            out[-1].children.append(dmc.ListItem(text))
+        else:
+            out.append(dmc.Text(text, size="xs"))
+    return dmc.Stack(out, gap=4)
+
+
+def source_panel(state: RunState, seat: str = "developer",
+                 info: dict | None = None) -> Any:
+    """Provide the data: the form while the run waits for it, what was given once it has.
+    ``info`` is ``service.data_info(..., with_catalog=True)``: the template's note on the data,
+    the data in force, the data catalog and the tables to start with checked."""
+    info = info or {}
+    status = state.status_of("gate_source")
+    if status in ("pending", "skipped"):
+        return None
+    guide = (dmc.Alert(guide_text(info["guide"]),
+                       title="What this kind of model is usually built on", color="gray",
+                       variant="light", icon=icon("tabler:database"))
+             if info.get("guide") else None)
+    if status == "done" and state.last_decision("gate_source") is None:
+        return dmc.Card([dmc.Group([
+            dmc.Text(LABELS["gate_source"], fw=650),
+            dmc.Text(f"The data came with the run: {info.get('given') or 'see the profile'}.",
+                     size="sm", c="dimmed")], gap="sm")], className="cognos-gate")
+    body = [guide, *source_form(info)] if status == "awaiting" else []
+    block = gate_block("gate_source", state, None, seat=seat, send_back=False, body=body,
+                       primary=[dmc.Button("Use this data", id=_act("gate_source", "accept"),
+                                           leftSection=icon("tabler:database-import"))])
+    if status == "done" and info.get("given"):
+        return dmc.Stack([dmc.Text(["Data in use: ", dmc.Text(info["given"], span=True, fw=600)],
+                                   size="sm"), block], gap=4)
+    return block
 
 
 # --- intake -------------------------------------------------------------------------------
@@ -506,6 +697,88 @@ def _link_label(lk: dict) -> str:
             f"{max(lk['a_in_b'], lk['b_in_a']):.0%} matched)")
 
 
+_RELATION = {"one-to-one": "1 → 1", "one-to-many": "1 → many", "many-to-one": "many → 1",
+             "many-to-many": "many ↔ many"}
+
+
+def _link_chip_text(lk: dict) -> str:
+    on = ", ".join(a if a == b else f"{a} = {b}"
+                   for a, b in zip(lk["a_on"], lk["b_on"], strict=True))
+    return (f"{on} · {max(lk['a_in_b'], lk['b_in_a']):.0%}"
+            f" · {_RELATION.get(lk['relation'], lk['relation'])}")
+
+
+def join_canvas(linked: dict, target: str | None, chosen: list[str], *,
+                disabled: bool = False) -> Any:
+    """The join as a canvas: the tables where they are, the links the engine measured drawn
+    between them. A chip on a link adds it to or removes it from the join (it writes the
+    `join_links` field); a tile's button makes it the base table (`join_base`). The drawing and
+    the dragging are `assets/join_canvas.js`; the colours of a chip come from `chip_class`."""
+    plan = linked["plan"]
+    proposed = {s["link"] for s in plan["steps"]}
+    keys: dict[str, set[str]] = {}
+    for lk in linked["links"]:
+        keys.setdefault(lk["a"], set()).update(lk["a_on"])
+        keys.setdefault(lk["b"], set()).update(lk["b_on"])
+    others = [t for t in linked["tables"] if t["name"] != plan["base"]]
+    base = next(t for t in linked["tables"] if t["name"] == plan["base"])
+    # the base table on top, the others in rows of three under it: each link gets its own lane
+    cols = min(3, len(others)) or 1
+    width = 16 + cols * 224
+    place = {base["name"]: ((width - 214) // 2, 16)}
+    for i, t in enumerate(others):
+        row, col = divmod(i, 3)
+        place[t["name"]] = (12 + col * 224, 380 + row * 230)
+    height = 380 + ((len(others) + 2) // 3 or 1) * 230
+    tiles = []
+    for t in [base, *others]:
+        mine = keys.get(t["name"], set()) | set(t.get("unique_columns") or [])
+        cols = sorted(t["columns"], key=lambda c: (c not in mine, c != target))
+        shown = [html.Li(c, className="jc-key" if c in mine else
+                         "jc-target" if c == target else None) for c in cols[:5]]
+        if len(cols) > 5:
+            shown.append(html.Li(f"+ {len(cols) - 5} more", className="jc-more"))
+        x, y = place[t["name"]]
+        tiles.append(html.Div([
+            html.Header([html.B(t["name"]), html.Span(f"{fmt(t['n_rows'])} rows")]),
+            html.Ul(shown),
+            html.Button("base table" if t["name"] == plan["base"] else "Make base",
+                        id={"type": "jc-base", "table": t["name"]}, className="jc-make-base",
+                        disabled=disabled, n_clicks=0),
+        ], id={"type": "jc-tile", "table": t["name"]},
+            className="jc-tile" + (" base" if t["name"] == plan["base"] else ""),
+            style={"left": f"{x}px", "top": f"{y}px"}, title=t.get("description") or None,
+            **{"data-table": t["name"]}))
+    chips = [html.Button(_link_chip_text(lk),
+                         id={"type": "jc-link", "link": lk["id"],
+                             "kind": "proposed" if lk["id"] in proposed else "measured"},
+                         className=chip_class(lk["id"] in chosen, lk["id"] in proposed),
+                         disabled=disabled, n_clicks=0,
+                         title=_link_label(lk) + (" · suggested by the Data Analyst"
+                                                  if lk["id"] in proposed else ""),
+                         **{"data-a": lk["a"], "data-b": lk["b"], "data-link": lk["id"]})
+             for lk in linked["links"]]
+    return html.Div([
+        html.Div(html.Div([html.Div(className="jc-svg-host"), *tiles, *chips],
+                          className="jc-canvas",
+                          style={"height": f"{height}px", "minWidth": f"{width}px"}),
+                 className="jc-wrap"),
+        html.Div([html.Span([html.I(className="m"), "Measured by the engine"]),
+                  html.Span([html.I(className="p"), "Suggested by the Data Analyst"]),
+                  html.Span([html.I(className="c"), "In your join"]),
+                  html.Span("Drag a table to arrange. Click a link to add or remove it.")],
+                 className="jc-legend"),
+    ], className="jc")
+
+
+def chip_class(chosen: bool, proposed: bool) -> str:
+    """How a link reads on the canvas: in the join (and whether the agent suggested it), or
+    only measured, or suggested and left out."""
+    if chosen:
+        return "jc-chip chosen" + (" suggested" if proposed else "")
+    return "jc-chip " + ("proposed" if proposed else "measured")
+
+
 def linking_section(linked: dict | None) -> Any:
     """Several sources: what they are, the join as the engine ran it, and the links it measured
     but did not use."""
@@ -618,19 +891,24 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                  for c in p.get("feature_candidates", [])]
     linked = p.get("linking") or None
     join_fixed = bool(linked) and linked["plan"]["source"] == "profile"
+    chosen_links = [s["link"] for s in linked["plan"]["steps"]] if linked else []
     join_fields = [] if not linked else [
-        dmc.Select(id=_field("gate_data", "join_base"), label="Base table",
-                   data=[t["name"] for t in linked["tables"]], value=linked["plan"]["base"],
-                   allowDeselect=False, disabled=join_fixed,
-                   description="Its rows are the modelling observations."),
-        dmc.MultiSelect(id=_field("gate_data", "join_links"), label="Links to join on",
-                        data=[{"value": lk["id"], "label": _link_label(lk)}
-                              for lk in linked["links"]],
-                        value=[s["link"] for s in linked["plan"]["steps"]], disabled=join_fixed,
-                        clearable=True,
-                        description="Stated in the project profile." if join_fixed else
-                        "Every link the engine measured. Changing the join rebuilds the dataset "
-                        "and re-runs the exploration."),
+        dmc.Text("The join", fw=600, size="sm"),
+        dmc.Text("Stated in the project profile." if join_fixed else
+                 "The tables, the base table framed in ink, and every link the engine measured "
+                 "with how well it matches. Changing the join rebuilds the dataset and re-runs "
+                 "the exploration.", size="xs", c="dimmed"),
+        join_canvas(linked, p.get("target"), chosen_links, disabled=join_fixed),
+        # the canvas writes these two fields; they stay in the form so the decision reads them
+        html.Div([
+            dmc.Select(id=_field("gate_data", "join_base"), label="Base table",
+                       data=[t["name"] for t in linked["tables"]], value=linked["plan"]["base"],
+                       allowDeselect=False, disabled=join_fixed),
+            dmc.MultiSelect(id=_field("gate_data", "join_links"), label="Links to join on",
+                            data=[{"value": lk["id"], "label": _link_label(lk)}
+                                  for lk in linked["links"]],
+                            value=chosen_links, disabled=join_fixed, clearable=True),
+        ], style={"display": "none"}),
         dmc.Select(id=_field("gate_data", "join_many"), label="When a key matches several rows",
                    data=[{"value": "aggregate", "label": "Aggregate them (numbers averaged)"},
                          {"value": "first", "label": "Keep the first row"}],
@@ -1177,6 +1455,27 @@ def _forecast_spec(run_id: str, p: dict) -> dict | None:
             "y_title": "actual and forecast"}
 
 
+def _champion_proposal(p: dict, cands: list, metric: str, sample: str) -> str | None:
+    champ = next((c for c in cands if c["id"] == p.get("champion_id")), None)
+    if not champ:
+        return None
+    return (f"{champ.get('name') or champ['id']} ({champ['label']}): the "
+            f"{_words(p.get('champion_source', 'engine'))}'s choice, compared with "
+            f"{len(cands) - 1} other candidate(s) on the {sample} sample.")
+
+
+def _champion_evidence(p: dict, cands: list, metric: str) -> list[tuple[str, str]]:
+    """The champion's figures as the engine recorded them, for the decision card."""
+    champ = next((c for c in cands if c["id"] == p.get("champion_id")), None)
+    if not champ:
+        return []
+    m = (champ.get("outcomes") or {}) | (champ.get("metrics") or {})
+    out = [(k.replace("_", " "), fmt(m.get(k), 4)) for k in dict.fromkeys(
+        [metric, "gini", "ks", "psi", "rmse"]) if k and m.get(k) is not None][:4]
+    out.append(("flags", fmt(len(champ.get("flags") or []))))
+    return out
+
+
 def backtest_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
     oa = p.get("outcomes_analysis") or {}
@@ -1221,9 +1520,12 @@ def backtest_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
     ], primary=[
         dmc.Button("Accept the champion", id=_act("gate_champion", "accept"),
                    leftSection=icon("tabler:check")),
+    ], alternative=[
         dmc.Button("Choose the selected candidate", id=_act("gate_champion", "override"),
                    variant="light", color="orange", leftSection=icon("tabler:switch-horizontal")),
-    ])
+    ], fold="Choose another candidate",
+        proposal=_champion_proposal(p, cands, metric, sample),
+        evidence=_champion_evidence(p, cands, metric))
     head = [("Champion", str(p.get("champion_name") or champion or "—"),
              f"{champion} · chosen by the {p.get('champion_source', 'engine')}"),
             ("Candidates compared", fmt(len(cands)), f"on the {sample} sample")]
@@ -1301,7 +1603,14 @@ def validate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
     ], gap="xs") if v else None
     loops = state.loops.get("validator", 0)
     routed = p.get("routed_findings") or []
-    gate = gate_block("gate_validation", state, res, seat=seat, primary=[
+    gate = gate_block("gate_validation", state, res, seat=seat,
+                      proposal=(f"Verdict {verdict}: the validator recommends "
+                                f"{str(v.get('recommendation', '—')).replace('_', ' ')}."
+                                if v else f"Verdict {verdict}."),
+                      evidence=[("rubric", fmt(p.get("overall_score"), 2)),
+                                ("blockers", fmt(len(p.get("blockers", [])))),
+                                ("findings", fmt(len(res.findings))),
+                                ("challenge loops", f"{loops}")], primary=[
         dmc.Button("Accept (record the risk)", id=_act("gate_validation", "accept"),
                    leftSection=icon("tabler:check"), disabled=verdict == "BLOCK"),
         dmc.Button("Reject the model", id=_act("gate_validation", "reject"), color="red",
@@ -1350,7 +1659,7 @@ def trials_section(tried: dict | None) -> Any:
 def comply_panel(res: StageResult, state: RunState, scheme: str, _seat: str = "developer") -> list:
     p = res.payload or {}
     r = p.get("readiness") or {}
-    sr = p.get("sr11_7") or {}
+    sr = p.get("sr26_2") or p.get("sr11_7") or {}  # sr11_7: recorded before SR 26-2
     nist = p.get("nist_ai_rmf") or {}
     status_color = {"PASS": "green", "WARN": "yellow", "FAIL": "red"}
     return [
@@ -1359,7 +1668,7 @@ def comply_panel(res: StageResult, state: RunState, scheme: str, _seat: str = "d
         recommendation_card(_rec(res), extra=dmc.List([dmc.ListItem(a["statement"])
                                                        for a in r.get("priority_actions", [])], size="sm")
                             if r.get("priority_actions") else None),
-        section("SR 11-7 evidence", table(["Element", "Status", "Evidence"], [
+        section("SR 26-2 evidence", table(["Element", "Status", "Evidence"], [
             [k.replace("_", " "), dmc.Badge(e["status"], color=status_color.get(e["status"], "gray"),
                                             variant="light", size="sm"),
              dmc.Text(e["evidence"], size="xs")] for k, e in sr.items()])),
@@ -1396,7 +1705,11 @@ def document_panel(res: StageResult, state: RunState, scheme: str, _seat: str = 
 
 def review_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
-    gate = gate_block("gate_signoff", state, res, seat=seat, primary=[
+    gate = gate_block("gate_signoff", state, res, seat=seat,
+                      proposal=f"Review verdict {res.verdict.value}. Approving seals the package "
+                               "of recorded facts; it is not deployment.",
+                      evidence=[("code anchors", fmt(len(p.get("code_links", [])))),
+                                ("findings", fmt(len(res.findings)))], primary=[
         dmc.Button("Approve & sign off", id=_act("gate_signoff", "approve"), color="green",
                    leftSection=icon("tabler:signature"), disabled=res.verdict.value == "BLOCK"),
         dmc.Button("Reject", id=_act("gate_signoff", "reject"), color="red", variant="light",
@@ -1564,10 +1877,13 @@ def compare_page(c: dict) -> list:
 
 
 def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: str,
-                changes: dict | None = None, seat: str = "developer") -> list:
+                changes: dict | None = None, seat: str = "developer",
+                data_info: dict | None = None) -> list:
     """The full panel for a stage, including running/failed/pending placeholders. ``changes`` is
-    ``service.step_changes`` for this stage (what its last re-run changed), when there is one."""
+    ``service.step_changes`` for this stage (what its last re-run changed), when there is one.
+    ``data_info`` is what explore's page says about the data (:func:`source_panel`)."""
     status = state.status_of(stage)
+    before = source_panel(state, seat, data_info) if stage == "explore" else None
     head = dmc.Group([
         dmc.Stack([dmc.Title(LABELS[stage], order=3),
                    dmc.Text(STAGE_BLURB[stage], size="sm", c="dimmed", maw=760)], gap=2),
@@ -1576,8 +1892,8 @@ def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: st
     ], justify="space-between", align="flex-start")
     if status == "failed":
         msg = state.steps[stage].message or "The step failed."
-        return [head, dmc.Alert(msg, title="This step failed", color="red", variant="light",
-                                icon=icon("tabler:alert-circle")),
+        return [head, before, dmc.Alert(msg, title="This step failed", color="red",
+                                        variant="light", icon=icon("tabler:alert-circle")),
                 dmc.Group([dmc.Button("Retry", id={"type": "retry", "step": stage},
                                       leftSection=icon("tabler:refresh"))])]
     if res is None or status in ("pending", "running") and res is None:
@@ -1586,8 +1902,10 @@ def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: st
                                                "engine's evidence appear here when it finishes.",
                                                size="sm", c="dimmed")]),
                            dmc.Skeleton(h=90, radius="md"), dmc.Skeleton(h=220, radius="md")])
-                if status == "running" else empty("Not started yet."))
-        return [head, body]
+                if status == "running" else empty(
+                    "Starts once the data is given." if state.status_of("gate_source") == "awaiting"
+                    else "Not started yet."))
+        return [head, before, body]
     notice = None
     if status == "running":
         notice = dmc.Alert("Re-running with new inputs; the evidence below is from the previous run.",
@@ -1601,6 +1919,6 @@ def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: st
     else:
         notice = rerun_note(stage, state, changes)
     body = PANELS[stage](res, state, scheme, seat)
-    return [head, notice, stage_questions(stage, state, seat),
+    return [head, before, notice, stage_questions(stage, state, seat),
             *[b for b in body if b is not None], *tools_section(res, state, scheme),
             stage_challenges(stage, state)]

@@ -115,6 +115,9 @@ class Gap(BaseModel):
 class Overrides(BaseModel):
     """Human decisions that shape the effective config (the profile YAML is never edited)."""
 
+    # The data given at gate_source, when the run started without it (ADR-0018): a
+    # ``data`` mapping ({"source": {...}} or {"sources": [...]}, optionally "datetime_col").
+    data: dict[str, Any] | None = None
     exclude_columns: list[str] = Field(default_factory=list)
     target: str | None = None  # the dependent variable, when the profile leaves it open
     task: str | None = None  # ... and the task it implies

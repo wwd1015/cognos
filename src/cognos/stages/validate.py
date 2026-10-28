@@ -1,8 +1,9 @@
-"""Stage 5 — Independent validation (SR 11-7 effective challenge).
+"""Stage 5 — Independent validation (SR 26-2 effective challenge).
 
-This is the *adversarial* gate. Per SR 11-7, validation must be performed independently of model
-development: it does not trust the modeling stage's self-assessment, it re-derives risk from the
-upstream artifacts and tries to find reasons the champion should NOT ship. It scores the model on a
+This is the *adversarial* gate. SR 26-2 asks for effective challenge by experts with enough
+independence to stay objective: it does not trust the modeling stage's self-assessment, it
+re-derives risk from the upstream artifacts and tries to find reasons the champion should NOT
+ship. It scores the model on a
 five-axis rubric (leakage, overfitting, stability, diagnostics, significance), raises a Finding for
 every issue, and applies a strict decision rule where any confirmed leakage or backtest-overfitting
 signal BLOCKs the pipeline outright.
@@ -43,7 +44,7 @@ class ValidateStage(Stage):
     name = "validate"
     requires = ("model", "backtest")
     is_gate = True
-    description = "Independent effective-challenge validation (SR 11-7): adversarially judge the champion."
+    description = "Independent effective-challenge validation (SR 26-2): adversarially judge the champion."
 
     def run(self, ctx: RunContext) -> StageResult:
         model = ctx.champion()  # the model stage's payload with the champion in force
