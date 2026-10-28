@@ -277,7 +277,9 @@ def gate_block(gate: str, state: RunState, res: StageResult | None, body: list |
         rec = [html.Div([
             html.Span(" · ".join(x for x in (
                 last.action.replace("_", " "), last.by or who,
-                last.at[:16].replace("T", " ") + " UTC") if x), className="gate-stamp"),
+                last.at[:16].replace("T", " ") + " UTC") if x),
+                      # a person's decision carries the seal; express preparation is not a signature
+                      className="gate-stamp" + (" sealed" if last.actor == "human" else "")),
             dmc.Text([dmc.Text(last.action.replace("_", " "), fw=650, span=True), f" by {who}",
                       f" — {last.reason}" if last.reason else ""], size="sm"),
         ], className="gate-done")] if last else [empty("Decided.")]

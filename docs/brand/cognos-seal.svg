@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="COGNOS seal">
+  <title>COGNOS seal</title>
+  <!-- The stamp a decided gate and a sealed package carry: the creed on the rim, a C and a nod. -->
+  <defs><path id="rim" d="M50 50 m-35 0 a35 35 0 1 1 70 0 a35 35 0 1 1 -70 0"/></defs>
+  <circle cx="50" cy="50" r="46" fill="none" stroke="#7d2230" stroke-width="3"/>
+  <circle cx="50" cy="50" r="26" fill="none" stroke="#7d2230" stroke-width="1.5"/>
+  <text font-family="'IBM Plex Mono', Menlo, monospace" font-size="7.6" letter-spacing="1.75" fill="#7d2230"><textPath href="#rim">AGENTS RECOMMEND · PEOPLE DECIDE ·</textPath></text>
+  <text x="50" y="62" text-anchor="middle" font-family="'Source Serif 4', Georgia, serif" font-weight="600" font-size="34" fill="#7d2230">C</text>
+  <circle cx="57" cy="50" r="3.6" fill="#7d2230"/>
+</svg>

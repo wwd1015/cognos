@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/cognos-logo-dark.svg">
+    <img src="docs/brand/cognos-logo.svg" alt="COGNOS" width="360">
+  </picture>
+</p>
+
 # COGNOS
 
 **A multi-agent workbench for regulated model development: agents recommend, you decide, the

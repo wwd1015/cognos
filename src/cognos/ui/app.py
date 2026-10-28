@@ -64,7 +64,8 @@ ASSETS = Path(__file__).with_name("assets")
 def header() -> dmc.AppShellHeader:
     """The masthead: a serif wordmark over a double rule, and a few quiet controls."""
     return dmc.AppShellHeader(html.Div(html.Div([
-        dcc.Link([html.Span("COGNOS", className="masthead-word"),
+        dcc.Link([html.Span(["C", html.Span(className="wm-o agent"), "GN", html.Span(className="wm-o person"),
+                             "S"], className="masthead-word", title="COGNOS", **{"aria-label": "COGNOS"}),
                   html.Span("Model development workbench", className="masthead-eyebrow")],
                  href="/", className="masthead-brand"),
         html.Div([
@@ -884,6 +885,9 @@ def create_app(runs_dir: str | None = None) -> Dash:
         os.environ["COGNOS_RUNS_DIR"] = str(runs_dir)
     app = Dash(__name__, title="COGNOS", suppress_callback_exceptions=True,
                assets_folder=str(ASSETS), update_title=None, external_stylesheets=[FONT_CSS])
+    # the tab icon is the logo's mark (docs/brand/cognos-mark.svg)
+    app.index_string = app.index_string.replace(
+        "{%favicon%}", f'<link rel="icon" type="image/svg+xml" href="{app.get_asset_url("favicon.svg")}">')
     app.layout = build_layout()
     register_callbacks(app)
     return app

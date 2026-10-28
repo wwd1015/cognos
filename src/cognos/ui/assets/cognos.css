@@ -99,6 +99,12 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   font-family: var(--font-display); font-weight: 700; font-size: 27px; letter-spacing: 0.01em;
   line-height: 1;
 }
+/* the wordmark's two O's are the creed: dashed, the agents suggest; solid, a person decides
+   (docs/brand/cognos-logo.svg) */
+.wm-o { display: inline-block; width: 0.7em; height: 0.7em; margin: 0 0.05em; border-radius: 50%; box-sizing: border-box; }
+.wm-o.agent { background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2233%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2211%22%20stroke-dasharray%3D%2216%209.9%22/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2233%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2211%22%20stroke-dasharray%3D%2216%209.9%22/%3E%3C/svg%3E") center / contain no-repeat; }
+.wm-o.person { background: var(--accent); }
 .masthead-eyebrow, .eyebrow {
   font-family: var(--font); font-size: 10.5px; font-weight: 500; letter-spacing: 0.16em;
   text-transform: uppercase; color: var(--ink-2);
@@ -420,5 +426,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .gate-stamp { display: inline-block; font: 500 11.5px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--accent); border: 1.5px solid var(--accent); padding: 4px 10px; transform: rotate(-2deg);
   animation: gate-stamp 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+.gate-stamp.sealed { display: inline-flex; align-items: center; gap: 8px; }
+.gate-stamp.sealed::before { content: ""; width: 26px; height: 26px; margin: -6px 0 -6px -4px; background: var(--accent);
+  -webkit-mask: url("seal.svg") center / contain no-repeat; mask: url("seal.svg") center / contain no-repeat; }
 @keyframes gate-stamp { from { transform: rotate(-6deg) scale(1.4); opacity: 0; } to { transform: rotate(-2deg) scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .gate-stamp { animation: none; } }
