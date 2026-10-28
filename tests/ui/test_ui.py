@@ -13,7 +13,7 @@ pytest.importorskip("dash_mantine_components")
 from cognos import service  # noqa: E402
 from cognos.engine.graph import STAGES  # noqa: E402
 from cognos.ui import app as ui  # noqa: E402
-from cognos.ui.panels import stage_panel  # noqa: E402
+from cognos.ui.panels import chip_class, stage_panel  # noqa: E402
 
 
 def _serialize(component) -> str:
@@ -315,6 +315,15 @@ def test_linked_sources_show_the_join_and_let_the_developer_change_it(root):
     page = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light"))
     assert "Sources and join" in page and "loans.obligor_id = financials.obligor_id" in page
     assert "join_links" in page and "Base rows with no match" in page and "dropped" in page
+    # the join is drawn as a canvas: a tile per table, a chip per measured link; the chips
+    # write join_links and the tiles' buttons write join_base, so the decision reads the same
+    assert "jc-canvas" in page and '"type": "jc-tile"' in page and '"type": "jc-base"' in page
+    linked = service.results(run_id)["explore"].payload["linking"]
+    for lk in linked["links"]:
+        assert f'"link": "{lk["id"]}"' in page
+    assert chip_class(True, True) == "jc-chip chosen suggested"
+    assert chip_class(False, True) == "jc-chip proposed"
+    assert chip_class(False, False) == "jc-chip measured"
     payload, _ = ui.gate_payload("gate_data", "edit", {
         "join_base": "loans", "join_links": ["L1"], "join_many": "first",
         "join_unmatched": "keep", "exclude": []}, run_id)
@@ -448,6 +457,11 @@ def test_the_plan_the_pool_and_the_champion_are_decided_on_forms(root):
     # another seat reads the page and cannot decide on it
     locked = _serialize(stage_panel("backtest", backtest, st, "light", seat="reviewer"))
     assert "Accept the champion" not in locked and "belongs to the model developer" in locked
+    # the decision is one card: what accepting means and the engine's figures first; choosing
+    # another candidate folds away, and its button is only the owning seat's
+    assert "gate-proposal" in panel and "gate-evidence" in panel
+    assert "Choose another candidate" in panel and "Choose the selected candidate" in panel
+    assert "Choose the selected candidate" not in locked
 
 
 def test_a_stage_shows_only_its_own_questions_and_the_record_covers_the_run(root):

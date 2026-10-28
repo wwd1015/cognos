@@ -1157,6 +1157,48 @@ def register_callbacks(app: Dash) -> None:
             return [notice("Decision refused", str(exc), "red")], no_update
         return [notice("Decision recorded", f"{LABELS[gate]}: {action.replace('_', ' ')}", "oxblood")], None
 
+    # The join canvas (panels.join_canvas) writes the data gate's two join fields; the
+    # decision still reads them from the form. These run in the browser: no round trip.
+    links = {"type": "gate-field", "gate": "gate_data", "field": "join_links"}
+    base = {"type": "gate-field", "gate": "gate_data", "field": "join_base"}
+    app.clientside_callback(
+        """function(clicks, value) {
+            const t = dash_clientside.callback_context.triggered_id;
+            if (!t || !(clicks || []).some(Boolean)) return dash_clientside.no_update;
+            const now = value || [];
+            return now.includes(t.link) ? now.filter(v => v !== t.link) : now.concat([t.link]);
+        }""",
+        Output(links, "value"),
+        Input({"type": "jc-link", "link": ALL, "kind": ALL}, "n_clicks"),
+        State(links, "value"), prevent_initial_call=True)
+    app.clientside_callback(
+        """function(value, ids) {
+            const on = value || [];
+            return ids.map(i => on.includes(i.link)
+                ? "jc-chip chosen" + (i.kind === "proposed" ? " suggested" : "")
+                : "jc-chip " + i.kind);
+        }""",
+        Output({"type": "jc-link", "link": ALL, "kind": ALL}, "className"),
+        Input(links, "value"), State({"type": "jc-link", "link": ALL, "kind": ALL}, "id"),
+        prevent_initial_call=True)
+    app.clientside_callback(
+        """function(clicks) {
+            const t = dash_clientside.callback_context.triggered_id;
+            if (!t || !(clicks || []).some(Boolean)) return dash_clientside.no_update;
+            return t.table;
+        }""",
+        Output(base, "value"),
+        Input({"type": "jc-base", "table": ALL}, "n_clicks"), prevent_initial_call=True)
+    app.clientside_callback(
+        """function(value, ids) {
+            return [ids.map(i => "jc-tile" + (i.table === value ? " base" : "")),
+                    ids.map(i => i.table === value ? "base table" : "Make base")];
+        }""",
+        Output({"type": "jc-tile", "table": ALL}, "className"),
+        Output({"type": "jc-base", "table": ALL}, "children"),
+        Input(base, "value"), State({"type": "jc-tile", "table": ALL}, "id"),
+        prevent_initial_call=True)
+
     @app.callback(Output({"type": "gate-field", "gate": "gate_source", "field": MATCH}, "value"),
                   Output({"type": "src-names", "field": MATCH}, "children"),
                   Input({"type": "src-upload", "field": MATCH}, "contents"),

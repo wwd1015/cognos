@@ -112,50 +112,40 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .panel { background: var(--raised); border: 1px solid var(--line); padding: 44px 48px;
          display: flex; flex-direction: column; gap: 28px; }
 
-/* the workshop: one page of the logbook, written as the work moves. Every line has the same
-   anatomy: what the machine measured, what an assistant suggested, who decided and signed */
-.book { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.book-top { display: flex; justify-content: space-between; align-items: center; padding-bottom: 14px;
-            border-bottom: 2px solid var(--ink); font-family: var(--font-mono); font-size: 17px;
-            letter-spacing: 0.08em; color: var(--ink-2); }
-.book-top b { color: var(--ink); font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; margin-right: 18px; }
-.desks { display: flex; align-items: center; gap: 10px; }
-.desks i { font-style: normal; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
-           border: 1.5px solid var(--line-strong); color: var(--ink-2); background: var(--raised);
-           transition: all 0.35s var(--ease); }
-.desks i.on { background: var(--accent); border-color: var(--accent); color: var(--paper); }
-.desks em { font-style: normal; margin-left: 8px; min-width: 330px; }
-.lg-row { display: grid; grid-template-columns: 150px 1.05fr 1.2fr 1fr 120px; column-gap: 36px; align-items: center;
-          border-bottom: 1px solid var(--line); position: relative; }
-.lg-row.hd { height: 52px; border-bottom-color: var(--line-strong); font-family: var(--font-mono); font-size: 15px;
-             letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
-.lg-row.hd span { display: flex; align-items: center; gap: 12px; }
-.lg-row.ln { height: 80px; transition: background 0.4s var(--ease); }
-.lg-row.ln.on { background: var(--accent-tint); }
-.lg-row.ln::before { content: ""; position: absolute; left: -26px; top: 50%; width: 0; height: 0; margin-top: -8px;
-                     border: 8px solid transparent; border-left: 11px solid var(--accent); opacity: 0;
-                     transition: opacity 0.3s var(--ease); }
-.lg-row.ln.on::before { opacity: 1; }
-.lg-st { font-family: var(--font-display); font-size: 30px; color: var(--ink-3); transition: color 0.4s var(--ease); }
-.lg-row.on .lg-st, .lg-row.done .lg-st { color: var(--ink); }
-.lg-c { font-size: 21px; line-height: 1.3; clip-path: inset(0 100% 0 0); opacity: 0.2;
-        transition: clip-path 0.75s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s var(--ease); }
-.lg-c.in { clip-path: inset(0 0 0 0); opacity: 1; }
-.lg-c small { display: block; font-family: var(--font-mono); font-size: 14px; letter-spacing: 0.08em;
-              text-transform: uppercase; color: var(--ink-3); margin-bottom: 2px; }
-.lg-c.m { font-family: var(--font-mono); font-size: 18px; color: var(--ink-2); }
-.lg-c.ag { font-family: var(--font-display); font-style: italic; font-size: 23px; }
-.lg-c.p { font-weight: 500; }
-.stamp { justify-self: center; width: 60px; height: 60px; border-radius: 50%; border: 2.5px solid var(--accent);
-         color: var(--accent); display: grid; place-items: center; font-family: var(--font-display);
-         font-style: italic; font-size: 26px; opacity: 0; transform: scale(1.7) rotate(-14deg);
-         transition: opacity 0.2s, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
-.stamp.in { opacity: 0.92; transform: scale(1) rotate(-8deg); }
-.stamp.seal { width: 104px; border-radius: 4px; height: 50px; font-family: var(--font-mono); font-style: normal;
-              font-size: 15px; letter-spacing: 0.16em; background: var(--accent); color: var(--paper); }
-.lg-key { display: flex; gap: 44px; align-items: center; padding-top: 18px; font-size: 21px; color: var(--ink-2); }
-.lg-key span { display: flex; align-items: center; gap: 12px; }
-.lg-key .end { margin-left: auto; font-family: var(--font-display); font-style: italic; font-size: 24px; color: var(--ink); }
+/* drawn figures: an object, not a diagram. Isometric solids in the paper's own tones, one
+   thing lit in the accent, a framed card with a live readout in its corner. Built by the small
+   isometric helper in the script (Iso). */
+:root { --top: #fffefb; --sh1: #ebe7dd; --sh2: #ddd8cb; --edge: #3a352b; --lit-top: #f6e9ea; --halo: rgba(60, 50, 30, 0.16); }
+[data-theme="dark"] { --top: #2a261e; --sh1: #221f18; --sh2: #1c1913; --edge: #b8b09c; --lit-top: #3a2629; --halo: rgba(0, 0, 0, 0.45); }
+.fig { position: relative; background: var(--raised); border: 1px solid var(--line-strong); padding: 52px 24px 56px; }
+.fig .corner { position: absolute; font-family: var(--font-mono); font-size: 16px; letter-spacing: 0.08em; color: var(--ink-3); white-space: nowrap; }
+.fig .c-fig { top: 18px; left: 22px; color: var(--ink-2); }
+.fig .c-title { top: 18px; right: 22px; text-transform: uppercase; }
+.fig .c-hint { bottom: 18px; left: 22px; text-transform: uppercase; }
+.fig .c-ro { bottom: 18px; right: 22px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.fig svg { display: block; width: 100%; height: auto; overflow: visible; }
+.f { stroke: var(--edge); stroke-width: 0.8; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.t { fill: var(--top); } .r { fill: var(--sh1); } .l, .s { fill: var(--sh2); }
+.lit .f { stroke: var(--accent); stroke-width: 1.2; } .lit .t { fill: var(--lit-top); }
+.dash .f { stroke-dasharray: 4 3; stroke: var(--ink-2); }
+.dash .t, .dash .l, .dash .r, .dash .s { fill: var(--paper); }
+.person .f { fill: var(--ink); stroke: var(--ink); }
+.ln { fill: none; stroke: var(--edge); stroke-width: 0.8; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.ln.faint { stroke: var(--ink-3); opacity: 0.7; }
+.halo { fill: var(--halo); filter: blur(12px); }
+.glow { fill: var(--accent-tint); }
+.ftext { font-family: var(--font-mono); fill: var(--ink); }
+.ftext.lit { fill: var(--accent); font-weight: 500; }
+.ring { fill: none; stroke: var(--accent); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.hide { opacity: 0; }
+.fade { transition: opacity 0.5s var(--ease); }
+/* the picture beside its key */
+.picture { flex: 1; min-height: 0; display: grid; grid-template-columns: 1040px 1fr; gap: 64px; align-items: center; }
+.keys { display: flex; flex-direction: column; border-top: 1px solid var(--line-strong); }
+.keys div { display: grid; grid-template-columns: 34px 1fr; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.keys .glyph { margin-top: 9px; }
+.keys b { display: block; font-size: 27px; font-weight: 600; line-height: 1.25; }
+.keys span.what { display: block; font-size: 22px; color: var(--ink-2); line-height: 1.35; margin-top: 4px; }
 .glyph { display: inline-block; flex: none; }
 /* the three voices, everywhere in the deck: a square for the engine, a dashed circle for an
    agent, a filled circle for a person. Put g-m, g-a or g-p on a label. */
@@ -168,6 +158,7 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .glyph.a { width: 18px; height: 18px; border-radius: 50%; border: 1.5px dashed var(--ink-2); }
 .glyph.p { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); }
 .glyph.s { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--accent); }
+.glyph.r { width: 18px; height: 18px; border: 1.5px solid var(--accent); background: var(--accent-tint); }
 
 /* ===========================================
    REVEALS: content arrives in order when a slide becomes active
@@ -294,19 +285,6 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .retry.on .arc { border-color: var(--accent); }
 .retry.on .arc::before { border-bottom-color: var(--accent); }
 .retry.on .txt { color: var(--ink); }
-
-/* ===========================================
-   6. NO LLM MATH
-   =========================================== */
-.sentence { font-family: var(--font-display); font-size: 38px; line-height: 1.6; }
-.slot { font-family: var(--font-mono); font-size: 25px; padding: 3px 10px; background: var(--sunken);
-        border: 1px dashed var(--line-strong); color: var(--ink-2); white-space: nowrap; transition: all 0.35s; }
-.slot.filled { font-family: var(--font-mono); font-size: 32px; background: var(--accent-tint); border: 1px solid var(--accent-border);
-               color: var(--accent); font-weight: 600; }
-.ledger { border-top: 1px solid var(--line-strong); }
-.ledger-row { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--line);
-              font-family: var(--font-mono); font-size: 22px; }
-.ledger-row span:first-child { color: var(--ink-2); }
 
 /* ===========================================
    7. THE SEALED HOLDOUT
@@ -522,53 +500,30 @@ body.moving .chrome { opacity: 1; }
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
 
-<!-- ===================== THE WORKSHOP (animated) ===================== -->
-<section class="slide" data-title="The workshop" data-anim="workshop">
+<!-- ===================== THE KITCHEN PASS (animated) ===================== -->
+<section class="slide" data-title="The kitchen pass" data-anim="kitchen">
   <div class="folio"><span>The picture</span><b>COGNOS</b></div>
-  <div class="slide-content" style="gap: 40px">
+  <div class="slide-content" style="gap: 36px">
     <div class="head">
       <div class="kicker reveal d1">If you remember one picture</div>
-      <h2 class="reveal d1">A shared workshop that keeps one logbook.</h2>
+      <h2 class="reveal d1">A restaurant kitchen. Nothing leaves without the chef's nod.</h2>
     </div>
-    <div class="book reveal d2">
-      <div class="book-top"><span><b>The logbook</b>PD scorecard · main run · started from a template and three catalog tables</span>
-        <span class="desks"><i data-who="D">D</i><i data-who="L">L</i><i data-who="K">K</i><em id="lg-who">open on every desk</em></span></div>
-      <div class="lg-row hd"><span>Station</span><span><i class="glyph m"></i>The machine measured</span>
-        <span><i class="glyph a"></i>An assistant suggested</span><span><i class="glyph p"></i>A person decided</span><span>Signed</span></div>
-      <div id="lg">
-        <div class="lg-row ln" data-who="D"><span class="lg-st">Intent</span>
-          <span class="lg-c m"><small>Mon 09:12</small>Reads the intent document</span>
-          <span class="lg-c ag"><small>Intake Analyst</small>The horizon is not stated. Ask the sponsor?</span>
-          <span class="lg-c p"><small>Dana</small>Answers: 12 months</span><span class="stamp">D</span></div>
-        <div class="lg-row ln" data-who="D"><span class="lg-st">Data</span>
-          <span class="lg-c m"><small>Mon 10:40</small>Joins 3 tables · measures 41 columns</span>
-          <span class="lg-c ag"><small>Data Analyst</small>The target is default_12m</span>
-          <span class="lg-c p"><small>Dana</small>Accepts; drops two ID columns</span><span class="stamp">D</span></div>
-        <div class="lg-row ln" data-who="D"><span class="lg-st">Design</span>
-          <span class="lg-c m"><small>Mon 11:05</small>18,400 rows · 3.1% defaults</span>
-          <span class="lg-c ag"><small>Design Lead</small>A logistic scorecard</span>
-          <span class="lg-c p"><small>Dana</small>Keeps the plan</span><span class="stamp">D</span></div>
-        <div class="lg-row ln" data-who="D"><span class="lg-st">Pool</span>
-          <span class="lg-c m"><small>Mon 14:22</small>Fits and ranks 26 candidates</span>
-          <span class="lg-c ag"><small>Outcomes Analyst</small>This one should be the champion</span>
-          <span class="lg-c p"><small>Dana</small>Chooses the champion</span><span class="stamp">D</span></div>
-        <div class="lg-row ln" data-who="L"><span class="lg-st">Validate</span>
-          <span class="lg-c m"><small>Tue 10:03</small>Opens the sealed sample, once</span>
-          <span class="lg-c ag"><small>Validator</small>One warning, on stability</span>
-          <span class="lg-c p"><small>Lee · reviewer</small>Accepts, with a reason</span><span class="stamp">L</span></div>
-        <div class="lg-row ln" data-who="K"><span class="lg-st">Sign-off</span>
-          <span class="lg-c m"><small>Wed 16:30</small>Fills every number in the paper</span>
-          <span class="lg-c ag"><small>Writer</small>The white paper</span>
-          <span class="lg-c p"><small>Kim · approver</small>Signs</span><span class="stamp seal">SEALED</span></div>
+    <div class="picture">
+      <div class="fig reveal d2" id="kitchen">
+        <span class="corner c-fig">Fig 1</span><span class="corner c-title">The kitchen pass</span>
+        <span class="corner c-hint">Watch one plate</span><span class="corner c-ro" id="kitchen-ro">Plate 7 leaves the line</span>
+        <svg viewBox="0 0 600 330" role="img" aria-label="A restaurant pass: cooks behind the counter send a plate along it; a scale weighs it, a cook leaves a suggestion card, the head chef rings the bell to send it, and the ticket joins the rail above."></svg>
       </div>
-      <div class="lg-key"><span><i class="glyph m"></i>The engine runs and measures</span>
-        <span><i class="glyph a"></i>An agent suggests</span><span><i class="glyph p"></i>A person decides</span>
-        <span class="end">Not a factory: each model is made once, and every judgment is signed.</span></div>
+      <div class="keys reveal d3">
+        <div><i class="glyph m"></i><p><b>The scale</b><span class="what">The engine. Weighed, never guessed.</span></p></div>
+        <div><i class="glyph a"></i><p><b>The cooks</b><span class="what">The agents. They prepare and suggest.</span></p></div>
+        <div><i class="glyph p"></i><p><b>The head chef</b><span class="what">The people. Send it out or send it back.</span></p></div>
+        <div><i class="glyph r"></i><p><b>The ticket rail</b><span class="what">The record. Every order, every nod.</span></p></div>
+      </div>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
 </section>
-
 <!-- ===================== 4. THE WORKFLOW (animated) ===================== -->
 <section class="slide" data-title="The workflow" data-anim="flow">
   <div class="folio"><span>How a run moves</span><b>COGNOS</b></div>
@@ -622,17 +577,12 @@ body.moving .chrome { opacity: 1; }
     <div class="argue">
       <div class="pips reveal d1"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><span>01 / 08</span></div>
       <div class="kicker reveal d1">No LLM math</div>
-      <h2 class="reveal d1">An agent never writes a number. It points at one.</h2>
-      <p class="lede reveal d2">Every recorded figure comes from the engine. The writer leaves a placeholder; the engine fills it from the fact it names. An unknown fact id, or a bare metric typed into prose, is rejected.</p>
+      <h2 class="reveal d1">The agent writes the letter. The machine writes every number.</h2>
     </div>
-    <div class="panel reveal d3">
-      <span class="eyebrow">What the writer writes, and what is printed · demo run</span>
-      <p class="sentence">The champion reaches a cross-validated AUC of <span class="slot" data-fill="0.8487" data-raw="{{fact:model.cv_mean}}">{{fact:model.cv_mean}}</span> on <span class="slot" data-fill="1,940" data-raw="{{fact:explore.n_rows}}">{{fact:explore.n_rows}}</span> loans with <span class="slot" data-fill="91" data-raw="{{fact:explore.n_events}}">{{fact:explore.n_events}}</span> defaults.</p>
-      <div class="ledger">
-        <div class="ledger-row"><span>model.cv_mean</span><span>0.8487</span></div>
-        <div class="ledger-row"><span>explore.n_rows</span><span>1,940</span></div>
-        <div class="ledger-row"><span>explore.n_events</span><span>91</span></div>
-      </div>
+    <div class="fig reveal d3" id="letter">
+      <span class="corner c-fig">Fig 2</span><span class="corner c-title">The writer's letter</span>
+      <span class="corner c-hint">Demo run</span><span class="corner c-ro" id="letter-ro">0 of 3 filled</span>
+      <svg viewBox="0 0 600 340" role="img" aria-label="A letter drafted by the writer agent lies on a desk with three blanks; a printer beside it prints each number from the record on a slip, and the slip drops into its blank."></svg>
     </div>
   </div>
   <div class="foot"><span></span><span class="pg"></span></div>
@@ -888,7 +838,7 @@ body.moving .chrome { opacity: 1; }
         <tr><td class="mono">4</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>Eight gates. A run starts from a template or from scratch, and the developer gives the data once the intent is confirmed (Provide the data). A finished run can be kept as a team template (ADR-0018).</td></tr>
         <tr><td class="mono">5</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>Model risk guidance is SR 26-2 (April 2026), which replaced SR 11-7. The readiness report and the agents cite it; a profile that names SR 11-7 is read as SR 26-2 (ADR-0019).</td></tr>
         <tr><td class="mono">6</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>The data catalog: the developer chooses the team's tables (the template's are checked) and adds any other data; documented links are offered and measured, never imposed (ADR-0020).</td></tr>
-        <tr><td class="mono">7</td><td class="mono">v1.0.0</td><td class="mono">2026-10-25</td><td>The engine comes first: the engine disposes, agents recommend, people decide. A new slide pictures COGNOS as a shared workshop that keeps one logbook.</td></tr>
+        <tr><td class="mono">7</td><td class="mono">v1.0.0</td><td class="mono">2026-10-25</td><td>The engine comes first: the engine disposes, agents recommend, people decide. A new slide pictures COGNOS as a restaurant kitchen (the scale weighs, cooks suggest, the chef decides, the ticket rail keeps the record), and the first principle is drawn rather than written.</td></tr>
       </tbody>
     </table>
   </div>
@@ -1109,23 +1059,131 @@ function cycle(n, ms, fn, pause = 0) {
 })();
 
 /* ===========================================
-   THE WORKSHOP: the logbook writes itself, a line per station. The machine's entry, then the
-   assistant's, then the person's with their stamp; the whole team watches the same page.
+   DRAWN FIGURES: a small isometric helper. World x runs right-down, y left-down, z up; every
+   solid is painted back to front by the order it is drawn in.
    =========================================== */
-(function workshop() {
-  const rows = $$("#lg .ln"), desks = $$(".desks i"), who = $("#lg-who");
-  const names = { D: "Dana", L: "Lee", K: "Kim" };
-  anims.workshop = cycle(rows.length * 3, 1050, k => {
-    const i = Math.floor(k / 3), phase = k % 3;
-    rows.forEach((r, j) => {
-      r.classList.toggle("on", j === i); r.classList.toggle("done", j < i);
-      $$(".lg-c", r).forEach((c, n) => c.classList.toggle("in", j < i || (j === i && n <= phase)));
-      $(".stamp", r).classList.toggle("in", j < i || (j === i && phase === 2));
+function Iso(svg, pts3, pad = 26) {
+  const NS = "http://www.w3.org/2000/svg", COS = Math.cos(Math.PI / 6), SIN = 0.5;
+  const [W, H] = svg.getAttribute("viewBox").split(" ").slice(2).map(Number);
+  const raw = pts3.map(([x, y, z]) => [(x - y) * COS, (x + y) * SIN - z]);
+  const xs = raw.map(p => p[0]), ys = raw.map(p => p[1]);
+  const s = Math.min((W - pad * 2) / (Math.max(...xs) - Math.min(...xs)), (H - pad * 2) / (Math.max(...ys) - Math.min(...ys)));
+  const ox = W / 2 - (Math.max(...xs) + Math.min(...xs)) / 2 * s, oy = H / 2 - (Math.max(...ys) + Math.min(...ys)) / 2 * s;
+  const P = (x, y, z) => [ox + (x - y) * COS * s, oy + (x + y) * SIN * s - z * s];
+  const str = a => a.map(p => P(...p).map(n => n.toFixed(1)).join(",")).join(" ");
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); (parent || svg).appendChild(e); return e; };
+  const g = (parent, cls = "") => el("g", cls ? { class: cls } : {}, parent);
+  const poly = (parent, a, cls) => el("polygon", { points: str(a), class: cls }, parent);
+  const line = (parent, a, cls = "ln") => el("polyline", { points: str(a), class: cls }, parent);
+  function box(parent, x, y, z, w, d, h, cls = "") {
+    const gg = g(parent, "solid " + cls);
+    poly(gg, [[x + w, y, z], [x + w, y + d, z], [x + w, y + d, z + h], [x + w, y, z + h]], "f r");
+    poly(gg, [[x, y + d, z], [x + w, y + d, z], [x + w, y + d, z + h], [x, y + d, z + h]], "f l");
+    poly(gg, [[x, y, z + h], [x + w, y, z + h], [x + w, y + d, z + h], [x, y + d, z + h]], "f t");
+    return gg;
+  }
+  const arc = (cx, cy, r, z, a0, a1, n = 24) => Array.from({ length: n + 1 }, (_, i) => { const a = a0 + (a1 - a0) * i / n; return [cx + r * Math.cos(a), cy + r * Math.sin(a), z]; });
+  function cyl(parent, cx, cy, z, r, h, cls = "") {
+    const gg = g(parent, "solid " + cls);
+    poly(gg, [...arc(cx, cy, r, z, -Math.PI / 4, 3 * Math.PI / 4), ...arc(cx, cy, r, z + h, 3 * Math.PI / 4, -Math.PI / 4)], "f s");
+    poly(gg, arc(cx, cy, r, z + h, 0, Math.PI * 2, 40), "f t");
+    return gg;
+  }
+  function pawn(parent, cx, cy, z, cls) {
+    const gg = g(parent, cls);
+    cyl(gg, cx, cy, z, 11, 3, cls); cyl(gg, cx, cy, z + 3, 7, 46, cls); cyl(gg, cx, cy, z + 49, 9, 4, cls);
+    const [hx, hy] = P(cx, cy, z + 63);
+    el("circle", { cx: hx, cy: hy, r: (8.5 * s).toFixed(1), class: "f t" }, gg);
+    return gg;
+  }
+  const halo = (parent, x, y, w, d) => poly(parent, [[x, y, 0], [x + w, y, 0], [x + w, y + d, 0], [x, y + d, 0]], "halo");
+  function text(parent, words, [x, y, z], size, plane = "top", cls = "ftext") {
+    const [ex, ey] = P(x, y, z);
+    const m = plane === "top" ? [COS * s, SIN * s, -COS * s, SIN * s] : [COS * s, SIN * s, 0, s];
+    const t = el("text", { transform: `matrix(${m.map(n => n.toFixed(3)).join(" ")} ${ex.toFixed(1)} ${ey.toFixed(1)})`, "font-size": size, class: cls }, parent);
+    t.textContent = words; return t;
+  }
+  const shift = ([dx, dy, dz]) => `translate(${((dx - dy) * COS * s).toFixed(2)} ${((dx + dy) * SIN * s - dz * s).toFixed(2)})`;
+  return { P, el, g, poly, line, box, cyl, pawn, halo, text, shift, s };
+}
+
+/* a time-based loop for a drawn figure, started and stopped with its slide */
+function timeline(length, frame) {
+  let raf = 0, t0 = 0;
+  const tick = now => { if (!t0) t0 = now; frame(((now - t0) / 1000) % length); raf = requestAnimationFrame(tick); };
+  return { start() { this.stop(); t0 = 0; raf = requestAnimationFrame(tick); }, stop() { cancelAnimationFrame(raf); raf = 0; } };
+}
+const easeOut = t => 1 - Math.pow(1 - Math.min(Math.max(t, 0), 1), 4);
+const span = (t, a, b) => easeOut((t - a) / (b - a));
+
+/* ===========================================
+   THE KITCHEN PASS: a plate goes down the pass. The scale weighs it (the engine), a cook
+   leaves a suggestion (an agent), the head chef rings the bell (a person), and the ticket joins
+   the rail (the record).
+   =========================================== */
+(function kitchen() {
+  const svg = $("#kitchen svg"), ro = $("#kitchen-ro");
+  const K = Iso(svg, [[0, -40, 0], [262, 52, 0], [12, 2, 104], [216, 2, 104], [0, 58, 0], [262, 30, 75]], 8);
+  const { box, cyl, pawn, g, poly, line, text, shift, P, el } = K;
+  K.halo(svg, -6, -8, 250, 80);
+  pawn(svg, 46, -26, 0, "dash");
+  const cook = pawn(svg, 96, -30, 0, "dash");
+  box(svg, 18, 6, 46, 4, 4, 50); box(svg, 206, 6, 46, 4, 4, 50);
+  box(svg, 12, 2, 96, 204, 10, 6);
+  line(svg, [[16, 12.4, 93], [212, 12.4, 93]]);
+  const tickets = [];
+  for (let i = 0; i < 9; i++) {
+    const tk = g(svg, "fade hide");
+    box(tk, 24 + i * 20, 12.6, 76, 13, 0.8, 16);
+    line(tk, [[26 + i * 20, 13.4, 86], [35 + i * 20, 13.4, 86]], "ln faint");
+    line(tk, [[26 + i * 20, 13.4, 82], [33 + i * 20, 13.4, 82]], "ln faint");
+    tickets.push(tk);
+  }
+  for (const [x, y] of [[4, 4], [226, 4], [4, 50], [226, 50]]) box(svg, x, y, 0, 6, 6, 40);
+  box(svg, 6, 6, 10, 222, 48, 2);
+  box(svg, 0, 0, 40, 234, 58, 6);
+  poly(svg, [[20, 8, 46.1], [208, 8, 46.1], [208, 50, 46.1], [20, 50, 46.1]], "glow");
+  box(svg, 96, 16, 46, 32, 26, 9);
+  box(svg, 100, 41.6, 48, 24, 0.6, 5);
+  const weight = text(svg, "   0 g", [101.5, 42.4, 49.4], 3.6, "front");
+  cyl(svg, 112, 29, 55, 11, 1.5);
+  const plate = g(svg); cyl(plate, 34, 29, 46, 10, 1.6, "lit"); cyl(plate, 34, 29, 47.6, 6, 3.2, "lit");
+  plate.style.transition = "opacity .4s";
+  const note = g(svg, "fade hide"); box(note, 126, 36, 46, 0.8, 12, 12, "dash"); line(note, [[127, 39, 54], [127, 45, 54]], "ln faint");
+  cyl(svg, 196, 40, 46, 6, 1.2); cyl(svg, 196, 40, 47.2, 4.2, 4); cyl(svg, 196, 40, 51.2, 1.2, 1.6);
+  const [bx, by] = P(196, 40, 53);
+  const rings = [0, 1].map(() => el("ellipse", { cx: bx, cy: by, rx: 10, ry: 5, class: "ring", opacity: 0 }));
+  pawn(svg, 250, 40, 0, "person");
+  let shown = 0, plateNo = 7;
+  const say = t => { if (ro.textContent !== t) ro.textContent = t; };
+  anims.kitchen = timeline(9, t => {
+    let x = 78, z = 0;
+    if (t < 1.6) { x = 78 * span(t, 0.2, 1.6); say(`Plate ${plateNo} leaves the line`); }
+    else if (t < 4) z = 10.5 * span(t, 1.6, 2.0);
+    else if (t < 5.4) { x = 78 + 82 * span(t, 4, 5.4); z = 10.5 * (1 - span(t, 4, 4.4)); }
+    else x = 160;
+    plate.setAttribute("transform", shift([x, 0, z]));
+    plate.style.opacity = t > 8.4 ? "0" : "1";
+    const w = t < 2 ? 0 : t < 3 ? Math.round(412 * span(t, 2, 3)) : t < 4.4 ? 412 : 0;
+    weight.textContent = String(w).padStart(4, " ") + " g";
+    weight.setAttribute("class", t > 2 && t < 4.4 ? "ftext lit" : "ftext");
+    if (t >= 2 && t < 3) say(`The scale weighs it: ${w} g`);
+    note.classList.toggle("hide", !(t > 3 && t < 5.6));
+    cook.setAttribute("transform", t > 3 && t < 3.6 ? "translate(0 -5)" : "");
+    if (t >= 3 && t < 4) say("A cook suggests: a little more salt");
+    if (t >= 4 && t < 5.6) say("The plate reaches the pass");
+    const k = t > 5.8 && t < 7.2 ? (t - 5.8) / 1.4 : -1;
+    rings.forEach((r, i) => {
+      const q = k - i * 0.25;
+      r.setAttribute("opacity", q > 0 ? Math.max(0, 1 - q).toFixed(2) : 0);
+      r.setAttribute("rx", 10 + 30 * Math.max(q, 0)); r.setAttribute("ry", 5 + 15 * Math.max(q, 0));
     });
-    const w = rows[i].dataset.who;
-    desks.forEach(d => d.classList.toggle("on", phase === 2 && d.dataset.who === w));
-    who.textContent = phase === 2 ? `${names[w]} signs; everyone sees it` : "open on every desk";
-  }, 3200);
+    if (k >= 0) say(`Chef: send it · plate ${plateNo}`);
+    const n = t > 7 ? Math.min(9, shown + 1) : shown;
+    tickets.forEach((tk, i) => tk.classList.toggle("hide", i >= n));
+    if (t > 7) say(`Ticket ${plateNo} on the rail · ${n} today`);
+    if (t > 8.9) { shown = n >= 9 ? 0 : n; plateNo += 1; }
+  });
 })();
 
 /* ===========================================
@@ -1143,14 +1201,36 @@ function cycle(n, ms, fn, pause = 0) {
 })();
 
 /* ===========================================
-   SLIDE 6: placeholders fill from facts
+   SLIDE 6: the writer's letter has blanks; the printer prints each number from the record
+   and the slip drops into its blank. The readout names the fact each number comes from.
    =========================================== */
 (function facts() {
-  const slots = $$(".slot");
-  anims.facts = cycle(slots.length + 1, 1100, k => {
-    if (k === 0) slots.forEach(s => { s.textContent = s.dataset.raw; s.classList.remove("filled"); });
-    else { const s = slots[k - 1]; s.textContent = s.dataset.fill; s.classList.add("filled"); }
-  }, 2600);
+  const svg = $("#letter svg"), ro = $("#letter-ro");
+  const K = Iso(svg, [[0, 0, 0], [200, 70, 0], [150, 0, 40], [0, 70, 0], [200, 0, 0]], 16);
+  const { box, g, line, text, shift } = K;
+  K.halo(svg, 4, 4, 196, 66);
+  box(svg, 6, 8, 0, 110, 60, 0.8, "dash");
+  for (const [x, y, w] of [[10, 14, 30], [44, 14, 54], [10, 22, 18], [78, 22, 22], [10, 30, 30], [10, 40, 56], [10, 48, 24], [68, 48, 40], [10, 56, 40]])
+    line(svg, [[x, y, 0.9], [x + w, y, 0.9]], "ln faint");
+  const blanks = [[44, 30, 30], [70, 40, 30], [38, 48, 26]];
+  const vals = ["0.8487", "1,940", "91"], ids = ["model.cv_mean", "explore.n_rows", "explore.n_events"];
+  const fills = blanks.map(([x, y, w], i) => {
+    box(svg, x, y - 3, 0.8, w + 4, 6, 0.3);
+    const gg = g(svg, "fade hide"); text(gg, vals[i], [x + 2, y - 1.2, 1.2], 6, "top", "ftext lit"); return gg;
+  });
+  box(svg, 140, 14, 0, 46, 40, 26); box(svg, 144, 18, 26, 38, 32, 3);
+  line(svg, [[140, 26, 8], [140, 42, 8]]);
+  const slip = g(svg); box(slip, 116, 26, 0.8, 26, 14, 0.4);
+  const slipText = text(slip, "", [120, 30.5, 1.3], 5.5);
+  anims.facts = timeline(9, t => {
+    const i = Math.min(2, Math.floor(t / 2.6)), u = t - i * 2.6;
+    slipText.textContent = vals[i];
+    slip.setAttribute("transform", shift([22 * (1 - span(u, 0.1, 0.9)), 0, 0]));
+    slip.style.opacity = u < 0.1 || u > 1.6 || t > 7.8 ? 0 : 1;
+    fills.forEach((f, j) => f.classList.toggle("hide", !(j < i || (j === i && u > 1.5))));
+    const n = fills.filter(f => !f.classList.contains("hide")).length;
+    ro.textContent = n && t < 7.8 ? `{{fact:${ids[n - 1]}}} → ${vals[n - 1]} · ${n} of 3, none typed` : n === 3 ? "3 of 3 filled · none typed by the agent" : "The writer leaves three blanks";
+  });
 })();
 
 /* ===========================================

@@ -354,3 +354,71 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 .mantine-Tabs-tab[data-variant="outline"][data-active] { border-bottom-color: var(--ink); }
 .mantine-Tabs-tab[data-variant="outline"]::before, .mantine-Tabs-tab[data-variant="outline"]::after { display: none; }
+
+/* ── The join canvas (data gate): tables you can arrange, links the engine measured ──
+   Line styles say who stands behind a link: dotted, the engine measured it; dashed oxblood,
+   the Data Analyst suggested it and it is not in the join; solid ink, it is in the join. */
+.jc { display: grid; gap: 8px; margin: 4px 0 10px; }
+.jc-wrap { overflow-x: auto; border: 1px solid var(--line-strong);
+  background: radial-gradient(circle, var(--line) 1px, transparent 1.2px) 0 0 / 22px 22px, var(--bg-raised); }
+.jc-canvas { position: relative; touch-action: none; }
+.jc-svg-host, .jc-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.jc-line { fill: none; stroke-width: 1.4; vector-effect: non-scaling-stroke; transition: stroke 0.25s var(--ease); }
+.jc-line.measured { stroke: var(--ink-3); stroke-dasharray: 1 4; stroke-linecap: round; }
+.jc-line.proposed { stroke: var(--accent); stroke-dasharray: 6 5; animation: jc-flow 1.4s linear infinite; }
+.jc-line.chosen { stroke: var(--ink); stroke-width: 2; }
+.jc-line.off, .jc-chip[hidden] { display: none; }
+@keyframes jc-flow { to { stroke-dashoffset: -22; } }
+.jc-tile { position: absolute; width: 214px; background: var(--bg-base); border: 1px solid var(--line-strong);
+  cursor: grab; user-select: none; transition: box-shadow 0.2s var(--ease), border-color 0.2s; }
+.jc-tile.base { border-color: var(--ink); border-top-width: 3px; }
+.jc-tile.dragging { cursor: grabbing; box-shadow: var(--shadow-menu); z-index: 3; }
+.jc-tile header { display: flex; flex-wrap: wrap; gap: 2px 8px; justify-content: space-between; align-items: baseline;
+  padding: 8px 10px 6px; border-bottom: 1px solid var(--line); }
+.jc-tile header b { font-family: var(--font-mono); font-weight: 500; font-size: 12.5px; }
+.jc-tile header span { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+.jc-tile ul { list-style: none; margin: 0; padding: 6px 10px 4px; display: grid; gap: 1px; }
+.jc-tile li { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-2); display: flex; justify-content: space-between; gap: 6px; }
+.jc-tile li.jc-key { color: var(--ink); }
+.jc-tile li.jc-key::after { content: "key"; color: var(--ink-3); }
+.jc-tile li.jc-target { color: var(--accent); }
+.jc-tile li.jc-target::after { content: "● target"; }
+.jc-tile li.jc-more { color: var(--ink-3); }
+.jc-make-base { margin: 2px 10px 8px; padding: 2px 0; font: 500 11px var(--font-mono); letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-3); background: none; border: 0; border-bottom: 1px dotted var(--line-strong); cursor: pointer; }
+.jc-make-base:hover:not(:disabled) { color: var(--accent); border-bottom-color: var(--accent); }
+.jc-tile.base .jc-make-base { color: var(--ink); border-bottom-color: transparent; cursor: default; }
+.jc-chip { position: absolute; transform: translate(-50%, -50%); z-index: 2; white-space: nowrap; cursor: pointer;
+  font: 500 11px var(--font-mono); padding: 3px 8px; background: var(--bg-base); color: var(--ink-2);
+  border: 1px solid var(--line-strong); transition: background 0.2s var(--ease), color 0.2s, border-color 0.2s; }
+.jc-chip:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
+.jc-chip.proposed { border-color: var(--accent); color: var(--accent); }
+.jc-chip.chosen { background: var(--ink); border-color: var(--ink); color: var(--bg-base); }
+.jc-chip.chosen.suggested::before { content: "● "; color: var(--accent); }
+.jc-chip:disabled, .jc-make-base:disabled { cursor: default; }
+.jc-chip:focus-visible, .jc-make-base:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.jc-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 12px; color: var(--ink-2); }
+.jc-legend i { display: inline-block; width: 24px; height: 0; vertical-align: middle; margin-right: 7px; border-top: 2px solid var(--ink); }
+.jc-legend i.m { border-top: 2px dotted var(--ink-3); }
+.jc-legend i.p { border-top: 2px dashed var(--accent); }
+@media (prefers-reduced-motion: reduce) { .jc-line.proposed { animation: none; } }
+
+/* ── The decision as one card (panels.gate_block): what accepting means, the engine's
+   figures as evidence, then the reason and the buttons. Choosing differently folds away. ── */
+.gate-proposal { font-family: var(--font-display); font-style: italic; font-size: 17px; line-height: 1.45; margin: 2px 0 10px; }
+.gate-evidence { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.gate-evidence span { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); border: 1px solid var(--line-strong); padding: 3px 8px; }
+.gate-evidence b { font-weight: 500; color: var(--ink); }
+.gate-more { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.gate-fold { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink); list-style: none; padding: 4px 0; }
+.gate-fold::-webkit-details-marker { display: none; }
+.gate-fold::before { content: "+ "; color: var(--accent); }
+.gate-more[open] > .gate-fold::before { content: "− "; }
+.gate-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gate-more[open] > .gate-fold { margin-bottom: 8px; }
+.gate-done { display: grid; gap: 6px; justify-items: start; }
+.gate-stamp { display: inline-block; font: 500 11.5px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent); border: 1.5px solid var(--accent); padding: 4px 10px; transform: rotate(-2deg);
+  animation: gate-stamp 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes gate-stamp { from { transform: rotate(-6deg) scale(1.4); opacity: 0; } to { transform: rotate(-2deg) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .gate-stamp { animation: none; } }
