@@ -102,24 +102,31 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
 - **The catalog informs, it never decides.** Documented links become `data.links`: offered
   and measured (`linking.profile(documented=...)`), preferred by the heuristic, never binding.
   Do not turn them into `data.join`. Descriptions and column meanings travel with the sources
-  and reach the Data Analyst as `dictionary`; the engine never reads them.
+  and reach the Data agent as `dictionary`; the engine never reads them.
 - Declared outcomes and keys inform explore's measurements (`declared_outcomes` ranks the
-  target candidates; `identifiers` and `other_outcomes` reach the Data Analyst), never a
+  target candidates; `identifiers` and `other_outcomes` reach the Data agent), never a
   decision: the developer still confirms the target and the exclusions at the data gate.
 - Front ends go through `service.data_payload` / `data_info(with_catalog=True)`; the decision
   records the catalog ids chosen.
+- **Every catalog read goes through the source in force** (`catalog.source`, ADR-0022): a
+  `CatalogSource` answers `search`, `describe`, `links`, `defaults` and optionally `assess`.
+  The YAML catalog is `YamlCatalog`; a plugin adds one with `registry.add_catalog` and
+  `COGNOS_CATALOG` names it. Do not read `catalog.yaml` around the source. `search` must stay
+  fast enough to run as a person types.
+- **Fit is advice** (`catalog.fit`): the source's `assess`, else the engine's mechanical check,
+  shown with who said it and recorded on the gate_source decision. Never block on it.
 
 ## Plan, pool and champion (ADR-0016)
 - **The model stage ends on a pool, never a champion.** `model` follows the development plan
   (samples → factor library → single-factor screen → selection methods → ranked ledger) and
   finalizes every pool member. `backtest` compares the pool on the test sample and the
-  Outcomes Analyst recommends the champion. Do not put a champion back on the model payload.
+  Backtest agent recommends the champion. Do not put a champion back on the model payload.
 - **Read the champion through `ctx.champion()`** (`pool.view`): the model payload with the
   champion in force laid over it. A stage after `backtest` never reads
   `ctx.require("model").payload` for champion fields. Results-only readers use
   `pool.from_results`.
 - **One plan, one resolver.** `modeling/plan.py::resolve` is the only place the layers meet
-  (developer > profile > Design Lead > engine). `recommend` must give a reason for every
+  (developer > profile > Design agent > engine). `recommend` must give a reason for every
   choice and stay a function of the data's shape and the intent; do not hard-code a split.
   A new option goes in `plan.options` so the gate and the agent check can refuse what the
   data cannot run.
@@ -134,7 +141,7 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
   overridable through `overrides.names`) is what a page or a sentence shows. Never show a bare
   id where a person has to tell models apart, and never key anything on a name.
 - **The pool is the developer's size.** `evaluation.pool_size` bounds what the engine and the
-  Modeler propose, never what a person may carry. Anything in `ranking.json` can be added.
+  Modeling agent propose, never what a person may carry. Anything in `ranking.json` can be added.
 - **One method unless asked.** `plan.recommend` names one selection method. When several run,
   their models share one ranking; say so wherever paths are shown side by side.
 - **Every rule and every step is on record.** The screen stamps each dropped factor with its
@@ -182,7 +189,7 @@ measures.
 - A brief entry is `stated` only with a quote found in the documents (`checks.intake_analyst`).
   Inferred positions are asked about, never written to overrides.
 - `intake` never loads the dataset. Prior-model scores are `prior.*` facts and stay out of the
-  design lead's and the modeler's scope (`slices.FACT_SCOPE`).
+  Design agent's and the modeler's scope (`slices.FACT_SCOPE`).
 - `gate_intent` accept writes the document's stated design / intended-use fields to
   `overrides.design` / `overrides.compliance`; an existing answer wins.
 
@@ -194,7 +201,7 @@ measures.
 - **Open target**: `data.target` / `task` may be empty. Read them from `ctx.config` (resolved from
   `overrides.target`), never from `ctx.base_config`, outside explore. Explore decides from
   `base_config` + overrides so a re-run does not treat its own earlier proposal as fixed.
-- **Agents still have no tools.** The Data Analyst *requests* analyses (`data_scout` contract);
+- **Agents still have no tools.** The Data agent *requests* analyses (`data_scout` contract);
   the engine runs them (`analysis/run.py`). Do not give an agent a way to execute anything itself.
 - **A tool** (`plugins.AnalysisTool`) is reviewed code and a pure function of the data: its
   numbers are engine numbers. **A script** is agent-written: it must pass `sandbox.validate`,
@@ -217,8 +224,13 @@ measures.
   keep the row-count assertion in `linking.apply`. Dropping unmatched rows is allowed only
   when the plan says `unmatched: drop`, and is always counted and raised as a finding.
 - **Plan precedence**: `overrides.join` (data gate) > `data.join` (profile, not changeable at
-  the gate) > the Data Analyst's proposal. Accepting the gate writes the plan to
+  the gate) > the Data agent's proposal. Accepting the gate writes the plan to
   `overrides.join`.
+- **A person may draw a link; the engine measures it first** (ADR-0022). Drawn links live in
+  `overrides.drawn_links` (in order, with `by`), are measured by `linking.measure_drawn` before
+  the lock and again by explore (ids `D1`, `D2`, ...), and are cleared by new data. Each link
+  carries its own rules (`join.rules`: `many`, `unmatched`). The canvas keeps the join in the
+  `join_spec` field; never let the canvas decide anything the decision does not record.
 - **Keep or drop is advice from measurements** (`linking.unmatched_advice`: share of rows,
   outcome among unmatched vs matched). Do not turn it back into a blanket default, and keep
   the reason on the page.
@@ -249,6 +261,17 @@ measures.
 - **An unavailable tool is recorded** (`tools_unavailable`), not silently dropped. IMPACT's test
   suite is such a placeholder (`integrations/impact_tools.py`).
 
+## Ask on a page (ADR-0021)
+- **Every stage page has an Ask window** for the agent that owns it (`ask.py`, `ui/ask.py`).
+  The question is the `<agent>_ask` step: its agent's scope, prompt `_ask.md`, contract
+  `AskAnswer`, `checks.ask` (placeholders only, known ids). A new stage agent is askable by
+  being in `STAGE_AGENT`; its heuristic answer is `heuristic.ask`.
+- **Asking decides nothing.** No state, no result, no gap. A `suggested_challenge` is copied
+  into the gate's send-back form; a person sends it. Do not add a path from a thread to a
+  decision.
+- Threads live in `runs/<id>/asks/<stage>.json` (written under the run lock, never across the
+  agent call) and travel in the export. Hand the agent only its own recommendation.
+
 ## Stage contract
 A stage is a `Stage` subclass with `name`, `requires`, `is_gate`, and `run(ctx) -> StageResult`. It
 reads prior outputs via `ctx.require(<stage>).payload` (explore's via `ctx.profile()`), writes
@@ -260,8 +283,12 @@ artifacts under `runs/<id>/stages/<name>/`, and obtains judgment only via
 `stages/__init__._STAGE_MODULES`.
 
 ## Agents (agents/)
-Eight agents (intake analyst, data analyst, design lead, modeler, outcomes analyst, validator,
-model-risk analyst, writer). Each agent = a role prompt (`prompts/<agent>.md` + `_common.md`), an
+Eight agents (Intake agent, Data agent, Design agent, Modeling agent, Backtest agent, Validation
+agent, Compliance agent, Writing agent). A display name is the work plus "agent", never a job
+title: titles belong to the people's seats (developer, reviewer, approver). The ids
+(`intake_analyst`, `data_analyst`, `design_lead`, `modeler`, `outcomes_analyst`, `validator`,
+`risk_analyst`, `writer`) stay as they are, since recorded runs and replays are keyed on them;
+`contracts.FRIENDLY` is the one place an id becomes a name. Each agent = a role prompt (`prompts/<agent>.md` + `_common.md`), an
 output contract (`contracts.py`, `extra="forbid"`, strict-grammar-friendly types — no free-form
 maps), a slice scope
 (`slices.FACT_SCOPE`), engine checks (`checks.py`), and a deterministic implementation
@@ -278,7 +305,7 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 ## Extending COGNOS
 - **New model family** → estimator branch in `modeling/fit.py::_estimator`, grid in
   `modeling/search.py::_hp_grid`, `DEFAULT_FAMILIES` if defaulted, and `stages/ideate.py::_engine_families`
-  so the design lead may propose it; add it to `selection.STEP_FAMILIES` only if it has
+  so the Design agent may propose it; add it to `selection.STEP_FAMILIES` only if it has
   statsmodels inference. Survival/structural/simulation extension points: ADR-0008.
 - **New metric** → `modeling/metrics.py::score` (+ `MAXIMIZE`) and `plan.METRICS` so it can be
   ranked on; expose it as a fact in `agents/facts.py` if agents should cite it.

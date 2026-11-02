@@ -1,5 +1,5 @@
 """Development modes end to end: a new model development from a business intent document, the
-Intake Analyst's interview, and a model update from the existing model's artifacts."""
+Intake agent's interview, and a model update from the existing model's artifacts."""
 
 from __future__ import annotations
 

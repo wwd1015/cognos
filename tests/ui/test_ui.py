@@ -270,8 +270,8 @@ def test_own_data_form_builds_a_source_and_explore_shows_charts_and_code(root, t
     panel = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light"))
     assert "Agent-written script" in panel and "Code to review" in panel and "groupby" in panel
     assert "Rate by sector" in panel and '"type": "Graph"' in panel
-    assert "proposed by the Data Analyst" in panel and "loans.csv" in panel
-    assert "analysis script(s) written by the Data Analyst" in panel  # the gate says what is accepted
+    assert "proposed by the Data agent" in panel and "loans.csv" in panel
+    assert "analysis script(s) written by the Data agent" in panel  # the gate says what is accepted
     assert '"c": null' not in panel
 
 
@@ -314,27 +314,28 @@ def test_linked_sources_show_the_join_and_let_the_developer_change_it(root):
     st = service.state(run_id)
     page = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light"))
     assert "Sources and join" in page and "loans.obligor_id = financials.obligor_id" in page
-    assert "join_links" in page and "Base rows with no match" in page and "dropped" in page
-    # the join is drawn as a canvas: a tile per table, a chip per measured link; the chips
-    # write join_links and the tiles' buttons write join_base, so the decision reads the same
-    assert "jc-canvas" in page and '"type": "jc-tile"' in page and '"type": "jc-base"' in page
+    assert "join_spec" in page and "dropped" in page
+    # the join is drawn as a canvas: a tile per table, a chip per measured link; the canvas
+    # keeps the join (base, links, each link's rules, links drawn) in join_spec
+    assert "jc-canvas" in page and '"data-table": "loans"' in page
     linked = service.results(run_id)["explore"].payload["linking"]
     for lk in linked["links"]:
-        assert f'"link": "{lk["id"]}"' in page
+        assert f'"data-link": "{lk["id"]}"' in page
     assert chip_class(True, True) == "jc-chip chosen suggested"
     assert chip_class(False, True) == "jc-chip proposed"
     assert chip_class(False, False) == "jc-chip measured"
     payload, _ = ui.gate_payload("gate_data", "edit", {
-        "join_base": "loans", "join_links": ["L1"], "join_many": "first",
-        "join_unmatched": "keep", "exclude": []}, run_id)
-    assert payload["join"] == {"base": "loans", "links": ["L1"], "many": "first",
-                               "unmatched": "keep"}
+        "join_spec": json.dumps({"base": "loans", "links": ["L1"],
+                                 "rules": {"L1": {"many": "first", "unmatched": "keep"}},
+                                 "drawn": []}), "exclude": []}, run_id)
+    assert payload["join"] == {"base": "loans", "links": ["L1"],
+                               "rules": {"L1": {"many": "first", "unmatched": "keep"}}}
     assert "of the rows have no match" in page  # why the unmatched rows are dropped, from the measurements
     # applying the form untouched ("as recommended") is not a change to the join
     plan = service.results(run_id)["explore"].payload["linking"]["plan"]
     same, _ = ui.gate_payload("gate_data", "edit", {
-        "join_base": plan["base"], "join_links": [s["link"] for s in plan["steps"]],
-        "join_many": "aggregate", "join_unmatched": "plan", "exclude": []}, run_id)
+        "join_spec": json.dumps({"base": plan["base"], "links": [s["link"] for s in plan["steps"]],
+                                 "rules": {}, "drawn": []}), "exclude": []}, run_id)
     st = service.submit_gate(run_id, "gate_data", "edit", same, background=False)
     assert st.status_of("gate_data") == "done" and st.status_of("explore") == "done"
 
@@ -495,7 +496,7 @@ def test_assumptions_and_limitations_reach_validation_and_the_white_paper(root):
     from cognos.engine.state import Gap
 
     eng = service.engine(run_id)
-    with eng.lock:  # two data questions, as the Data Analyst raises them
+    with eng.lock:  # two data questions, as the Data agent raises them
         state = eng.state
         state.gaps += [Gap(id="data-t1", question="Is utilization known at origination?",
                            category="data", stage="explore", reentry="explore"),
@@ -612,16 +613,22 @@ def test_the_data_is_given_on_the_explore_page_after_the_intent(root, tmp_path):
     assert "Provide the data" in page and "Use this data" in page and "default flag" in page
     assert "Starts once the data is given" in page
     assert "Obligor financials by quarter" in page and "rows" in page and "Add data" in page
-    assert "How the tables join, as documented" in page
+    # only the chosen tables are listed, each with whether it fits the intent; the rest of
+    # the catalog is found by searching (ADR-0022)
+    assert "src-fit fits" in page and "market_equity" not in page
+    assert service.catalog_search("equity volatility", run_id)[0]["id"] == "market_equity"
+    rows = _serialize(ui.catalog_rows(info["cards"], info["fit"]))
+    assert '"type": "src-remove"' in rows and '"type": "src-base"' in rows
     assert "The default catalog shipped with COGNOS" in page  # which catalog is in force
     rail = _serialize(ui.rail(st, "explore"))
     assert "Provide the data" in rail
     # the form, read back as the engine's payload
     with pytest.raises(ui.GateError, match="choose a table"):
         ui.gate_payload("gate_source", "accept", {"catalog": [], "add_files": ""}, run_id)
-    payload, _ = ui.gate_payload("gate_source", "accept", {"catalog": ["obligor_quarters"]},
-                                 run_id)
+    payload, _ = ui.gate_payload("gate_source", "accept",
+                                 {"catalog": json.dumps(["obligor_quarters"])}, run_id)
     assert payload["catalog"] == ["obligor_quarters"]
+    assert payload["catalog_source"] == "yaml" and payload["fit"][0]["level"] == "fits"
     assert payload["data"]["source"]["catalog"] == "obligor_quarters"
     assert payload["data"]["datetime_col"] == "as_of_date"  # the catalog's, unless given
     data = tmp_path / "loans.csv"

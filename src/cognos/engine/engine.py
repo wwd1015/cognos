@@ -332,7 +332,7 @@ class Engine:
                                   f"{', '.join(LABELS[t] for t in sorted(set(targets), key=STEPS.index))} "
                                   f"(loop {loops + 1} of {limit})")
         events.publish(self.run_dir, "challenge",
-                       f"Validator sent {len(routed)} finding(s) back to {', '.join(sorted(set(targets)))} "
+                       f"The Validation agent sent {len(routed)} finding(s) back to {', '.join(sorted(set(targets)))} "
                        f"(loop {loops + 1} of {limit}).", step="validate")
 
     # --- gates -------------------------------------------------------------------------
@@ -387,6 +387,36 @@ class Engine:
     def _data_given(self, state: RunState) -> bool:
         return self.config.data.given or bool(state.overrides.data)
 
+    def _measure_drawn(self, gate: str, action: str, payload: dict[str, Any],
+                       by: str) -> list[dict[str, Any]]:
+        """The links a person drew at the data gate, measured on the run's sources and given
+        the next ids (D1, D2, ...). A link that cannot be measured refuses the decision."""
+        join = payload.get("join") if gate == "gate_data" and action == "edit" else None
+        specs = list((join or {}).get("drawn") or [])
+        if not specs:
+            return []
+        from .. import linking
+
+        tables = linking.read_snapshot(self.run_dir / "data")
+        res = self.results().get("explore")
+        target = ((res.payload or {}).get("target") if res is not None else "") or ""
+        start = len(self.state.overrides.drawn_links)
+        out = []
+        for n, spec in enumerate(specs, start + 1):
+            try:
+                lk = linking.measure_drawn(tables, {**spec, "by": by}, target)
+            except linking.LinkError as exc:
+                raise gates.GateError(f"the link drawn between {spec.get('a')} and "
+                                      f"{spec.get('b')} cannot be used: {exc}") from exc
+            out.append({**lk, "id": f"D{n}"})
+        # The page numbers what it drew; the engine's numbering is the one that holds.
+        moved = {s.get("id"): lk["id"] for s, lk in zip(specs, out, strict=True) if s.get("id")}
+        join["links"] = [moved.get(i, i) for i in join.get("links") or []]
+        join["rules"] = {moved.get(i, i): r for i, r in (join.get("rules") or {}).items()}
+        # what the decision records: each drawn link as drawn, with the id it was given
+        join["drawn"] = [{k: lk[k] for k in ("id", "a", "a_on", "b", "b_on")} for lk in out]
+        return out
+
     def _drop_snapshot(self) -> None:
         """New data: the snapshot of the old one goes, so explore fetches the new one."""
         for name in ("dataset.parquet", "source.json"):
@@ -411,6 +441,7 @@ class Engine:
         seat = process.resolve_seat(gate, seat)
         by = by or whoami()
         payload = dict(payload or {})  # a handler may stamp what the decision covered
+        drawn = self._measure_drawn(gate, action, payload, by)  # slow: before the lock
         with self.lock:
             state = self.state
             answered = self._answered(state)
@@ -425,7 +456,7 @@ class Engine:
                         "Answer use, horizon, default definition and segment before anyone can sign.")
             data_before = state.overrides.data
             invalidate, done = gates.handle(state, gate, action, payload, reason,
-                                            self.results(), config=self.config)
+                                            self.results(), config=self.config, drawn=drawn)
             if state.overrides.data != data_before:
                 self._drop_snapshot()
             self._sign_answers(state, answered, by)

@@ -4,7 +4,7 @@ IMPACT's test interface is not available yet. Until it is, COGNOS registers the 
 answer to so that the gap is on the record: every validation lists it as *not run* with the
 reason, instead of silently not mentioning it. When IMPACT ships its tests, either fill in
 ``_run`` here or register a tool named ``impact_test_suite`` from a plugin: a later registration
-under the same name replaces this one, and the Independent Validator can request it with no
+under the same name replaces this one, and the Validation agent can request it with no
 other change to COGNOS.
 
 Scoring through IMPACT (``impact_adapter.py``) is separate and already works when IMPACT is

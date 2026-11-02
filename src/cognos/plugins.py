@@ -9,6 +9,9 @@ A plugin is a module with a ``register(registry)`` function. It may add:
   guide an agent stay inside COGNOS: a plugin adds what an agent can *ask for*, never how it
   is told to think.
 - **data sources** (``registry.add_source``): a connector for ``data.source.kind``.
+- **catalog sources** (``registry.add_catalog``): where the data catalog's tables come from,
+  for instance an internal metadata system (``catalog.CatalogSource``, ADR-0022). The one in
+  force is named by ``COGNOS_CATALOG``; without it the YAML catalog is.
 
 Plugins are found in three places: Python entry points in the group ``cognos.plugins``, the
 profile's ``plugins:`` list, and the ``COGNOS_PLUGINS`` environment variable (comma-separated
@@ -95,6 +98,7 @@ Tool = AnalysisTool  # the general name; AnalysisTool is kept for plugins writte
 class Registry:
     tools: dict[str, AnalysisTool] = field(default_factory=dict)
     sources: dict[str, datasources.DataSource] = field(default_factory=dict)
+    catalogs: dict[str, Any] = field(default_factory=dict)  # name -> catalog.CatalogSource
     problems: list[dict[str, str]] = field(default_factory=list)
     loaded: list[str] = field(default_factory=list)
     _origin: str = "cognos"
@@ -127,6 +131,16 @@ class Registry:
         if self._origin != "cognos":
             source.origin = self._origin
         self.sources[source.kind] = source
+
+    def add_catalog(self, source: Any) -> None:
+        """Register a catalog source (a ``catalog.CatalogSource``) under its ``name``."""
+        from .catalog import CatalogSource
+
+        if not isinstance(source, CatalogSource):
+            raise TypeError("a catalog source must subclass cognos.catalog.CatalogSource")
+        if self._origin != "cognos":
+            source.origin = self._origin
+        self.catalogs[source.name] = source
 
 
 _cache: dict[tuple[str, ...], Registry] = {}
@@ -197,7 +211,12 @@ def public_list(modules: list[str] | tuple[str, ...] = ()) -> dict[str, Any]:
                       "needs_target": t.needs_target, "origin": t.origin,
                       "stages": list(t.stages), "needs": list(t.needs), "version": t.version,
                       "available": ok, "note": why})
+    catalogs = []
+    for c in reg.catalogs.values():
+        ok, why = c.available()
+        catalogs.append({"name": c.name, "title": c.title, "origin": c.origin, "available": ok,
+                         "note": why})
     return {
-        "tools": tools,
+        "tools": tools, "catalogs": catalogs,
         "sources": sources, "plugins": list(reg.loaded), "problems": list(reg.problems),
     }

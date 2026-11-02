@@ -128,9 +128,12 @@ def send_back(state: RunState, gate: str, payload: dict[str, Any], reason: str) 
 
 
 def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], reason: str,
-           results: dict[str, Any], *, config: Any = None) -> tuple[list[str], bool]:
+           results: dict[str, Any], *, config: Any = None,
+           drawn: list[dict[str, Any]] = ()) -> tuple[list[str], bool]:
     """Apply a decision. Returns (steps to invalidate, whether the gate itself is now done).
-    ``config`` is the run's profile (gate_source reads whether it already gives the data)."""
+    ``config`` is the run's profile (gate_source reads whether it already gives the data).
+    ``drawn`` are the links drawn at the data gate with this decision, already measured by
+    the engine (``linking.measure_drawn``) and given their ids."""
     if action not in ACTIONS[gate]:
         raise GateError(f"{gate} does not accept {action!r}; allowed: {sorted(ACTIONS[gate])}")
     stage = STAGE_OF_GATE.get(gate)
@@ -184,23 +187,34 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
         if asked and plan:
             from .. import linking
 
-            # One answer for every link when the developer gives one; otherwise each link
-            # keeps what the plan on the page says, and a link added here takes the rule's
-            # advice (linking.unmatched_advice).
+            # Each link's own rules when the developer set them (``rules``), else one answer
+            # for every link, else what the plan on the page says; a link added here without
+            # a rule takes the advice (linking.unmatched_advice). A drawn link is measured
+            # by the engine before it gets here and joins like any other.
+            if drawn:
+                linked = {**linked, "links": [*linked["links"], *drawn]}
             current = {s["link"]: s for s in plan["steps"]}
+            rules = asked.get("rules") or {}
             fixed = asked.get("unmatched") if asked.get("unmatched") in linking.UNMATCHED else None
+            own = {i for i, r in rules.items() if (r or {}).get("unmatched") in linking.UNMATCHED}
             steps, problems = linking.resolve(
                 asked.get("base") or plan["base"],
-                [{"link": i, "many": asked.get("many") or "aggregate",
-                  "unmatched": fixed or current.get(i, {}).get("unmatched") or "keep"}
+                [{"link": i,
+                  "many": (rules.get(i) or {}).get("many") or asked.get("many") or "aggregate",
+                  "unmatched": (rules[i]["unmatched"] if i in own else None)
+                  or fixed or current.get(i, {}).get("unmatched") or "keep"}
                  for i in asked.get("links") or []], linked)
             if problems:
                 raise GateError("the join cannot be run: " + "; ".join(problems))
             for step in steps:
-                if not fixed and step["link"] not in current:
+                if not fixed and step["link"] not in current and step["link"] not in own:
                     step["unmatched"] = linking.unmatched_advice(step)[0]
             base_table = asked.get("base") or plan["base"]
-            if linking.plan_digest(base_table, steps) != plan.get("digest"):
+            if drawn:  # kept in order, so their ids (D1, D2, ...) hold on the re-run
+                state.overrides.drawn_links = [
+                    *state.overrides.drawn_links,
+                    *({k: lk[k] for k in ("a", "a_on", "b", "b_on", "by")} for lk in drawn)]
+            if drawn or linking.plan_digest(base_table, steps) != plan.get("digest"):
                 if plan.get("source") == "profile":
                     raise GateError("the profile states the join; change data.join there and "
                                     "start a new run")
@@ -360,6 +374,7 @@ def _source(state: RunState, payload: dict[str, Any], config: Any) -> list[str]:
         state.overrides.data = given
         state.overrides.target, state.overrides.task = target, None
         state.overrides.join, state.overrides.exclude_columns = None, []
+        state.overrides.drawn_links = []
         return _changed_downstream("gate_source")
     if target and target != state.overrides.target:
         state.overrides.target, state.overrides.task = target, None

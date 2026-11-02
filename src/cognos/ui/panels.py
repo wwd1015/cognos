@@ -38,22 +38,22 @@ from .components import (
 
 STAGE_BLURB = {
     "intake": "The engine reads the business intent and, for an update, the existing model's "
-              "artifacts; the Intake Analyst fills the brief and interviews the sponsor where the "
+              "artifacts; the Intake agent fills the brief and interviews the sponsor where the "
               "goal is not clear.",
-    "explore": "The engine fetches and profiles the data and runs the analyses the Data Analyst "
-               "asks for; the analyst names the dependent variable, the features worth "
+    "explore": "The engine fetches and profiles the data and runs the analyses the Data agent "
+               "asks for; the agent names the dependent variable, the features worth "
                "considering and the columns that may not be inputs.",
-    "ideate": "The engine assesses structure and frameworks; the Design Lead ranks the slate and "
+    "ideate": "The engine assesses structure and frameworks; the Design agent ranks the slate and "
               "raises what only the sponsor can decide.",
     "model": "The engine follows the development plan: every factor fitted alone, the library "
              "cut to a shortlist, multi-factor models built by the plan's methods and ranked. The "
-             "Modeler recommends the pool of candidates that goes on; no champion is chosen here.",
+             "Modeling agent recommends the pool of candidates that goes on; no champion is chosen here.",
     "backtest": "The engine scores every pool member on the test sample and under each scenario; "
-                "the Outcomes Analyst reads the comparison and recommends the champion.",
-    "validate": "The engine's rubric re-derives risk from artifacts; the Independent Validator adds "
-                "an effective challenge — it never sees the modeler's reasoning.",
+                "the Backtest agent reads the comparison and recommends the champion.",
+    "validate": "The engine's rubric re-derives risk from artifacts; the Validation agent adds "
+                "an effective challenge — it never sees the Modeling agent's reasoning.",
     "comply": "A non-gating readiness report: evidence organized, human-only steps listed.",
-    "document": "The white paper as an OKF bundle. The Technical Writer drafts prose; every number "
+    "document": "The white paper as an OKF bundle. The Writing agent drafts prose; every number "
                 "is rendered from a recorded fact.",
     "review": "The engine verifies every docs↔code anchor; stale references BLOCK.",
 }
@@ -225,7 +225,8 @@ def _send_back(gate: str, choose_target: bool) -> Any:
             dmc.Group([dmc.Button("Send back", id=_act(gate, "send_back"), color="oxblood",
                                   variant="light", leftSection=icon("tabler:arrow-back-up"))]),
         ], gap="xs")),
-    ], value="send")], value=None, variant="contained", mt="sm")
+    ], value="send")], id={"type": "gate-sendback", "gate": gate}, value=None,
+        variant="contained", mt="sm")
 
 
 def gate_block(gate: str, state: RunState, res: StageResult | None, body: list | None = None,
@@ -332,72 +333,142 @@ def _src_upload(field: str, hint: str, multiple: bool) -> Any:
     ])
 
 
-def _catalog_table(t: dict) -> Any:
+FIT = {"fits": ("fits", "src-fit fits"), "partly": ("check", "src-fit partly"),
+       "unclear": ("unclear", "src-fit unclear")}
+
+
+def _fit_badge(f: dict | None) -> Any:
+    if not f:
+        return None
+    label, cls = FIT.get(f["level"], (f["level"], "src-fit"))
+    return html.Span(label, className=cls, title=" ".join(f.get("reasons") or []) or None)
+
+
+def _fit_reasons(f: dict | None) -> Any:
+    if not f or not f.get("reasons"):
+        return None
+    who = ("The engine's check against the intent" if f.get("origin") == "engine"
+           else f"From the catalog source {f.get('origin')}")
+    return html.Div([html.Div(who + " (advice; you decide)", className="src-who"),
+                     html.Ul([html.Li(r) for r in f["reasons"]])], className="src-reasons")
+
+
+def _grain(t: dict) -> str:
     m = t.get("summary") or {}
-    cols = [[dmc.Text(c, ff="monospace", size="xs"), dmc.Text(text, size="xs")]
-            for c, text in t.get("columns", {}).items()]
-    cols += [[dmc.Text(c, ff="monospace", size="xs"),
-              dmc.Text("not described in the catalog", size="xs", c="dimmed")]
-             for c in m.get("undescribed", [])]
-    owner = " · ".join(x for x in (t.get("owner"), t.get("refresh") and
-                                   f"refreshed {t['refresh']}", t.get("location")) if x)
-    return dmc.Stack([
-        dmc.Checkbox(value=t["id"], label=dmc.Group([
-            dmc.Text(t.get("title") or t["id"], fw=600, size="sm"),
-            dmc.Text(t["id"], ff="monospace", size="xs", c="dimmed"),
-            *(dmc.Badge(f"outcome: {o}", variant="light", color="gray", size="xs", tt="none")
-              for o in t.get("outcomes", []))], gap="xs")),
-        html.Div(dmc.Stack([
-            dmc.Text(t.get("description", ""), size="xs"),
-            dmc.Text(service.catalog_line(t), size="xs", c="dimmed"),
-            dmc.Text(owner, size="xs", c="dimmed") if owner else None,
-            dmc.Accordion([dmc.AccordionItem([
-                dmc.AccordionControl(dmc.Text(f"What the columns mean ({len(cols)})", size="xs")),
-                dmc.AccordionPanel(table(["Column", "Meaning"], cols)),
-            ], value="cols")], variant="default", chevronPosition="left") if cols else None,
-        ], gap=2), style={"paddingLeft": 30}),
-    ], gap=4, className="cognos-catalog-table")
+    parts = [t.get("grain") or ""]
+    if m.get("measured"):
+        parts.append(f"{m['n_rows']:,} rows")
+    return " · ".join(p for p in parts if p)
+
+
+def catalog_rows(cards: list[dict], fits: list[dict] | None = None) -> list:
+    """The tables chosen, one line each (the first is the base table): open a line to read
+    what the table holds and why it fits the intent, or not."""
+    if not cards:
+        return [html.Div("No table chosen yet. Search the catalog below, or add data further "
+                         "down.", className="src-none")]
+    fit = {f["table"]: f for f in fits or []}
+    rows = []
+    for n, t in enumerate(cards):
+        m = t.get("summary") or {}
+        cols = [[dmc.Text(c, ff="monospace", size="xs"), dmc.Text(text, size="xs")]
+                for c, text in t.get("columns", {}).items()]
+        cols += [[dmc.Text(c, ff="monospace", size="xs"),
+                  dmc.Text("not described in the catalog", size="xs", c="dimmed")]
+                 for c in m.get("undescribed", [])]
+        owner = " · ".join(x for x in (t.get("owner"), t.get("refresh") and
+                                       f"refreshed {t['refresh']}", t.get("location")) if x)
+        lead = (html.Span("base", className="src-base", title="The base table: one row per "
+                          "thing the model scores")
+                if n == 0 else
+                html.Button("make base", id={"type": "src-base", "table": t["id"]}, n_clicks=0,
+                            className="src-make-base", title="Make this the base table"))
+        rows.append(html.Details([
+            html.Summary([
+                lead,
+                html.Span(t["id"], className="src-id"),
+                html.Span(t.get("title") or "", className="src-title"),
+                html.Span(_grain(t), className="src-grain"),
+                _fit_badge(fit.get(t["id"])),
+                html.Button("×", id={"type": "src-remove", "table": t["id"]}, n_clicks=0,
+                            className="src-x", title=f"Remove {t['id']}",
+                            **{"aria-label": f"Remove {t['id']}"}),
+            ], className="src-sum"),
+            html.Div([
+                html.P(t.get("description", "")),
+                html.Div(service.catalog_line(t), className="src-meta"),
+                html.Div(owner, className="src-meta") if owner else None,
+                *(html.Span(f"outcome: {o}", className="src-tag") for o in t.get("outcomes", [])),
+                _fit_reasons(fit.get(t["id"])),
+                html.Details([html.Summary(f"What the columns mean ({len(cols)})"),
+                              table(["Column", "Meaning"], cols)], className="src-cols")
+                if cols else None,
+            ], className="src-detail"),
+        ], className="src-row"))
+    return rows
+
+
+def catalog_results(cards: list[dict], chosen: list[str], *, text: str = "") -> list:
+    """Tables found in the catalog: click one to add it."""
+    if not cards:
+        return [html.Div(f"Nothing in the catalog matches “{text}”." if text else
+                         "The catalog is empty.", className="src-none")]
+    return [html.Div([
+        html.Button([html.Span(t["id"], className="src-id"),
+                     html.Span(t.get("title") or "", className="src-title"),
+                     html.Span(_grain(t), className="src-grain"),
+                     html.Span("added" if t["id"] in chosen else "+ add", className="src-add")],
+                    id={"type": "src-add", "table": t["id"]}, n_clicks=0,
+                    className="src-hit", disabled=t["id"] in chosen,
+                    title=t.get("description") or None)
+        for t in cards], className="src-hits")]
 
 
 def catalog_origin(cat: dict) -> str:
-    """Which catalog is in force: the default shipped with COGNOS, or the runs folder's own."""
-    if cat.get("origin") == "default":
+    """Which catalog is in force: the default shipped with COGNOS, the runs folder's own, or
+    a catalog source a plugin adds (ADR-0022)."""
+    if cat.get("kind") == "default":
         return ("The default catalog shipped with COGNOS, with synthetic data. To use your "
                 f"team's tables, write {cat.get('team_file')} (cognos catalog --init starts it "
                 "from this one).")
-    return f"Your team's catalog: {cat.get('file')}"
+    if cat.get("kind") == "team":
+        return f"Your team's catalog: {cat.get('file')}"
+    return f"From the catalog source {cat.get('name')} ({cat.get('origin')})."
 
 
 def source_form(info: dict | None = None) -> list:
-    """Where the data comes from: tables from the team's data catalog, with what each holds,
-    and any data to add (files, Snowflake tables, read-only queries). The engine measures how
-    they connect and the Data Analyst proposes the join at explore."""
+    """Where the data comes from: tables from the data catalog (the chosen ones in a short
+    list, the rest found by searching) and any data to add (files, Snowflake tables,
+    read-only queries). The engine measures how they connect and the Data agent proposes the
+    join at explore."""
     info = info or {}
     f = "gate_source"
     cat = info.get("catalog")
-    if cat and cat.get("tables"):
-        links = cat.get("links") or []
+    if cat:
+        picked = list(info.get("preselected") or [])
+        n = cat.get("n_tables")
         catalog_part = [
-            dmc.Text(cat.get("title") or "The data catalog", fw=600, size="sm"),
+            dmc.Group([dmc.Text(cat.get("title") or "The data catalog", fw=600, size="sm"),
+                       dmc.Text(f"{n} tables" if n else "", size="xs", c="dimmed")],
+                      gap="xs", align="baseline"),
             dmc.Text(catalog_origin(cat), size="xs", c="dimmed"),
-            dmc.Text("Checked: what this kind of model is usually built on. The first one checked "
-                     "is proposed as the base table (one row per thing the model scores).",
-                     size="xs", c="dimmed"),
-            dmc.CheckboxGroup(id=_field(f, "catalog"), value=info.get("preselected") or [],
-                              children=dmc.Stack([_catalog_table(t) for t in cat["tables"]],
-                                                 gap="sm", mt="xs")),
-            dmc.Accordion([dmc.AccordionItem([
-                dmc.AccordionControl(dmc.Text(f"How the tables join, as documented "
-                                              f"({len(links)})", size="xs"),
-                                     icon=icon("tabler:link")),
-                dmc.AccordionPanel(table(["Table", "Joins", "On", "Note"], [
-                    [dmc.Text(lk["left"], ff="monospace", size="xs"),
-                     dmc.Text(lk["right"], ff="monospace", size="xs"),
-                     dmc.Text(", ".join(f"{a} = {b}" for a, b in zip(
-                         lk["left_on"], lk["right_on"], strict=False)), ff="monospace",
-                         size="xs"),
-                     dmc.Text(lk.get("note") or "", size="xs")] for lk in links])),
-            ], value="links")], variant="default") if links else None,
+            dmc.Text("The tables to build on, as the template proposes. The first is the base "
+                     "table (one row per thing the model scores). Open a line to read what the "
+                     "table holds; the badge says whether it fits the intent.", size="xs",
+                     c="dimmed"),
+            dcc.Store(id="src-pick", data=picked),
+            html.Div(catalog_rows(info.get("cards") or [], info.get("fit")), id="src-chosen",
+                     className="src-chosen"),
+            dmc.Group([
+                dmc.TextInput(id="src-search", placeholder="Search tables, columns, outcomes…",
+                              leftSection=icon("tabler:search", 14), debounce=250, size="sm",
+                              style={"flex": 1}),
+                dmc.Button("Browse all", id="src-browse", n_clicks=0, variant="subtle",
+                           size="sm", color="gray"),
+            ], gap="xs", mt=4),
+            html.Div(id="src-results"),
+            dmc.TextInput(id=_field(f, "catalog"), value=json.dumps(picked),
+                          style={"display": "none"}),
         ]
     else:
         catalog_part = [dmc.Alert(
@@ -407,25 +478,27 @@ def source_form(info: dict | None = None) -> list:
             icon=icon("tabler:alert-triangle"))]
     return [
         *catalog_part,
-        dmc.Text("Add data (optional)", fw=600, size="sm", mt="md"),
-        dmc.Text("Data the catalog does not have. The Data Analyst measures how it connects to "
-                 "the tables above and proposes the join; you confirm it at the data gate.",
-                 size="xs", c="dimmed"),
-        _src_upload("add_files", "Drop files, or click to choose (.csv, .xlsx, .parquet)",
-                    multiple=True),
-        dmc.Textarea(id=_field(f, "add_sql"), label="Snowflake tables or read-only queries",
-                     autosize=True, minRows=2,
-                     placeholder="one per line:\ncovenants = RISK.CREDIT.COVENANTS\n"
-                                 "watchlist = SELECT obligor_id, as_of_date, on_watch FROM ..."),
-        dmc.Text("Snowflake connects with the SNOWFLAKE_ACCOUNT / SNOWFLAKE_USER and password or "
-                 "key in this server's environment. Nothing secret is stored in the run.",
-                 size="xs", c="dimmed"),
-        dmc.Group([
-            dmc.TextInput(id=_field(f, "target"), label="Dependent variable (optional)",
-                          description="Left empty, the Data Analyst proposes it", w=260),
-            dmc.TextInput(id=_field(f, "datetime_col"), label="Date column (optional)",
-                          description="Left empty: the base table's, from the catalog", w=260),
-        ], align="flex-start", mt="xs"),
+        html.Details([
+            html.Summary("Add data the catalog does not have (optional)", className="gate-fold"),
+            dmc.Text("The Data agent measures how it connects to the tables above and proposes "
+                     "the join; you confirm it at the data gate.", size="xs", c="dimmed"),
+            _src_upload("add_files", "Drop files, or click to choose (.csv, .xlsx, .parquet)",
+                        multiple=True),
+            dmc.Textarea(id=_field(f, "add_sql"), label="Snowflake tables or read-only queries",
+                         autosize=True, minRows=2,
+                         placeholder="one per line:\ncovenants = RISK.CREDIT.COVENANTS\n"
+                                     "watchlist = SELECT obligor_id, as_of_date, on_watch FROM ..."),
+            dmc.Text("Snowflake connects with the SNOWFLAKE_ACCOUNT / SNOWFLAKE_USER and password "
+                     "or key in this server's environment. Nothing secret is stored in the run.",
+                     size="xs", c="dimmed"),
+            dmc.Group([
+                dmc.TextInput(id=_field(f, "target"), label="Dependent variable (optional)",
+                              description="Left empty, the Data agent proposes it", w=260),
+                dmc.TextInput(id=_field(f, "datetime_col"), label="Date column (optional)",
+                              description="Left empty: the base table's, from the catalog",
+                              w=260),
+            ], align="flex-start", mt="xs"),
+        ], className="gate-more src-more"),
     ]
 
 
@@ -563,7 +636,7 @@ def intake_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
     n_decided = sum(1 for b in brief if b.get("value") or later.get(b["field"]))
     return [
         kpis([("Development mode", p.get("kind_label", "—"), None),
-              ("Intent", str(p.get("clarity", "—")).replace("_", " "), "the Intake Analyst's read"),
+              ("Intent", str(p.get("clarity", "—")).replace("_", " "), "the Intake agent's read"),
               ("Brief decided", f"{n_decided} / {len(brief)}", "* = needed to start"),
               ("Open questions", fmt(len(open_gaps)),
                f"{sum(1 for g in open_gaps if g.id in blocking)} blocking")]),
@@ -612,7 +685,7 @@ def source_counts(analyses: list[dict]) -> Any:
 
 def analysis_card(run_id: str, a: dict, scheme: str) -> Any:
     """One analysis: the question, what it found, its chart and table and, for a script, the
-    code exactly as the analyst wrote it."""
+    code exactly as the Data agent wrote it."""
     try:
         result = json.loads(service.read_artifact(run_id, a["artifact"]) or "{}")
     except ValueError:
@@ -711,11 +784,13 @@ def _link_chip_text(lk: dict) -> str:
 def join_canvas(linked: dict, target: str | None, chosen: list[str], *,
                 disabled: bool = False) -> Any:
     """The join as a canvas: the tables where they are, the links the engine measured drawn
-    between them. A chip on a link adds it to or removes it from the join (it writes the
-    `join_links` field); a tile's button makes it the base table (`join_base`). The drawing and
-    the dragging are `assets/join_canvas.js`; the colours of a chip come from `chip_class`."""
+    between them. Click a link to open its settings (in the join or not, several rows per
+    key, rows with no match); drag from a column of one table to a column of another to draw
+    a link, which the engine measures before it can be used; a tile's button makes it the
+    base table. The page keeps all of it in the `join_spec` field the decision reads; the
+    drawing, the dragging and the settings are `assets/join_canvas.js`."""
     plan = linked["plan"]
-    proposed = {s["link"] for s in plan["steps"]}
+    steps = {s["link"]: s for s in plan["steps"]}
     keys: dict[str, set[str]] = {}
     for lk in linked["links"]:
         keys.setdefault(lk["a"], set()).update(lk["a_on"])
@@ -728,46 +803,63 @@ def join_canvas(linked: dict, target: str | None, chosen: list[str], *,
     place = {base["name"]: ((width - 214) // 2, 16)}
     for i, t in enumerate(others):
         row, col = divmod(i, 3)
-        place[t["name"]] = (12 + col * 224, 380 + row * 230)
-    height = 380 + ((len(others) + 2) // 3 or 1) * 230
+        place[t["name"]] = (12 + col * 224, 400 + row * 270)
+    height = 400 + ((len(others) + 2) // 3 or 1) * 270
     tiles = []
     for t in [base, *others]:
         mine = keys.get(t["name"], set()) | set(t.get("unique_columns") or [])
-        cols = sorted(t["columns"], key=lambda c: (c not in mine, c != target))
+        names = sorted(t["columns"], key=lambda c: (c not in mine, c != target))
         shown = [html.Li(c, className="jc-key" if c in mine else
-                         "jc-target" if c == target else None) for c in cols[:5]]
-        if len(cols) > 5:
-            shown.append(html.Li(f"+ {len(cols) - 5} more", className="jc-more"))
+                         "jc-target" if c == target else None, **{"data-col": c})
+                 for c in names]
         x, y = place[t["name"]]
         tiles.append(html.Div([
             html.Header([html.B(t["name"]), html.Span(f"{fmt(t['n_rows'])} rows")]),
             html.Ul(shown),
             html.Button("base table" if t["name"] == plan["base"] else "Make base",
-                        id={"type": "jc-base", "table": t["name"]}, className="jc-make-base",
-                        disabled=disabled, n_clicks=0),
-        ], id={"type": "jc-tile", "table": t["name"]},
-            className="jc-tile" + (" base" if t["name"] == plan["base"] else ""),
+                        className="jc-make-base", disabled=disabled),
+        ], className="jc-tile" + (" base" if t["name"] == plan["base"] else ""),
             style={"left": f"{x}px", "top": f"{y}px"}, title=t.get("description") or None,
             **{"data-table": t["name"]}))
-    chips = [html.Button(_link_chip_text(lk),
-                         id={"type": "jc-link", "link": lk["id"],
-                             "kind": "proposed" if lk["id"] in proposed else "measured"},
-                         className=chip_class(lk["id"] in chosen, lk["id"] in proposed),
-                         disabled=disabled, n_clicks=0,
-                         title=_link_label(lk) + (" · suggested by the Data Analyst"
-                                                  if lk["id"] in proposed else ""),
-                         **{"data-a": lk["a"], "data-b": lk["b"], "data-link": lk["id"]})
-             for lk in linked["links"]]
+    chips = []
+    for lk in linked["links"]:
+        step = steps.get(lk["id"])
+        attrs = {"data-a": lk["a"], "data-b": lk["b"], "data-link": lk["id"],
+                 "data-on": ", ".join(a if a == b else f"{a} = {b}"
+                                      for a, b in zip(lk["a_on"], lk["b_on"], strict=True)),
+                 "data-match": f"{max(lk['a_in_b'], lk['b_in_a']):.0%}",
+                 "data-rel": _RELATION.get(lk["relation"], lk["relation"]),
+                 "data-many": (step or {}).get("many", "") if (step or {}).get("many") in
+                 ("aggregate", "first") else "",
+                 "data-unmatched": (step or {}).get("unmatched", ""),
+                 "data-by": lk.get("by", "") if lk.get("drawn") else ""}
+        chips.append(html.Button(
+            _link_chip_text(lk),
+            className=chip_class(lk["id"] in chosen, lk["id"] in steps)
+            + (" drawn" if lk.get("drawn") else ""),
+            disabled=disabled, title=_link_label(lk) + (f" · drawn by {lk['by']}"
+                                                        if lk.get("drawn") else ""),
+            **attrs))
+    spec = {"base": plan["base"], "links": list(chosen), "rules": {}, "drawn": []}
+    n_drawn = sum(1 for lk in linked["links"] if lk.get("drawn"))
     return html.Div([
         html.Div(html.Div([html.Div(className="jc-svg-host"), *tiles, *chips],
-                          className="jc-canvas",
-                          style={"height": f"{height}px", "minWidth": f"{width}px"}),
+                          className="jc-canvas" + (" locked" if disabled else ""),
+                          style={"height": f"{height}px", "minWidth": f"{width}px"},
+                          **{"data-drawn": str(n_drawn)}),
                  className="jc-wrap"),
         html.Div([html.Span([html.I(className="m"), "Measured by the engine"]),
-                  html.Span([html.I(className="p"), "Suggested by the Data Analyst"]),
+                  html.Span([html.I(className="p"), "Suggested by the Data agent"]),
                   html.Span([html.I(className="c"), "In your join"]),
-                  html.Span("Drag a table to arrange. Click a link to add or remove it.")],
+                  html.Span([html.I(className="d"), "Drawn by a person"])],
                  className="jc-legend"),
+        html.Div("Click a link to see it and set its rules. To join on columns the engine did "
+                 "not pair, drag from a column in one table to a column in another. Drag a "
+                 "table's name to move it. Changes count when you press Apply my changes."
+                 if not disabled else "Stated in the project profile: the join cannot be "
+                 "changed here.", className="jc-help"),
+        dmc.TextInput(id=_field("gate_data", "join_spec"), value=json.dumps(spec),
+                      style={"display": "none"}),
     ], className="jc")
 
 
@@ -789,7 +881,7 @@ def linking_section(linked: dict | None) -> Any:
     reasons = why.get("joins") or {}
     unmatched = why.get("unmatched") or {}
     how = {"profile": "stated in the project profile", "decision": "set at the data gate",
-           "agent": "proposed by the Data Analyst"}.get(plan["source"], "")
+           "agent": "proposed by the Data agent"}.get(plan["source"], "")
     used = {s["link"] for s in plan["steps"]}
     sources = table(["Source", "Connector", "Location", "Rows × columns", "Role"], [
         [dmc.Text(t["name"], ff="monospace", size="sm", fw=600), t.get("connector") or "—",
@@ -877,7 +969,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
     src = p.get("source") or {}
     fixed = p.get("target_source") == "profile"
     how = {"profile": "fixed in the project profile", "decision": "set at the data gate",
-           "agent": "proposed by the Data Analyst"}.get(p.get("target_source", ""), "")
+           "agent": "proposed by the Data agent"}.get(p.get("target_source", ""), "")
     target_options = ([{"value": c["column"], "label": f"{c['column']} — {c['why']}"}
                        for c in p.get("target_candidates", [])]
                       or [{"value": p.get("target", ""), "label": p.get("target", "")}])
@@ -899,32 +991,6 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                  "with how well it matches. Changing the join rebuilds the dataset and re-runs "
                  "the exploration.", size="xs", c="dimmed"),
         join_canvas(linked, p.get("target"), chosen_links, disabled=join_fixed),
-        # the canvas writes these two fields; they stay in the form so the decision reads them
-        html.Div([
-            dmc.Select(id=_field("gate_data", "join_base"), label="Base table",
-                       data=[t["name"] for t in linked["tables"]], value=linked["plan"]["base"],
-                       allowDeselect=False, disabled=join_fixed),
-            dmc.MultiSelect(id=_field("gate_data", "join_links"), label="Links to join on",
-                            data=[{"value": lk["id"], "label": _link_label(lk)}
-                                  for lk in linked["links"]],
-                            value=chosen_links, disabled=join_fixed, clearable=True),
-        ], style={"display": "none"}),
-        dmc.Select(id=_field("gate_data", "join_many"), label="When a key matches several rows",
-                   data=[{"value": "aggregate", "label": "Aggregate them (numbers averaged)"},
-                         {"value": "first", "label": "Keep the first row"}],
-                   value=next((s["many"] for s in linked["plan"]["steps"]
-                               if s["many"] in ("aggregate", "first")), "aggregate"),
-                   allowDeselect=False, disabled=join_fixed),
-        dmc.Select(id=_field("gate_data", "join_unmatched"),
-                   label="Base rows with no match",
-                   data=[{"value": "plan", "label": "As recommended for each table (below)"},
-                         {"value": "drop", "label": "Drop them for every table (counted and "
-                                                    "reported)"},
-                         {"value": "keep", "label": "Keep them for every table, with missing "
-                                                    "values"}],
-                   value="plan", allowDeselect=False, disabled=join_fixed,
-                   description="Dropping changes the population; keeping leaves missing "
-                               "values, which most model families fail on."),
     ]
     gate = gate_block("gate_data", state, res, seat=seat, body=[
         *join_fields,
@@ -933,7 +999,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                    disabled=fixed, searchable=True,
                    description="Fixed in the project profile." if fixed else
                    "Changing it re-runs the exploration against the new target."),
-        dmc.Alert(f"{len(scripts)} analysis script(s) written by the Data Analyst are part of "
+        dmc.Alert(f"{len(scripts)} analysis script(s) written by the Data agent are part of "
                   "what you are accepting. Read the code under “Analyses” below: it goes to "
                   "validation and into the white paper as it stands.", color="grape",
                   variant="light", icon=icon("tabler:code"), mt="xs") if scripts else None,
@@ -943,7 +1009,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                                    if state.last_decision("gate_data")
                                    else p.get("recommended_exclusions", [])),
                         searchable=True, clearable=True,
-                        description="Pre-filled with the Data Analyst's recommendation."),
+                        description="Pre-filled with the Data agent's recommendation."),
     ], primary=[
         dmc.Button("Accept recommendation", id=_act("gate_data", "accept"),
                    leftSection=icon("tabler:check")),
@@ -968,13 +1034,13 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                 description="The outcome the business intent describes.") if p.get("target") else None,
         linking_section(linked),
         section("Features to consider", table(["Feature", "Expected", "Corr.", "Why"], cand_rows),
-                description="The Data Analyst's candidates for the design stage: hypotheses, "
+                description="The Data agent's candidates for the design stage: hypotheses, "
                             "not a selection.") if cand_rows else None,
         section(f"Analyses ({len(analyses)})",
                 source_counts(analyses),
                 dmc.SimpleGrid([analysis_card(state.run_id, a, scheme) for a in analyses],
                                cols={"base": 1, "lg": 2}, spacing="md"),
-                description="Requested by the Data Analyst, run by the engine. Each one says "
+                description="Requested by the Data agent, run by the engine. Each one says "
                             "where it came from: a built-in tool and a plugin tool are reviewed "
                             "code; a script is code the agent wrote for this run, kept with its "
                             "hash and re-run at validation.")
@@ -1066,7 +1132,7 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
 
 # --- the development plan (shown at design, restated at model) ------------------------------
 _SOURCE_COLOR = {"human": "oxblood", "profile": "blue", "agent": "grape", "engine": "gray"}
-_SOURCE_LABEL = {"human": "developer", "profile": "profile", "agent": "Design Lead",
+_SOURCE_LABEL = {"human": "developer", "profile": "profile", "agent": "Design agent",
                  "engine": "engine"}
 
 
@@ -1144,7 +1210,7 @@ def plan_form(plan: dict) -> Any:
 
     def by(field: str) -> str:
         src = sources.get(field)
-        return {"engine": "recommended by the engine", "agent": "recommended by the Design Lead",
+        return {"engine": "recommended by the engine", "agent": "recommended by the Design agent",
                 "profile": "set in the profile", "human": "set by the developer"}.get(src, "")
 
     def pick(field: str, label: str, value: Any, choices: list[str], source: str = "", **kw) -> Any:
@@ -1265,7 +1331,7 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
     def tags(c: dict) -> Any:
         return dmc.Group([
             dmc.Badge("in the pool", color="oxblood", size="xs") if c["id"] in pool_ids else None,
-            dmc.Badge("Modeler", color="blue", size="xs", variant="light")
+            dmc.Badge("Modeling agent", color="blue", size="xs", variant="light")
             if c["id"] in recommended else None,
             dmc.Badge("within 1 SE", color="gray", size="xs", variant="outline")
             if c.get("within_one_se") else None,
@@ -1604,7 +1670,7 @@ def validate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
     loops = state.loops.get("validator", 0)
     routed = p.get("routed_findings") or []
     gate = gate_block("gate_validation", state, res, seat=seat,
-                      proposal=(f"Verdict {verdict}: the validator recommends "
+                      proposal=(f"Verdict {verdict}: the Validation agent recommends "
                                 f"{str(v.get('recommendation', '—')).replace('_', ' ')}."
                                 if v else f"Verdict {verdict}."),
                       evidence=[("rubric", fmt(p.get("overall_score"), 2)),
@@ -1628,7 +1694,7 @@ def validate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
         trials_section(p.get("trials")),
         section("Findings", findings_table(_findings(res)),
                 description="Engine findings re-derive risk from artifacts; agent findings "
-                            "(val-*) are the validator's challenge."),
+                            "(val-*) are the Validation agent's challenge."),
     ]
 
 

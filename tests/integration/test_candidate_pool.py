@@ -255,7 +255,7 @@ def test_an_agents_plan_is_checked_against_what_the_data_allow(make_config, runs
     first = Orchestrator(make_config("regression"), runs_root=runs_dir)
     first.run(["explore", "ideate"])
     answer = first.ctx.require("ideate").payload["recommendation"]["output"]
-    assert answer["plan"] is None  # the deterministic Design Lead accepts the engine's plan
+    assert answer["plan"] is None  # the deterministic Design agent accepts the engine's plan
 
     def lead(plan):
         return {**answer, "plan": plan}

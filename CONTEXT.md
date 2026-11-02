@@ -15,9 +15,9 @@ see [ADR-0004](docs/adr/0004-primary-domain-commercial-fair-lending-optional.md)
 ## Language
 
 **Agent**:
-One member of the reasoning layer, bound to a stage: Data Analyst (explore), Design Lead (ideate),
-Modeler (model), Outcomes Analyst (backtest), Independent Validator (validate), Model-Risk Analyst
-(comply), Technical Writer (document). An agent has a role prompt, an output contract, a context
+One member of the reasoning layer, bound to a stage: Data agent (explore), Design agent (ideate),
+Modeling agent (model), Backtest agent (backtest), Validation agent (validate), Compliance agent
+(comply), Writing agent (document). An agent has a role prompt, an output contract, a context
 slice, engine checks, and a deterministic (heuristic) implementation. It **recommends**; it never
 decides and never computes a recorded number.
 _Avoid_: "the brain" (v0.x), "subagent" (v1 agents run inside the engine, not as Claude Code
@@ -40,7 +40,7 @@ available.
 
 **Fact**:
 A number (or short value) the engine computed, exposed to agents under a stable id
-(`model.cv_mean`). Agents cite facts by id; the writer's prose uses `{{fact:<id>}}` placeholders.
+(`model.cv_mean`). Agents cite facts by id; the Writing agent's prose uses `{{fact:<id>}}` placeholders.
 "No LLM math" means every recorded number is a fact.
 
 **Development mode** (`engagement.kind`):
@@ -59,7 +59,7 @@ from the documents), *answered* (in the interview), *profile*, *inferred* (uncon
 applied) or *missing*. Later agents receive it as `project.engagement`.
 
 **Interview**:
-The Intake Analyst's questions to the sponsor and their answers. Each question is a gap; each
+The Intake agent's questions to the sponsor and their answers. Each question is a gap; each
 answer re-runs intake. A *blocking* question is one development should not start without.
 _Avoid_: thinking of it as a chat. It is recorded stage runs.
 
@@ -68,8 +68,8 @@ The model an update changes. Its family and inputs are read from its artifacts; 
 it is an earlier COGNOS run, are `prior.*` facts for the agents that read results only.
 
 **Update scope**:
-The Intake Analyst's classification of an update request: `recalibrate`, `re_estimate` or
-`redevelop`. It steers the design and the validator. The engine re-estimates in every case.
+The Intake agent's classification of an update request: `recalibrate`, `re_estimate` or
+`redevelop`. It steers the design and the Validation agent. The engine re-estimates in every case.
 
 **Data source** (connector):
 Where a run's dataset comes from: a file, SQLite, Snowflake, or a plugin's connector. Fetched
@@ -92,17 +92,17 @@ tools to run (`<agent>_tools`). Skipped when the stage has no available tool.
 A pass/fail result a tool reports. A failed check is a finding of the stage, at most `high`.
 
 **Analysis request**:
-What the Data Analyst asks the engine to run during explore: a tool by name, or a script. The
+What the Data agent asks the engine to run during explore: a tool by name, or a script. The
 agent never touches the data itself.
 
 **Analysis script** (agent-written code):
-Python the Data Analyst wrote when no tool fit. Run restricted by the engine, kept as a
+Python the Data agent wrote when no tool fit. Run restricted by the engine, kept as a
 model-development artifact with its hash, read at the data gate, re-run at validation, printed in
 the white paper. _Avoid_: treating its output as trusted because it ran; it is trusted because it
 is on the record and reproduced.
 
 **Open target**:
-A profile that leaves the dependent variable to be proposed by the Data Analyst from the business
+A profile that leaves the dependent variable to be proposed by the Data agent from the business
 intent and confirmed by the model developer at the data gate.
 
 **Challenge**:
@@ -123,7 +123,7 @@ design answers, champion). The profile YAML is never edited.
 
 **Admissible set**:
 The evaluated candidates within one cross-validation standard error of the best (one-standard-error
-rule). The modeler chooses the champion from it, before the sealed holdout is scored.
+rule). The Modeling agent chooses the champion from it, before the sealed holdout is scored.
 
 **Stale**:
 A step whose inputs changed after it ran (a revised decision, an answered gap, a challenge). The
@@ -310,10 +310,10 @@ columns are surfaced, never silently ignored.
 
 ## Example dialogue
 
-> **Modeler:** Can COGNOS just pick the model on its own?
+> **Modeling agent:** Can COGNOS just pick the model on its own?
 > **COGNOS:** The reasoning layer *proposes* a model spec from the data profile. It never decides on
 > its own that the model is good — the deterministic engine fits it, scores it on the sealed holdout,
 > and runs the statistical battery. Only a measured improvement on the frozen metric is kept.
-> **Modeler:** So if the LLM is confidently wrong?
+> **Modeling agent:** So if the LLM is confidently wrong?
 > **COGNOS:** It can't enter the record. A wrong proposal simply fails to beat the incumbent on the
 > holdout and is discarded. The LLM proposes; the engine disposes.

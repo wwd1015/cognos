@@ -3,7 +3,7 @@
     python examples/model_update/run_demo.py
 
 1. The sponsor fills in the business intent template, leaving two sections empty.
-2. A new model development starts from that document. The Intake Analyst reads it and asks about
+2. A new model development starts from that document. The Intake agent reads it and asks about
    what is missing; the answers go back in, and the intent is confirmed.
 3. A year later the sponsor files a model update request on the same template. The second run
    starts from the first run (the existing model), its scoring code, and the request.
@@ -86,7 +86,7 @@ def main() -> None:
     v1 = service.create_run(profile, mode="interactive", root=root, engagement={"intent": str(intent)})
     state = service.run_until_idle(v1, root)
     brief = service.results(v1, root)["intake"].payload
-    print(f"[new] intent is '{brief['clarity'].replace('_', ' ')}'; the Intake Analyst asks:")
+    print(f"[new] intent is '{brief['clarity'].replace('_', ' ')}'; the Intake agent asks:")
     for gap in state.open_gaps():
         print(f"   ? [{gap.id}] {gap.question}")
     service.submit_gate(v1, "gate_intent", "edit", {"answers": ANSWERS}, root=root, background=False)

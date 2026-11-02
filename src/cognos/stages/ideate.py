@@ -9,7 +9,7 @@ specifications (family + feature strategy) for the modeling stage to search, plu
 ``design_brief.md``.
 
 Everything above is deterministic (rules over the explore profile + config) so the stage runs
-offline. v1: the **Design Lead** agent then decides every framework's role, ranks the slate (only
+offline. v1: the **Design agent** agent then decides every framework's role, ranks the slate (only
 engine-fittable families), may propose feature transforms (engine-validated, target-hidden) and
 adds sponsor questions — reasoning proposes, the engine disposes; the human reviews at gate_design.
 """
@@ -400,7 +400,7 @@ class IdeateStage(Stage):
         columns = list(dataset.columns)
         engine_plan = plan_mod.recommend(cfg, shape, families=families, columns=columns)
 
-        # --- the Design Lead's recommendation (engine-checked) ---------------------
+        # --- the Design agent's recommendation (engine-checked) ---------------------
         res = StageResult(stage=self.name, verdict=Verdict.PASS)
         res.payload = {"data_structure": structure, "open_questions": questions,
                        "families": families}
@@ -433,7 +433,7 @@ class IdeateStage(Stage):
             **({"incumbent": incumbent} if incumbent else {}),
         }, fresh={"ideate": res}, check=check_transforms)
 
-        # --- engine disposes: the plan (profile > Design Lead; the developer's edit wins) ---
+        # --- engine disposes: the plan (profile > Design agent; the developer's edit wins) ---
         plan_proposed = None
         if out.plan is not None:
             ev0 = engine_plan["evaluation"]
@@ -493,7 +493,7 @@ class IdeateStage(Stage):
                       f"family {incumbent['family'] or 'not identified'}; "
                       f"{len(incumbent['features_in_data'])} of its inputs found in this data.")
         notes += f" Plan: {plan_mod.summary(plan)}."
-        notes += f" Design Lead: {out.summary}"
+        notes += f" Design agent: {out.summary}"
 
         payload = {
             "task": cfg.task.value,
@@ -510,7 +510,7 @@ class IdeateStage(Stage):
             "hypotheses": hypotheses,
             "proposed_transforms": proposed_transforms,  # agent-authored, engine-validated
             "plan": plan,  # the development plan in force (model stage resolves it the same way)
-            "plan_proposed": plan_proposed,  # the Design Lead's changes to the engine's plan
+            "plan_proposed": plan_proposed,  # the Design agent's changes to the engine's plan
             "plan_summary": plan_mod.summary(plan),
             "notes": notes,
         }
@@ -563,7 +563,7 @@ class IdeateStage(Stage):
 
     def _default_slate(self, families: list[str], top_feats: list[str], cfg: CognosConfig,
                        structure: dict, epv_low: bool) -> list[dict]:
-        """The engine's deterministic slate — the heuristic Design Lead adopts it as-is."""
+        """The engine's deterministic slate — the heuristic Design agent adopts it as-is."""
         parsimony_bonus = 0.12 if epv_low else 0.05  # few events => lean on parsimonious sets
         slate: list[dict] = []
         for family in families:
@@ -659,7 +659,7 @@ class IdeateStage(Stage):
             lines.append(f"| {f['label']} | {f['applicable']} | {f['role']} | {f['reason']} "
                          f"| {f['reference']} |")
         if choices:
-            lines += ["", "## Design Lead decisions", "", "| Framework | Decision | Reason |",
+            lines += ["", "## Design agent decisions", "", "| Framework | Decision | Reason |",
                       "|---|---|---|"]
             for c in choices:
                 lines.append(f"| {c['framework']} | {c['decision']} | {c['reason']} |")

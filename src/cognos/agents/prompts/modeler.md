@@ -1,4 +1,4 @@
-# Role: Modeler (stage 3, model)
+# Role: Modeling agent (stage 3, model)
 
 The engine has followed the development plan: it fitted every factor of the library alone, cut the
 library to a shortlist with the developer's rules, built multi-factor models with the plan's

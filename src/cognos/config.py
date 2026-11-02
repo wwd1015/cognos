@@ -110,7 +110,7 @@ class DataConfig(BaseModel):
     format: str = "csv"  # csv | parquet
     source: SourceConfig | None = None  # a connector instead of path (file | sqlite | snowflake)
     # Several inputs of any kind (a Snowflake table and a CSV, ...). The engine profiles how
-    # they connect, the Data Analyst proposes the join, the developer confirms it at the data
+    # they connect, the Data agent proposes the join, the developer confirms it at the data
     # gate. ``base`` and ``join`` state the join instead (no proposal); see linking.py.
     sources: list[NamedSource] = Field(default_factory=list)
     base: str | None = None  # the table whose rows the model is built on
@@ -120,7 +120,7 @@ class DataConfig(BaseModel):
     links: list[JoinStep] = Field(default_factory=list)
     # The catalog tables a template starts with: preselected at gate_source (ADR-0020).
     catalog: list[str] = Field(default_factory=list)
-    # The dependent variable. Leave it empty and the Data Analyst proposes it from the business
+    # The dependent variable. Leave it empty and the Data agent proposes it from the business
     # intent; the model developer confirms it at the data gate.
     target: str = ""
     features: list[str] = Field(default_factory=list)  # empty => use all non-target columns
@@ -261,7 +261,7 @@ class RankRule(BaseModel):
 class EvaluationConfig(BaseModel):
     """The test plan: how the data are divided to build, compare and confirm models
     (modeling/splits.py). A field left at ``auto`` is recommended from the data and the intent,
-    proposed by the Design Lead and confirmed at the design gate (ADR-0016).
+    proposed by the Design agent and confirmed at the design gate (ADR-0016).
 
     Three samples at most: *development* (fit, and re-sampled for ``validation``), *test* (the
     candidate pool is compared on it, so it is used to choose) and a sealed *holdout* (scored
@@ -330,7 +330,7 @@ class SelectionConfig(BaseModel):
 
 
 class AnalysisConfig(BaseModel):
-    """Exploratory analysis the Data Analyst may request (analysis/). Each round the agent asks
+    """Exploratory analysis the Data agent may request (analysis/). Each round the agent asks
     for tool runs (built in or from a plugin) or writes Python; the engine executes them."""
 
     rounds: int = 2  # scouting rounds before the analyst's recommendation

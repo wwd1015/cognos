@@ -14,6 +14,7 @@ from . import facts as facts_mod
 from .contracts import (
     SECTIONS,
     AgentFinding,
+    AskAnswer,
     Claim,
     ColumnDecision,
     Contract,
@@ -371,6 +372,28 @@ def writer(out: WriterOutput, sl: dict[str, Any]) -> list[str]:
     return errs
 
 
+def ask(out: AskAnswer, sl: dict[str, Any]) -> list[str]:
+    """An answer to a page question: something to read, numbers only through placeholders, and
+    every id it relies on in the agent's context."""
+    errs: list[str] = []
+    if not out.answer.strip():
+        errs.append("answer is empty; answer the question")
+    known = sl.get("facts", {})
+    unknown = facts_mod.unknown_refs([*facts_mod.placeholder_ids(out.answer), *out.cites], known)
+    if unknown:
+        errs.append(f"the answer uses unknown fact id(s) {sorted(set(unknown))[:6]}; use only "
+                    "keys of context.facts")
+    for text, where in ((out.answer, "answer"), (out.suggested_challenge, "suggested_challenge")):
+        bare = facts_mod.bare_metrics(text)
+        if bare:
+            errs.append(f"{where} types metric value(s) {bare[:4]} directly; write "
+                        "{{fact:<id>}} placeholders instead")
+    if facts_mod.placeholder_ids(out.suggested_challenge):
+        errs.append("suggested_challenge is sent as written; describe the issue without "
+                    "placeholders")
+    return errs
+
+
 def tool_request(out: ToolRequestOutput, sl: dict[str, Any]) -> list[str]:
     """Tool requests the engine can run: offered to this stage, known parameters, within the
     round limit, and not a repeat of a run already made."""
@@ -419,6 +442,8 @@ def run_checks(agent: str, out: Contract, sl: dict[str, Any], extra: Check | Non
     errs = default(out, sl)
     if isinstance(out, ToolRequestOutput):
         errs += tool_request(out, sl)
+    if isinstance(out, AskAnswer):
+        errs += ask(out, sl)
     if agent in CHECKS:
         errs += CHECKS[agent](out, sl)
     if extra is not None:

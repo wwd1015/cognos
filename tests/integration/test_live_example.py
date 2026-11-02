@@ -19,7 +19,7 @@ def _load_replay():
     return mod
 
 
-@pytest.mark.skip(reason="recorded before candidate pools (ADR-0016): the recorded Modeler chose "
+@pytest.mark.skip(reason="recorded before candidate pools (ADR-0016): the recorded Modeling agent chose "
                          "a champion and the recorded Validator cites that champion's "
                          "coefficients. Re-record with live agents, then drop this mark.")
 def test_live_recording_replays_offline(tmp_path, monkeypatch):

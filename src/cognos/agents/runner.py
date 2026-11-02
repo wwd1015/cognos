@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 from ..engine import events
 from . import checks, heuristic, providers, slices
-from .contracts import AGENT_STAGE, CONTRACTS, FRIENDLY, Contract, tool_step_of
+from .contracts import AGENT_STAGE, CONTRACTS, FRIENDLY, Contract, ask_step_of, tool_step_of
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
 MIN_ATTEMPT_S = 20.0  # don't start a retry with less time than this left
@@ -78,19 +78,29 @@ TOOL_TASK = ("Before you make your recommendation, decide which of the tools in 
              "you need no further round.")
 
 
+ASK_TASK = ("A person reading your stage's page in the workbench asks you a question "
+            "(context.question; context.thread holds the conversation so far). Answer it from "
+            "your context: what the page shows, why, and what the record says. Explain; do not "
+            "decide. If the question shows something your stage's work should reconsider, say "
+            "so in suggested_challenge.")
+
+
 def task_of(agent: str) -> str:
-    return TOOL_TASK if tool_step_of(agent) else TASKS[agent]
+    if tool_step_of(agent):
+        return TOOL_TASK
+    return ASK_TASK if ask_step_of(agent) else TASKS[agent]
 
 
 def system_prompt(agent: str) -> str:
-    # guided search is the modeler's role; requesting analyses is the data analyst's; a
+    # guided search is the modeler's role; requesting analyses is the Data agent's; a
     # tool-request step is its role agent's, with the shared guidance on using tools
-    role = tool_step_of(agent)
+    role = tool_step_of(agent) or ask_step_of(agent)
     name = role or {"experiment": "modeler", "data_scout": "data_analyst",
                     "data_linker": "data_analyst"}.get(agent, agent)
     body = (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
     if role:
-        body += "\n\n" + (PROMPTS_DIR / "_tools.md").read_text(encoding="utf-8")
+        step = "_tools.md" if tool_step_of(agent) else "_ask.md"
+        body += "\n\n" + (PROMPTS_DIR / step).read_text(encoding="utf-8")
     common = (PROMPTS_DIR / "_common.md").read_text(encoding="utf-8")
     return f"{body}\n\n{common}"
 

@@ -1,6 +1,6 @@
 # Model update request: <model name>
 
-<!-- COGNOS intent template v1 (kind: update). Write under each heading and keep the headings as they are. Leave a section empty when it is undecided: the Intake Analyst asks about it instead of assuming. -->
+<!-- COGNOS intent template v1 (kind: update). Write under each heading and keep the headings as they are. Leave a section empty when it is undecided: the Intake agent asks about it instead of assuming. -->
 
 ## Business objective
 

@@ -246,7 +246,7 @@ class ComplyStage(Stage):
             "outstanding_human_steps": outstanding_human_steps,
             "report_only": True,
         }
-        # --- the Model-Risk Analyst's reading (non-gating, like the report) ----------
+        # --- the Compliance agent's reading (non-gating, like the report) ----------
         res.payload = payload
         tool_runs = ctx.consult_tools("risk_analyst", {
             "regimes": list(comp.regimes), "risk_tier": comp.risk_tier,

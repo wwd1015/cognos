@@ -11,7 +11,7 @@
 - **Documents by upload or by path**: `.md`, `.txt`, `.docx` (headings kept), source code,
   notebooks, `.pdf` with `pypdf`. Copied into `runs/<id>/inputs/`, hashed, inventoried; an
   unreadable file is a finding and a missing one refuses the run.
-- **Intake stage + Intake Analyst**: restates the objective, fills a 12-field engagement brief (17
+- **Intake stage + Intake agent**: restates the objective, fills a 12-field engagement brief (17
   for an update), judges whether the intent is clear / needs clarification / unclear.
 - **The interview**: every required field the documents do not state becomes a blocking question;
   the agent adds its own (a vague goal, a contradiction, an unmeasurable success criterion).
@@ -24,11 +24,11 @@
   out-of-scope use); a document that disagrees with the profile is flagged.
 - **Model update**: change items typed and routed to the stage they alter; an update scope
   (recalibrate / re-estimate / redevelop); the existing model's family and inputs read from its
-  artifacts; the incumbent family always on the slate and ranked first; the validator checks the
+  artifacts; the incumbent family always on the slate and ranked first; the Validation agent checks the
   request was delivered; a **model change record** in the white paper with the existing model's
   recorded figures beside the update's when it is an earlier COGNOS run.
-- **Scoped prior scores**: `prior.*` facts reach the outcomes analyst, validator, model-risk
-  analyst and writer; the design lead and the modeler see the incumbent's family, not its scores.
+- **Scoped prior scores**: `prior.*` facts reach the Backtest agent, Validation agent,
+  Compliance agent and Writing agent; the Design agent and the Modeling agent see the incumbent's family, not its scores.
 - **Every agent sees the confirmed brief** (`project.engagement`).
 
 ## Data sources, plugins and exploratory analysis (v1.2)
@@ -39,7 +39,7 @@
 - **Snapshot and provenance**: fetched once into the run; `data/source.json` records connector,
   table or query, rows, time and the snapshot's SHA-256.
 - **Open target**: leave `data.target` (and `task`) empty; the engine ranks outcome-like columns,
-  the Data Analyst chooses against the business intent, the task is inferred, and the developer
+  the Data agent chooses against the business intent, the task is inferred, and the developer
   confirms or changes it at the data gate (changing it re-runs explore).
 - **Feature candidates**: the features worth considering, each with expected direction, business
   rationale and cited evidence.
@@ -57,7 +57,7 @@
   profile list or `COGNOS_PLUGINS`; `cognos plugins` lists them and any load problems. Example in
   `examples/plugins/`.
 - **Linked sources** (ADR-0014): several inputs of any kind; the engine measures the links, the
-  Data Analyst proposes the join, the developer confirms it at the data gate; a join never adds
+  Data agent proposes the join, the developer confirms it at the data gate; a join never adds
   a row.
 - **Team use on a shared runs folder** (ADR-0015): cross-machine run lock, names on decisions
   and answers, take-over of a stuck step, run deletion with confirmation.
@@ -77,7 +77,7 @@
   and a time limit. A rejected script is returned to the agent with the reason.
 - **Code as an artifact**: saved with a provenance header and hash; shown in full at the data
   gate, whose decision records the scripts accepted; re-run at validation (a script that does not
-  reproduce, or was altered, is a finding) and handed to the Independent Validator; printed in
+  reproduce, or was altered, is a finding) and handed to the Validation agent; printed in
   the white paper; included in the export. `analysis.allow_code: false` disables it.
 - **Source on every analysis**: each card is labelled built-in tool, plugin tool (with the
   plugin's name) or agent-written script, and the section counts each.
@@ -118,7 +118,7 @@
   stratified, grouped by entity, rolling forecast origin, sliding window), a sealed holdout
   when the data can spare it, the ranking (any metric of the frozen registry, read in sample,
   on the validation sample or on the test sample; several lines), and the pool size. The
-  Design Lead may change it; the developer confirms or edits it at the design gate; the
+  Design agent may change it; the developer confirms or edits it at the design gate; the
   profile can state any part (`evaluation`, `factors`, `selection`).
 - **Factor library**: explored columns widened into lags, changes, year-on-year moves, growth
   rates and moving averages for a series, logarithms of skewed amounts otherwise. Target-hidden,
@@ -132,12 +132,12 @@
   and constraints (every coefficient significant, expected signs, no two factors too alike, a
   size limit, factors every model must carry). Each path is recorded step by step; all models
   land in one ranked ledger.
-- **Candidate pool**: the model stage ends on a pool. The Modeler recommends it, the developer
+- **Candidate pool**: the model stage ends on a pool. The Modeling agent recommends it, the developer
   adds or removes members at `gate_candidates` from anything the search evaluated, and each
   member is fitted, tested and saved.
 - **Champion on outcomes**: every pool member is scored on the test sample (forecast error and
   bias, or Gini/KS, calibration, PSI) and under every scenario, side by side with a forecast
-  chart. The Outcomes Analyst recommends the champion; the developer accepts or chooses another
+  chart. The Backtest agent recommends the champion; the developer accepts or chooses another
   member at `gate_champion`.
 - **What stays sealed**: the holdout is scored once per champion at validation; every look at
   the test sample is counted; validation says so when the champion's only out-of-sample
@@ -183,8 +183,8 @@
   the OKF bundle (`docs/decisions.md`).
 
 ## Agents (propose / dispose)
-- **Eight stage agents** — Intake Analyst, Data Analyst, Design Lead, Modeler (+ guided-search role), Outcomes
-  Analyst, Independent Validator, Model-Risk Analyst, Technical Writer — each with a role prompt
+- **Eight stage agents** — Intake agent, Data agent, Design agent, Modeling agent (+ guided-search role), Outcomes
+  Analyst, Validation agent, Compliance agent, Writing agent — each with a role prompt
   (commercial-risk playbook), a Pydantic output contract, an independence-scoped context slice,
   engine checks, and a deterministic heuristic implementation.
 - **Validate-and-retry**: a contract violation or failed engine check (unknown fact id, champion
@@ -193,15 +193,15 @@
 - **Challenges**: human send-backs and high-severity validator findings reach the responsible agent,
   which must answer each; validator findings loop back automatically (bounded,
   `workflow.auto_challenge_loops`).
-- **Independence**: the modeler's slice has no model/backtest/holdout facts (it chooses before the
-  holdout is scored); the validator's slice never contains the modeler's rationale.
+- **Independence**: the Modeling agent's slice has no model/backtest/holdout facts (it chooses before the
+  holdout is scored); the Validation agent's slice never contains the Modeling agent's rationale.
 - **No LLM math**: facts by id; `{{fact:<id>}}` placeholders rendered by the engine.
 - **Providers**: `heuristic` (offline), `replay` (recorded outputs), `claude_cli` (`claude -p`,
   isolated), `anthropic` (structured outputs, adaptive thinking, refusal fallbacks), OpenAI-compatible
   (OpenAI, xAI, OpenRouter, Ollama); `auto` resolution; per-call time limit; per-run spend budget.
 - **Agent audit**: every attempt's prompt, context slice and raw output + `audit.jsonl` (status,
   backend, model, prompt/context hashes, duration, cost).
-- **Agent-guided search** (opt-in `search.guided`): the modeler proposes experiments; the engine
+- **Agent-guided search** (opt-in `search.guided`): the Modeling agent proposes experiments; the engine
   applies them target-hidden, scores them with leakage-safe CV, and keeps only winners, which join
   the leaders the pool is drawn from.
 - **Target-hidden transform execution** (ADR-0002): agent-authored transforms run on a features-only
@@ -369,7 +369,7 @@
 - **Coefficients reported from the full-rank inference design** so the documented significances are statistically valid.
 - **Outcomes analysis** (Gini/KS, calibration/ECE, PSI on the OOT sample) is the backtest section for credit models; trading metrics appear only in opt-in returns mode.
 - **Two-tier reproducibility note** (ADR-0003): the analysis is reproducible offline with no LLM; the recommendations (`runs/<id>/agents/`) and decisions (decision log) are recorded for audit and replay.
-- **Narrative + decision log** (v1.0): the Technical Writer's prose with engine-rendered `{{fact:…}}` numbers, and every agent recommendation, human decision and challenge.
+- **Narrative + decision log** (v1.0): the Writing agent's prose with engine-rendered `{{fact:…}}` numbers, and every agent recommendation, human decision and challenge.
 - **Google Model Card** (all 9 sections).
 - **EU AI Act Annex IV** technical-documentation pack (when EU is in scope).
 - **Docs↔code links**: `{@code:path#symbol}` anchors trace white-paper paragraphs to deployment code, plus cross-linked OKF concepts forming a knowledge graph.

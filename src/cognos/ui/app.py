@@ -21,6 +21,8 @@ import dash_mantine_components as dmc
 from dash import ALL, MATCH, Dash, Input, Output, State, ctx, dcc, html, no_update
 
 from .. import __version__, service
+from ..agents.contracts import FRIENDLY
+from ..ask import agent_for
 from ..engine import GateError
 from ..engine.graph import (
     GATE_BEFORE_STAGE,
@@ -32,6 +34,7 @@ from ..engine.graph import (
     STAGES,
 )
 from ..engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, next_action, seat_label
+from . import ask as ask_ui
 from .components import (
     empty,
     fmt,
@@ -44,7 +47,11 @@ from .components import (
     verdict_badge,
 )
 from .panels import (
+    _RELATION,
     SPONSOR_NOTE,
+    _link_chip_text,
+    catalog_results,
+    catalog_rows,
     challenge_rows,
     compare_page,
     gap_cell,
@@ -109,7 +116,7 @@ def start_note(ref: str | None, templates: list[dict]) -> Any:
     """What the chosen template is for, what it sets up, and the data it is usually built on."""
     t = next((t for t in templates if t["ref"] == ref), None)
     if t is None:
-        return dmc.Text("Every choice is made in the run: the Design Lead proposes the plan from "
+        return dmc.Text("Every choice is made in the run: the Design agent proposes the plan from "
                         "the intent and the data, and you confirm it at the gates.",
                         size="xs", c="dimmed")
     saved = (f"Saved by {t['saved_by']} on {t['saved_at'][:10]} from run {t['from_run']}. "
@@ -157,7 +164,7 @@ def runs_page() -> Any:
             ], justify="space-between"),
             upload_box("new-intent", "Drop the filled-in template, or click to choose "
                                      "(.md, .txt, .docx)", multiple=False),
-            dmc.Text("What the model is for, in the sponsor's words. The Intake Analyst reads it "
+            dmc.Text("What the model is for, in the sponsor's words. The Intake agent reads it "
                      "and asks about anything left unclear. You give the data once the intent "
                      "is confirmed.", size="xs", c="dimmed", id="new-intent-help"),
         ], gap=4),
@@ -530,6 +537,7 @@ def workspace_page(run_id: str) -> Any:
         dmc.Modal(id="io-modal", size="80%", title="Agent call", children=html.Div(id="io-body")),
         trial_modal(), promote_modal(), template_modal(),
         dcc.Download(id="export-download"),
+        ask_ui.dock(),
     ])
 
 
@@ -842,15 +850,26 @@ def stamp(at: str | None) -> Any:
     return html.Span((at or "")[:19].replace("T", " "), className="stamp")
 
 
+def call_label(call_id: str) -> str:
+    """A call as a person reads it: the time it was made and its short code. The agent has its
+    own column, so the id's agent part is left out instead of cut through."""
+    stamp_, _, rest = call_id.partition("_")
+    code = rest.rsplit("_", 1)[-1] if rest else ""
+    if len(stamp_) == 15 and stamp_[8] == "-":
+        t = stamp_[9:]
+        return f"{t[:2]}:{t[2:4]}:{t[4:]} · {code}" if code else f"{t[:2]}:{t[2:4]}:{t[4:]}"
+    return call_id
+
+
 def audit_tab(run_id: str) -> Any:
     rows = []
     for a in service.audit(run_id)[::-1]:
         color = {"ok": "green", "invalid": "orange", "error": "red"}.get(a["status"], "gray")
         rows.append([
-            dmc.Button(a["call_id"][-14:], id={"type": "audit-row", "call": a["call_id"]},
+            dmc.Button(call_label(a["call_id"]), id={"type": "audit-row", "call": a["call_id"]},
                        variant="subtle", size="compact-xs", ff="monospace", n_clicks=0,
                        leftSection=icon("tabler:file-search", 12)),
-            a["agent"], a["attempt"], dmc.Badge(a["status"], color=color, size="xs", variant="light"),
+            FRIENDLY.get(a["agent"], a["agent"]), a["attempt"], dmc.Badge(a["status"], color=color, size="xs", variant="light"),
             dmc.Code(backend_label(a.get("provider"), a.get("model"))),
             fmt(a.get("duration_s"), 2), f"${a['cost_usd']:.4f}" if a.get("cost_usd") else "—",
             dmc.Text((a.get("error") or "")[:140], size="xs", c="dimmed"),
@@ -1137,6 +1156,75 @@ def register_callbacks(app: Dash) -> None:
             return no_update, no_update
         return ctx.triggered_id["step"], "workflow"
 
+    # --- Ask: a floating chat with the page's agent (ADR-0021) ------------------------------
+    @app.callback(Output("ask-open", "data"), Input("ask-fab", "n_clicks"),
+                  Input("ask-close", "n_clicks"), State("ask-open", "data"),
+                  prevent_initial_call=True)
+    def ask_toggle(_fab, _close, is_open):
+        return ctx.triggered_id == "ask-fab" and not is_open
+
+    @app.callback(Output("ask-dock", "hidden"), Output("ask-window", "hidden"),
+                  Output("ask-title", "children"), Output("ask-sub", "children"),
+                  Output("ask-foot", "children"), Output("ask-thread", "children"),
+                  Input("ws-tab", "value"), Input("ws-step", "data"), Input("ws-key", "data"),
+                  Input("ask-open", "data"), Input("ask-version", "data"),
+                  State("ws-run", "data"))
+    def ask_window(tab, step, _key, is_open, _version, run_id):
+        hold = (no_update,) * 4
+        if not run_id or tab != "workflow":
+            return (True, True, *hold)
+        st = service.state(run_id)
+        sel = step or auto_step(st)
+        agent = agent_for(sel)
+        if agent is None:
+            return (True, True, *hold)
+        if not is_open:
+            return (False, True, *hold)
+        gate = GATE_OF_STAGE.get(sel)
+        return (False, False, *ask_ui.heading(agent, sel),
+                ask_ui.thread(service.ask_thread(run_id, sel), agent, sel,
+                              gate_open=bool(gate) and st.status_of(gate) == "awaiting"))
+
+    @app.callback(Output("ask-version", "data"), Output("ask-input", "value"),
+                  Output("ask-error", "children"),
+                  Input("ask-send", "n_clicks"), State("ask-input", "value"),
+                  State("ws-run", "data"), State("ws-step", "data"), State("ask-version", "data"),
+                  running=[(Output("ask-send", "loading"), True, False)],
+                  prevent_initial_call=True)
+    def ask_send(_n, text, run_id, step, version):
+        sel = step or auto_step(service.state(run_id))
+        try:
+            service.ask(run_id, sel, text or "")
+        except Exception as exc:  # no valid answer, a spent budget, an empty question
+            return no_update, no_update, dmc.Text(str(exc), size="xs", c="red", px="sm")
+        return (version or 0) + 1, "", None
+
+    @app.callback(Output("ask-input", "value", allow_duplicate=True),
+                  Input({"type": "ask-example", "q": ALL}, "n_clicks"), prevent_initial_call=True)
+    def ask_example(clicks):
+        if not any(clicks or []):
+            return no_update
+        return ctx.triggered_id["q"]
+
+    @app.callback(
+        Output({"type": "gate-field", "gate": ALL, "field": "message"}, "value",
+               allow_duplicate=True),
+        Output({"type": "gate-sendback", "gate": ALL}, "value"),
+        Output("notify", "sendNotifications", allow_duplicate=True),
+        Input({"type": "ask-use", "turn": ALL}, "n_clicks"),
+        State("ws-run", "data"), State("ws-step", "data"), prevent_initial_call=True)
+    def ask_use(clicks, run_id, step):
+        fields, panels = ctx.outputs_list[0], ctx.outputs_list[1]
+        if not any(clicks or []) or not fields:
+            return no_update, no_update, no_update
+        sel = step or auto_step(service.state(run_id))
+        turns = service.ask_thread(run_id, sel)
+        i = ctx.triggered_id["turn"]
+        text = turns[i].get("suggested_challenge", "") if i < len(turns) else ""
+        return ([text] * len(fields), ["send"] * len(panels),
+                [notice("Copied into the send-back", "Read it, edit it if needed, and press "
+                        "Send back to send it.", "oxblood")])
+
     @app.callback(Output("ws-seat", "data"), Input("seat-switch", "value"))
     def choose_seat(value):
         return value or "developer"
@@ -1161,47 +1249,72 @@ def register_callbacks(app: Dash) -> None:
             return [notice("Decision refused", str(exc), "red")], no_update
         return [notice("Decision recorded", f"{LABELS[gate]}: {action.replace('_', ' ')}", "oxblood")], None
 
-    # The join canvas (panels.join_canvas) writes the data gate's two join fields; the
-    # decision still reads them from the form. These run in the browser: no round trip.
-    links = {"type": "gate-field", "gate": "gate_data", "field": "join_links"}
-    base = {"type": "gate-field", "gate": "gate_data", "field": "join_base"}
-    app.clientside_callback(
-        """function(clicks, value) {
-            const t = dash_clientside.callback_context.triggered_id;
-            if (!t || !(clicks || []).some(Boolean)) return dash_clientside.no_update;
-            const now = value || [];
-            return now.includes(t.link) ? now.filter(v => v !== t.link) : now.concat([t.link]);
-        }""",
-        Output(links, "value"),
-        Input({"type": "jc-link", "link": ALL, "kind": ALL}, "n_clicks"),
-        State(links, "value"), prevent_initial_call=True)
-    app.clientside_callback(
-        """function(value, ids) {
-            const on = value || [];
-            return ids.map(i => on.includes(i.link)
-                ? "jc-chip chosen" + (i.kind === "proposed" ? " suggested" : "")
-                : "jc-chip " + i.kind);
-        }""",
-        Output({"type": "jc-link", "link": ALL, "kind": ALL}, "className"),
-        Input(links, "value"), State({"type": "jc-link", "link": ALL, "kind": ALL}, "id"),
-        prevent_initial_call=True)
-    app.clientside_callback(
-        """function(clicks) {
-            const t = dash_clientside.callback_context.triggered_id;
-            if (!t || !(clicks || []).some(Boolean)) return dash_clientside.no_update;
-            return t.table;
-        }""",
-        Output(base, "value"),
-        Input({"type": "jc-base", "table": ALL}, "n_clicks"), prevent_initial_call=True)
-    app.clientside_callback(
-        """function(value, ids) {
-            return [ids.map(i => "jc-tile" + (i.table === value ? " base" : "")),
-                    ids.map(i => i.table === value ? "base table" : "Make base")];
-        }""",
-        Output({"type": "jc-tile", "table": ALL}, "className"),
-        Output({"type": "jc-base", "table": ALL}, "children"),
-        Input(base, "value"), State({"type": "jc-tile", "table": ALL}, "id"),
-        prevent_initial_call=True)
+    # The join canvas (panels.join_canvas, assets/join_canvas.js) keeps the join in the data
+    # gate's join_spec field. A link drawn on it is measured here, on the run's sources,
+    # before it can be used; the decision measures it again when it is sent.
+    @app.server.route("/api/measure-link", methods=["POST"])
+    def measure_link_route():
+        from flask import jsonify, request
+
+        q = request.get_json(silent=True) or {}
+        try:
+            lk = service.measure_link(str(q.get("run") or ""), str(q.get("a") or ""),
+                                      list(q.get("a_on") or []), str(q.get("b") or ""),
+                                      list(q.get("b_on") or []))
+        except (ValueError, FileNotFoundError) as exc:
+            return jsonify({"ok": False, "error": str(exc)})
+        return jsonify({"ok": True, "chip": _link_chip_text({**lk, "id": ""}),
+                        "match": f"{max(lk['a_in_b'], lk['b_in_a']):.0%}",
+                        "rel": _RELATION.get(lk["relation"], lk["relation"]),
+                        "low": max(lk["a_in_b"], lk["b_in_a"]) < 0.5})
+
+    # The catalog picker on "Provide the data" (panels.source_form): search, add, remove and
+    # make base change the chosen list; the list is drawn again with each table's fit.
+    @app.callback(Output("src-results", "children"),
+                  Input("src-search", "value"), Input("src-browse", "n_clicks"),
+                  Input("src-pick", "data"), State("ws-run", "data"))
+    def src_results(text, browse, pick, run_id):
+        text = (text or "").strip()
+        if not text and not (browse or 0) % 2:
+            return []
+        try:
+            found = service.catalog_search(text, run_id, limit=12 if text else 200)
+        except Exception as exc:  # the catalog source failed: say so in the form
+            return [dmc.Alert(f"The catalog cannot be searched: {exc}", color="yellow",
+                              variant="light")]
+        return catalog_results(found, list(pick or []), text=text)
+
+    @app.callback(Output("src-pick", "data"),
+                  Input({"type": "src-add", "table": ALL}, "n_clicks"),
+                  Input({"type": "src-remove", "table": ALL}, "n_clicks"),
+                  Input({"type": "src-base", "table": ALL}, "n_clicks"),
+                  State("src-pick", "data"), prevent_initial_call=True)
+    def src_pick(_add, _remove, _base, pick):
+        trig = ctx.triggered_id
+        if not trig or not (ctx.triggered and ctx.triggered[0].get("value")):
+            return no_update
+        pick, tid = list(pick or []), trig["table"]
+        if trig["type"] == "src-add" and tid not in pick:
+            return [*pick, tid]
+        if trig["type"] == "src-remove":
+            return [t for t in pick if t != tid]
+        if trig["type"] == "src-base" and tid in pick:
+            return [tid, *(t for t in pick if t != tid)]
+        return no_update
+
+    @app.callback(Output("src-chosen", "children"),
+                  Output({"type": "gate-field", "gate": "gate_source", "field": "catalog"},
+                         "value", allow_duplicate=True),
+                  Input("src-pick", "data"), State("ws-run", "data"),
+                  prevent_initial_call=True)
+    def src_chosen(pick, run_id):
+        pick = list(pick or [])
+        try:
+            rows = catalog_rows(service.catalog_cards(pick), service.catalog_fit(run_id, pick))
+        except Exception as exc:
+            rows = [dmc.Alert(f"The catalog cannot be read: {exc}", color="yellow",
+                              variant="light")]
+        return rows, json.dumps(pick)
 
     @app.callback(Output({"type": "gate-field", "gate": "gate_source", "field": MATCH}, "value"),
                   Output({"type": "src-names", "field": MATCH}, "children"),
@@ -1411,10 +1524,16 @@ def source_payload(fields: dict, run_id: str | None = None) -> dict:
         files = list(json.loads(fields.get("add_files") or "[]"))
     except ValueError:
         files = []
+    chosen = fields.get("catalog") or []
+    if isinstance(chosen, str):  # the picker keeps its list as JSON in a hidden field
+        try:
+            chosen = list(json.loads(chosen or "[]"))
+        except ValueError:
+            chosen = []
     return service.data_payload(
-        list(fields.get("catalog") or []), files, fields.get("add_sql") or "",
+        list(chosen), files, fields.get("add_sql") or "",
         datetime_col=(fields.get("datetime_col") or "").strip() or None,
-        target=(fields.get("target") or "").strip() or None)
+        target=(fields.get("target") or "").strip() or None, run_id=run_id)
 
 
 def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dict, str]:
@@ -1427,16 +1546,20 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
             payload["target"] = fields["target"]
         return payload, reason or payload["message"]
     if gate == "gate_source":
-        return source_payload(fields), reason
+        return source_payload(fields, run_id), reason
     if gate == "gate_data" and action == "edit":
         payload["exclude_columns"] = list(fields.get("exclude") or [])
         if fields.get("target"):
             payload["target"] = fields["target"]
-        if fields.get("join_base"):  # several sources: the join as the form now states it
-            payload["join"] = {"base": fields["join_base"],
-                               "links": list(fields.get("join_links") or []),
-                               "many": fields.get("join_many") or "aggregate",
-                               "unmatched": fields.get("join_unmatched") or "plan"}
+        if fields.get("join_spec"):  # several sources: the join as the canvas now states it
+            try:
+                spec = json.loads(fields["join_spec"])
+            except ValueError:
+                spec = {}
+            if spec.get("base"):
+                payload["join"] = {"base": spec["base"], "links": list(spec.get("links") or []),
+                                   **({"rules": spec["rules"]} if spec.get("rules") else {}),
+                                   **({"drawn": spec["drawn"]} if spec.get("drawn") else {})}
     if gate in ("gate_intent", "gate_design"):
         answers = {k.split("::", 1)[1]: v for k, v in fields.items()
                    if k.startswith("answer::") and v and str(v).strip()}

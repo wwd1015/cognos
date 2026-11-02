@@ -7,8 +7,8 @@ routed to its stage. Scope rules:
 - The **modeler** never sees model/backtest/validate facts: it chooses the champion blind to the
   sealed holdout (frozen substrate) and to any stale result of a previous model run.
 - ``prior.`` facts (what an earlier COGNOS run recorded about the model being updated, its holdout
-  result included) reach only the agents that read results: outcomes analyst, validator, model-risk
-  analyst and writer. The design lead and the modeler learn the incumbent's family, not its scores.
+  result included) reach only the agents that read results: Backtest agent, validator, model-risk
+  analyst and writer. The Design agent and the modeler learn the incumbent's family, not its scores.
 - The **validator** sees engine artifacts and metrics, never the modeler's rationale (SR 26-2
   independence): it re-derives risk from evidence, not from the developer's story.
 """
@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import facts as facts_mod
-from .contracts import AGENT_STAGE, tool_step_of
+from .contracts import AGENT_STAGE, ask_step_of, role_of, tool_step_of
 
 UPSTREAM = ("intake.", "prior.", "explore.", "ideate.", "model.", "backtest.", "validate.",
             "comply.")
@@ -73,8 +73,9 @@ def project_brief(ctx) -> dict[str, Any]:
 def fact_scope(agent: str) -> tuple[str, ...]:
     """The fact prefixes ``agent`` may see. A tool-request step has its role agent's scope. Tool
     results (``tools.<stage>.``) follow the stage they came from, plus the agent's own stage:
-    the modeler sees what its own tools found, never ``model.`` results or the holdout."""
-    role = tool_step_of(agent) or agent
+    the modeler sees what its own tools found, never ``model.`` results or the holdout. A
+    question step (``<agent>_ask``) has its role agent's scope too: the page cannot widen it."""
+    role = role_of(agent)
     scope = FACT_SCOPE[role]
     stages = dict.fromkeys([*(p for p in scope if p not in ("prior.",)),
                             f"{AGENT_STAGE[role]}."])
@@ -83,13 +84,14 @@ def fact_scope(agent: str) -> tuple[str, ...]:
 
 def build(ctx, agent: str, data: dict[str, Any], fresh: dict | None = None) -> dict[str, Any]:
     stage = AGENT_STAGE[agent]
-    challenges = [] if agent in ("experiment", "data_scout", "data_linker") or tool_step_of(agent) else [
+    challenges = [] if agent in ("experiment", "data_scout", "data_linker") or tool_step_of(agent) \
+        or ask_step_of(agent) else [
         {"id": c.id, "source": c.source, "severity": c.severity, "message": c.message,
          "evidence": c.evidence, "remedy": c.remedy}
         for c in ctx.challenges_for(stage)
     ]
     project = project_brief(ctx)
-    if agent != "intake_analyst":  # the intake analyst writes the brief; it is not handed its own
+    if role_of(agent) != "intake_analyst":  # the Intake agent writes the brief; it is not handed its own
         project["engagement"] = engagement_brief(ctx)
     return {
         "agent": agent,

@@ -200,7 +200,7 @@ tables:
       realized_ccf: (Drawn at default minus drawn at observation) over undrawn at observation. Outcome data.
 
 # How the tables join, as the data owners document it. Offered at explore and measured on the
-# data like any other link; the Data Analyst proposes the join and the developer confirms it.
+# data like any other link; the Data agent proposes the join and the developer confirms it.
 links:
   - {left: obligor_quarters, left_on: [obligor_id, as_of_date], right: facilities, right_on: [obligor_id, as_of_date], many: aggregate, note: "Facilities averaged per obligor and quarter end."}
   - {left: obligor_quarters, left_on: [obligor_id], right: obligors, right_on: [obligor_id]}

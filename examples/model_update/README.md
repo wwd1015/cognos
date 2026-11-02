@@ -1,6 +1,6 @@
 # Worked example — a new model development, then an update of it
 
-Both development modes in one offline script: the business intent document, the Intake Analyst's
+Both development modes in one offline script: the business intent document, the Intake agent's
 interview, and a model update that starts from the first run.
 
 ```bash
@@ -16,7 +16,7 @@ python examples/model_update/run_demo.py        # deterministic agents: no key, 
    required fields unstated, and the run pauses at the intent gate with two blocking questions:
 
    ```
-   [new] intent is 'needs clarification'; the Intake Analyst asks:
+   [new] intent is 'needs clarification'; the Intake agent asks:
       ? [design-default_definition] What event should the model predict (e.g. 90+ DPD, …)?
       ? [design-horizon] Over what outcome window is the event observed (e.g. 12 months)?
    [new] after the answers: intent is 'clear', 0 blocking question(s)
@@ -55,6 +55,6 @@ cognos run --config cognos.yaml --kind update --intent request.md \
            --prior score_v1.py --prior-run <first run id> --interactive
 ```
 
-With a live provider (`--provider claude_cli`), the Intake Analyst also reads documents that do
+With a live provider (`--provider claude_cli`), the Intake agent also reads documents that do
 not follow the template, and asks about a goal that is stated but vague. The deterministic agent
 reads the template's sections as written.

@@ -135,7 +135,7 @@ every document into `runs/<id>/inputs/` when the run is created and rewrites the
 `config.yaml` to those copies; a missing document refuses the run), a count of the model families
 named in the prior artifacts, and a summary of an earlier COGNOS run read from its results.
 
-`stages/intake.py` is the stage. The **Intake Analyst** fills the brief and writes the interview;
+`stages/intake.py` is the stage. The **Intake agent** fills the brief and writes the interview;
 the engine then decides each field's value by precedence — a sponsor answer, then what the
 document states, then the profile, then the agent's inference (unconfirmed) — and turns every
 open question into a gap whose answer re-runs intake. The loop is the existing gap machinery:
@@ -152,8 +152,8 @@ same route a gate answer takes; the profile is not edited. A core design questio
 intent is confirmed its answer re-enters at `ideate` instead of re-opening the interview.
 
 Every later agent receives the confirmed brief as `project.engagement`. An earlier run's scores
-are `prior.*` facts, scoped to the agents that read results (outcomes analyst, validator,
-model-risk analyst, writer): the design lead and the modeler learn the existing model's family and
+are `prior.*` facts, scoped to the agents that read results (Backtest agent, Validation agent,
+Compliance agent, Writing agent): the Design agent and the Modeling agent learn the existing model's family and
 inputs, not how it scored.
 
 ## Data, plugins and analysis ([ADR-0012](docs/adr/0012-data-sources-plugins-and-agent-written-analysis.md))
@@ -186,7 +186,7 @@ document: docs/analysis.md (source, target, analyses, every script in full)
 (candidate links between two tables, measured), `resolve` (a base table and chosen links into
 ordered join steps, or what is wrong), `apply` (left joins that never add a row). Explore calls
 `linked_dataset`, which takes the plan from `overrides.join`, the profile's `data.join`, or the
-Data Analyst (`data_linker`), and writes the usual `data/dataset.parquet`.
+Data agent (`data_linker`), and writes the usual `data/dataset.parquet`.
 
 `engine/state.py::RunLock` makes the run lock hold across processes (a lock file under
 `<runs>/_locks/`); `identity.py` names the person on every human action.
@@ -272,7 +272,7 @@ Each agent is five pieces (`src/cognos/agents/`):
 |---|---|
 | `prompts/<agent>.md` + `_common.md` | the role and its domain playbook; shared rules (numbers from facts, answer every challenge, never assume the design) |
 | `contracts.py` | the typed recommendation (`extra="forbid"`, strict-grammar-friendly JSON types) |
-| `slices.py` | what the agent may see: project brief + stage evidence + `facts` scoped to its independence (the modeler sees no model/backtest facts; the validator never sees the modeler's rationale) + its open challenges |
+| `slices.py` | what the agent may see: project brief + stage evidence + `facts` scoped to its independence (the Modeling agent sees no model/backtest facts; the Validation agent never sees the Modeling agent's rationale) + its open challenges |
 | `checks.py` | what the engine re-checks (cited facts exist, every challenge answered, pool ⊆ leaders, champion ∈ pool, the plan one the data allow, fittable families, target never excluded, no typed metrics in prose, …) |
 | `heuristic.py` | the deterministic implementation of the same contract — the offline path |
 

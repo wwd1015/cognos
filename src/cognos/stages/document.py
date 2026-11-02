@@ -7,7 +7,7 @@ traceability anchors. On top of the white paper this stage also produces a Googl
 documentation pack. Every methodology/scoring claim is anchored to the code that implements it
 (``{@code:...#symbol}``) so the consistency-review stage can verify the docs match the deployment.
 
-v1: the **Technical Writer** agent drafts the narrative sections with ``{{fact:<id>}}``
+v1: the **Writing agent** agent drafts the narrative sections with ``{{fact:<id>}}``
 placeholders that the engine renders (an agent never types a metric), and the bundle gains a
 **decision log** — every agent recommendation, every human gate decision, and every challenge with
 its response — so the white paper records who recommended what and who decided.
@@ -495,7 +495,7 @@ class DocumentStage(Stage):
             ),
         ))
 
-        # --- narrative (Technical Writer) + decision log ------------------------------
+        # --- narrative (Writing agent) + decision log ------------------------------
         narrative_payload = self._narrative(ctx, cfg, ip, emit)
         for f in consult.findings(narrative_payload.get("tool_runs", [])):
             res.add_finding(f)
@@ -675,7 +675,7 @@ class DocumentStage(Stage):
             return []
         plan, report = linked["plan"], linked["report"]
         who = {"profile": "stated in the project profile", "decision": "set at the data gate",
-               "agent": "proposed by the Data Analyst, confirmed at the data gate"}
+               "agent": "proposed by the Data agent, confirmed at the data gate"}
         reasons = (linked.get("rationale") or {}).get("joins") or {}
         parts = [
             "## Sources and join\n",
@@ -710,7 +710,7 @@ class DocumentStage(Stage):
 
         src = ep.get("source") or {}
         how = {"profile": "fixed in the project profile", "decision": "set at the data gate",
-               "agent": "proposed by the Data Analyst, confirmed at the data gate"}
+               "agent": "proposed by the Data agent, confirmed at the data gate"}
         parts = [
             "# Data Source & Exploratory Analysis\n",
             "## Data source\n",
@@ -740,7 +740,7 @@ class DocumentStage(Stage):
         if scripts:
             checked = {c["id"]: c for c in vp.get("analysis_code", [])}
             parts += ["", "## Analysis code\n",
-                      "Written by the Data Analyst agent and executed by the engine in a "
+                      "Written by the Data agent agent and executed by the engine in a "
                       "restricted process. Each script was shown to the model developer at the "
                       "data gate and re-run by validation.\n"]
             for a in scripts:
@@ -873,7 +873,7 @@ class DocumentStage(Stage):
                       "result is to it) and each limitation (how it is mitigated).\n\n")
 
     def _narrative(self, ctx: RunContext, cfg, ip: dict, emit) -> dict:
-        """Ask the Technical Writer for the narrative; render placeholders; emit the decision log."""
+        """Ask the Writing agent for the narrative; render placeholders; emit the decision log."""
         recorded = ctx.sponsor_answers()
         from ..agents import facts as facts_mod
         from ..agents.contracts import FRIENDLY, SECTIONS
@@ -910,7 +910,7 @@ class DocumentStage(Stage):
                   "use_and_monitoring": "Use and monitoring"}
         rendered = {s.section: facts_mod.render(s.markdown, facts) for s in out.sections}
         body = ["# Narrative", "",
-                "_Drafted by the Technical Writer agent; every number is rendered from a recorded "
+                "_Drafted by the Writing agent agent; every number is rendered from a recorded "
                 "fact._", ""]
         for key in SECTIONS:
             body += [f"## {titles[key]}", "", rendered.get(key, "").strip(), ""]

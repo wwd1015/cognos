@@ -1,5 +1,5 @@
 """The data catalog (ADR-0020): the tables a team keeps, what each is for and how they join.
-A run chooses from it once the intent is confirmed, adds data of its own, and the Data Analyst
+A run chooses from it once the intent is confirmed, adds data of its own, and the Data agent
 proposes the join from measured links, the catalog's documented ones among them."""
 
 from __future__ import annotations

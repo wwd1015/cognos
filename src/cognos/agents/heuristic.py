@@ -3,7 +3,7 @@
 Each function is a pure function of the *same* slice an LLM agent receives and returns a dict that
 satisfies the agent's contract and the engine's checks. They encode the v0.5 deterministic rules
 (so an offline run reproduces v0.5 results) plus a conservative response to challenges: a challenge
-that names a column makes the data analyst exclude it; any other challenge is acknowledged.
+that names a column makes the Data agent exclude it; any other challenge is acknowledged.
 """
 
 from __future__ import annotations
@@ -591,6 +591,44 @@ def tool_request(sl: dict[str, Any]) -> dict[str, Any]:
     return {"requests": reqs, "done": True, "notes": ""}
 
 
+_STOP = {"the", "and", "why", "what", "how", "was", "were", "is", "are", "this", "that", "does",
+         "did", "for", "with", "from", "not", "out", "its", "it's", "page", "about", "which",
+         "who", "when", "where", "there", "have", "has", "can", "you", "your", "into"}
+
+
+def ask(sl: dict[str, Any]) -> dict[str, Any]:
+    """Answer a page question from the record: the facts whose names or values share words with
+    the question, and the recommendation the agent recorded. Without a model there is no reading
+    of the question beyond that, and the answer says so."""
+    from . import facts as facts_mod
+
+    f = sl.get("facts", {})
+    words = {w for w in re.findall(r"[a-z0-9]+", str(sl.get("question", "")).lower())
+             if len(w) > 2 and w not in _STOP}
+
+    def score(key: str) -> int:
+        parts = set(re.findall(r"[a-z0-9]+", key.lower()))
+        v = f[key]
+        if isinstance(v, str):
+            parts |= set(re.findall(r"[a-z0-9]+", v.lower()))
+        return len(words & parts)
+
+    stage = sl.get("stage", "")
+    ranked = sorted((k for k in f if score(k)), key=lambda k: (-score(k), not k.startswith(stage + "."), k))
+    hits = ranked[:4]
+    note = ("This run has no model provider, so this answer is read from the record, not "
+            "written for your question.")
+    if hits:
+        answer = (f"{note} The {'fact' if len(hits) == 1 else f'{len(hits)} facts'} below "
+                  "match its words.")
+    else:
+        rec = ((sl.get("page") or {}).get("recommendation") or {}).get("summary") or ""
+        safe = rec and not facts_mod.bare_metrics(rec) and not facts_mod.placeholder_ids(rec)
+        answer = (f"{note} No fact matches its words; name a column, a metric or a step."
+                  + (f"\n\nWhat I recorded for this stage: {rec}" if safe else ""))
+    return {"answer": answer, "cites": hits, "suggested_challenge": ""}
+
+
 AGENTS = {
     "intake_analyst": intake_analyst,
     "data_analyst": data_analyst,
@@ -609,4 +647,6 @@ AGENTS = {
 def recommend(agent: str, sl: dict[str, Any]) -> dict[str, Any]:
     if agent.endswith("_tools"):
         return tool_request(sl)
+    if agent.endswith("_ask"):
+        return ask(sl)
     return AGENTS[agent](sl)

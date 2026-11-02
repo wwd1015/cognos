@@ -1,7 +1,7 @@
 """The candidate pool and the champion in force (ADR-0016).
 
 The model stage ends on a pool, not a champion. The champion is whichever pool member is in
-force: the developer's choice at the champion gate, else the Outcomes Analyst's recommendation,
+force: the developer's choice at the champion gate, else the Backtest agent's recommendation,
 else (before outcomes analysis has run) the first member of the pool.
 
 ``view`` is how every later reader sees the model stage: the stage's payload with the champion's

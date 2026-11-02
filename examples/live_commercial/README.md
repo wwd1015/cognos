@@ -1,7 +1,7 @@
 # Live run — real Claude agents on the commercial PD demo
 
 > **This recording predates the candidate pool and trial runs** (ADR-0016, ADR-0017). It shows
-> the earlier workflow, in which the Modeler chose a champion from an admissible set before
+> the earlier workflow, in which the Modeling agent chose a champion from an admissible set before
 > outcomes analysis. The agents' contracts have changed since, so the recorded answers no
 > longer replay and the replay test is skipped. The recording is kept as a record of that
 > run; it needs re-recording with live agents to show the current workflow.
@@ -17,13 +17,13 @@ python examples/live_commercial/replay.py             # replay it offline: no ke
 
 | Agent | Attempts | Seconds | Cost |
 |---|---|---|---|
-| Data Analyst | 1 | 16.8 | $0.047 |
-| Design Lead | 1 | 28.7 | $0.092 |
-| Modeler | 1 | 13.9 | $0.061 |
-| Outcomes Analyst | 1 | 22.2 | $0.066 |
-| Independent Validator | 1 | 35.7 | $0.099 |
-| Model-Risk Analyst | 1 | 18.9 | $0.064 |
-| Technical Writer | 1 | 36.4 | $0.101 |
+| Data agent | 1 | 16.8 | $0.047 |
+| Design agent | 1 | 28.7 | $0.092 |
+| Modeling agent | 1 | 13.9 | $0.061 |
+| Backtest agent | 1 | 22.2 | $0.066 |
+| Validation agent | 1 | 35.7 | $0.099 |
+| Compliance agent | 1 | 18.9 | $0.064 |
+| Writing agent | 1 | 36.4 | $0.101 |
 | **Run** | | **~3 min** | **$0.53** |
 
 Every agent's first answer passed the engine's checks (contract, cited fact ids, admissible-set
@@ -32,16 +32,16 @@ interactive run each gate would have paused for a model developer.
 
 ## What to look at
 
-- **`run/stages/validate/result.json`** — the Independent Validator's effective challenge, beyond the
+- **`run/stages/validate/result.json`** — the Validation agent's effective challenge, beyond the
   engine rubric (verdict WARN). Among its six findings: p-values reported "as significant" for a
   ridge-penalized logit, where classical standard errors are not valid; `profit_margin` entering
   against its economic prior; random-forest and boosting challengers that the design named but the
   search budget never reached, so the price of interpretability is unmeasured; and a blank design
   brief on a high-risk-tier model. None were high severity, so none were routed back automatically.
-- **`run/stages/model/result.json` → `payload.recommendation`** — the Modeler chose `c6`
+- **`run/stages/model/result.json` → `payload.recommendation`** — the Modeling agent chose `c6`
   (ridge-logit) from a six-candidate admissible set without seeing the sealed holdout, and flagged
   the `profit_margin` sign.
-- **`run/docs/narrative.md`** — the Technical Writer's white-paper prose. Every number in it was a
+- **`run/docs/narrative.md`** — the Writing agent's white-paper prose. Every number in it was a
   `{{fact:<id>}}` placeholder that the engine rendered.
 - **`run/docs/decisions.md`** — the decision log: each agent recommendation with its backend, each
   gate decision, and each challenge.

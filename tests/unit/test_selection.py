@@ -134,7 +134,7 @@ def test_plan_layers_the_profile_outranks_the_agent_and_the_developer_outranks_b
     assert p["evaluation"]["validation"] == "kfold" and p["sources"]["validation"] == "human"
     # a layer the data cannot run is dropped and reported, never half-applied
     p = plan.resolve(cfg, shape, proposed={"evaluation": {"test": "out_of_time"}}, **kw)
-    assert p["evaluation"]["test"] == "random" and "Design Lead" in p["ignored"][0]
+    assert p["evaluation"]["test"] == "random" and "Design agent" in p["ignored"][0]
 
 
 @pytest.mark.parametrize(("patch", "why"), [

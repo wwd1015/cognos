@@ -11,7 +11,7 @@ Two development modes (``engagement.kind``; distinct from the autonomous / inter
 This module is the mechanical half of intake: the intent template (render and parse), reading
 uploaded documents as text, copying them into the run (``runs/<id>/inputs/``, so a fresh process
 finds them), and a keyword scan of the prior model's artifacts. Judgment (is the intent clear,
-what must the sponsor be asked) belongs to the Intake Analyst agent; see ``stages/intake.py``.
+what must the sponsor be asked) belongs to the Intake agent agent; see ``stages/intake.py``.
 """
 
 from __future__ import annotations
@@ -152,7 +152,7 @@ def render_template(kind: str = "new", values: dict[str, str] | None = None,
         f"# {title}: {name or '<model name>'}",
         "",
         f"<!-- COGNOS intent template v1 (kind: {kind}). Write under each heading and keep the "
-        "headings as they are. Leave a section empty when it is undecided: the Intake Analyst "
+        "headings as they are. Leave a section empty when it is undecided: the Intake agent "
         "asks about it instead of assuming. -->",
         "",
     ]
@@ -181,7 +181,7 @@ _HINT_RE = re.compile(r"^\s*_[^_].*_\s*$")
 def parse_intent(text: str) -> dict[str, str]:
     """Template sections by field id: the text under each recognised heading. Hints the author
     left in place and placeholders such as ``TBD`` count as empty. Mechanical: an unrecognised
-    heading is skipped here (a free-form document is the Intake Analyst's to read)."""
+    heading is skipped here (a free-form document is the Intake agent's to read)."""
     out: dict[str, list[str]] = {}
     current: str | None = None
     for line in _COMMENT_RE.sub("", text or "").splitlines():
@@ -452,7 +452,7 @@ def prior_run_summary(run_dir: Path) -> dict[str, Any] | None:
 
 # --- the prior model, read mechanically ------------------------------------------------------------
 # Phrases that name a model family the engine can fit. Counted, never interpreted: a mention is a
-# hint for the Intake Analyst and the Design Lead, not a statement of what the prior model is.
+# hint for the Intake agent and the Design agent, not a statement of what the prior model is.
 _FAMILY_PHRASES: dict[str, tuple[str, ...]] = {
     "logit": (r"logistic regression", r"\blogit\b", r"\bscorecard\b", r"LogisticRegression"),
     "probit": (r"\bprobit\b",),

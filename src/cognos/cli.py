@@ -2,7 +2,7 @@
 
   cognos ui         [--port 8050]                              # the Dash workbench
   cognos run        --config cognos.yaml [--interactive] [--provider P]
-  cognos run        --data loans.csv --intent intent.md      # no profile: the Data Analyst
+  cognos run        --data loans.csv --intent intent.md      # no profile: the Data agent
                                                               #   proposes the target
   cognos run        --data loans.csv financials.csv ...       # several sources: it also proposes
                                                               #   the join; you confirm at the gate
@@ -47,12 +47,12 @@ data:
   #   options: {warehouse: ANALYTICS_WH, role: env:MY_ROLE}   # never a secret: account, user and
   #                       #   the password / key come from SNOWFLAKE_* environment variables
   # sources:              # or several inputs of any kind; the engine measures how they connect,
-  #   - {name: loans, kind: snowflake, table: RISK.CREDIT.LOANS}     # the Data Analyst
+  #   - {name: loans, kind: snowflake, table: RISK.CREDIT.LOANS}     # the Data agent
   #   - {name: financials, kind: file, path: financials.csv}        # proposes the join and you
   # base: loans           #   confirm it at the data gate. base / join state it instead:
   # join:
   #   - {left: loans, left_on: obligor_id, right: financials, right_on: obligor_id, many: aggregate}
-  target: target          # leave empty ("") and the Data Analyst proposes the dependent
+  target: target          # leave empty ("") and the Data agent proposes the dependent
                           #   variable from the business intent; you confirm it at the data gate
   features: []            # empty = all non-target/non-protected columns
   datetime_col: null      # set for timeseries / walk-forward
@@ -64,11 +64,11 @@ engagement:               # the development mode and the documents the run start
   kind: new               # new (complete new model development) | update (change an existing model)
   intent: null            # the business intent document / update request
                           #   (template: cognos intent-template [--kind update] -o intent.md)
-  supporting: []          # background material the Intake Analyst may read
+  supporting: []          # background material the Intake agent may read
   prior_artifacts: []     # update: the existing model's white paper, code, validation reports
   prior_run: null         # update: an earlier COGNOS run of that model (id or directory)
 
-analysis:                 # exploratory analysis the Data Analyst may request at explore
+analysis:                 # exploratory analysis the Data agent may request at explore
   rounds: 2               # request rounds before its recommendation
   max_requests: 8         # analyses per round (registered tools, or Python it writes)
   allow_code: true        # agent-written Python: run restricted, kept as an artifact, shown at
@@ -103,10 +103,10 @@ search:
   holdout_fraction: 0.2
   random_state: 42
   ensemble: true
-  guided: false           # let the modeler agent propose extra experiments (engine keeps winners)
+  guided: false           # let the Modeling agent propose extra experiments (engine keeps winners)
 
 # The development plan (ADR-0016). Anything left at auto is recommended from the shape of the
-# data and the intended use, proposed by the Design Lead and confirmed at the design gate.
+# data and the intended use, proposed by the Design agent and confirmed at the design gate.
 evaluation:               # how the data are split to build, compare and confirm models
   test: auto              # out_of_time | random | none: the pool is compared on this sample
   test_fraction: null     # null => search.holdout_fraction
@@ -278,7 +278,7 @@ def _data_prompt(run_id: str, root) -> bool:
 
 
 def _interview(run_id: str, st, root) -> bool:
-    """The Intake Analyst's interview in the terminal: one prompt per open question (Enter skips).
+    """The Intake agent's interview in the terminal: one prompt per open question (Enter skips).
     True when at least one answer was recorded."""
     from . import service
     from .engine import GateError
@@ -286,7 +286,7 @@ def _interview(run_id: str, st, root) -> bool:
     gaps = [g for g in st.open_gaps() if g.stage == "intake"]
     if not gaps:
         return False
-    print("  The Intake Analyst needs the sponsor's answers (Enter skips a question):")
+    print("  The Intake agent needs the sponsor's answers (Enter skips a question):")
     answers = {}
     for g in gaps:
         text = input(f"  [{g.id}] {g.question}\n    > ").strip()
@@ -388,7 +388,7 @@ def _cmd_explain(args) -> int:
           + (f"  prior model: {len(eng.prior_artifacts)} artifact(s)"
              + (f" + run {eng.prior_run}" if eng.prior_run else "") if eng.kind == "update" else ""))
     if cfg.task is None or not cfg.data.target:
-        print(f"  target={cfg.data.target or 'proposed by the Data Analyst, confirmed at the data gate'}"
+        print(f"  target={cfg.data.target or 'proposed by the Data agent, confirmed at the data gate'}"
               f"  task={cfg.task.value if cfg.task else 'inferred from the target'}  mode={cfg.mode.value}")
     else:
         print(f"  task={cfg.task.value}  mode={cfg.mode.value}  metric={cfg.metric.name} "
@@ -444,23 +444,32 @@ def _cmd_catalog(args) -> int:
             return 1
         print(f"wrote {path}, a copy of the default catalog: edit it to list your team's tables")
         return 0
-    cat = catalog.load(args.runs_dir)
-    path, origin = catalog.in_force(args.runs_dir)
-    print(cat.title or "Data catalog")
-    if origin == "default":
-        print(f"  the default catalog shipped with COGNOS ({path})\n  to use your team's tables, "
-              f"write {catalog.team_file(args.runs_dir)} (cognos catalog --init)")
+    try:
+        src = catalog.source(args.runs_dir)
+    except ValueError as exc:
+        print(f"the catalog cannot be read: {exc}")
+        return 1
+    meta = src.info()
+    print(src.title or "Data catalog")
+    if meta.get("kind") == "default":
+        print(f"  the default catalog shipped with COGNOS ({meta['file']})\n  to use your team's "
+              f"tables, write {meta['team_file']} (cognos catalog --init)")
+    elif meta.get("kind") == "team":
+        print(f"  your team's catalog ({meta['file']})")
     else:
-        print(f"  your team's catalog ({path})")
-    for t in cat.tables:
-        mark = "*" if t.id in cat.defaults else " "
+        print(f"  from the catalog source {src.name} ({src.origin})")
+    tables = src.search("", None, limit=10_000)
+    defaults = set(src.defaults())
+    for t in tables:
+        mark = "*" if t.id in defaults else " "
         print(f"\n{mark} {t.id:<22} {t.title}")
         print(f"  {'':<22} {catalog.summary_line({**t.model_dump(), 'summary': catalog.measure(t, args.runs_dir, fetch=args.measure)})}")
         if t.description:
             print(f"  {'':<22} {t.description}")
-    if cat.links:
+    links = src.links([t.id for t in tables])
+    if links:
         print("\nDocumented links:")
-        for lk in cat.links:
+        for lk in links:
             on = ", ".join(f"{a} = {b}" for a, b in zip(lk.left_on, lk.right_on, strict=False))
             print(f"  {lk.left} -> {lk.right} on {on}" + (f"  ({lk.note})" if lk.note else ""))
     print("\n* preselected for a run started from scratch")
@@ -865,7 +874,7 @@ def build_parser() -> argparse.ArgumentParser:
     pr = sub.add_parser("run", help="run the workflow (resumes when --run-id exists)")
     pr.add_argument("--config", default=None)
     pr.add_argument("--data", default=None, nargs="+", metavar="FILE",
-                    help="a data file (.csv, .parquet, .xlsx); without --config the Data Analyst "
+                    help="a data file (.csv, .parquet, .xlsx); without --config the Data agent "
                          "proposes the target. Several files: it also proposes how they join")
     pr.add_argument("--template", default=None,
                     help="start from a template (see `cognos templates`), or 'scratch'; the "
@@ -881,7 +890,7 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--intent", default=None,
                     help="the business intent document / update request (see intent-template)")
     pr.add_argument("--support", action="append", default=[], metavar="FILE",
-                    help="background document for the Intake Analyst (repeatable)")
+                    help="background document for the Intake agent (repeatable)")
     pr.add_argument("--prior", action="append", default=[], metavar="FILE",
                     help="update: an artifact of the existing model, e.g. its white paper or "
                          "code (repeatable)")
@@ -972,7 +981,7 @@ def build_parser() -> argparse.ArgumentParser:
     pdt.add_argument("--table", default=None, help="a Snowflake table")
     pdt.add_argument("--query", default=None, help="a read-only Snowflake query")
     pdt.add_argument("--target", default=None,
-                     help="the dependent variable (else the Data Analyst proposes it)")
+                     help="the dependent variable (else the Data agent proposes it)")
     pdt.add_argument("--date-col", default=None, help="the date column")
     runs(pdt)
     pdt.set_defaults(func=_cmd_data)

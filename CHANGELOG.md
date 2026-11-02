@@ -6,6 +6,20 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- Catalog sources (ADR-0022): the data catalog answers search, describe, links and defaults
+  behind one plugin contract (`catalog.CatalogSource`, `registry.add_catalog`,
+  `COGNOS_CATALOG`), so a metadata system or a skill can supply it. The YAML catalog is the
+  built-in source; `examples/plugins/metadata_catalog.py` reads a metadata system's export.
+- Each chosen table says whether it fits the intent (fits / check / unclear) and why: the
+  source's assessment, else the engine's mechanical one. Advice, recorded with the decision.
+- Draw a link on the join canvas: drag from a column of one table to a column of another; the
+  engine measures it before it can be joined and records who drew it.
+- **Ask the agent on a page** ([ADR-0021](docs/adr/0021-ask-the-agent-on-a-page.md)). Every
+  stage page has an Ask button, bottom right, that opens a small window to question the agent
+  that owns the page. The agent answers in its own scope, writes every number as a fact the
+  engine fills in, and decides nothing; a suggested send-back can be copied into the gate's
+  form. Threads are kept in `runs/<id>/asks/` and travel in the export.
+
 - **The data catalog** ([ADR-0020](docs/adr/0020-the-data-catalog.md)). The tables a team
   keeps, in `<runs>/_catalog/catalog.yaml`: what each is for, its grain, keys, dates, outcomes,
   owner, source and column meanings, and the documented links between tables. At "Provide the
@@ -37,6 +51,15 @@ versioning is SemVer.
   the choice is kept in the browser.
 
 ### Changed
+- "Provide the data" lists only the chosen tables, one line each, and finds the rest by
+  searching (about 330 px instead of 2,000 for the default catalog). Data the catalog does
+  not have is added under a fold.
+- Clicking a link on the join canvas opens its settings (in the join, several rows per key,
+  rows with no match), set per link instead of once for all links.
+- **Agents are named for their work**: Intake, Data, Design, Modeling, Backtest, Validation,
+  Compliance and Writing agent. Job titles are kept for the people (developer, reviewer,
+  approver). Ids are unchanged.
+- The Agent calls table shows each call's time and short code instead of a cut-off id.
 - **SR 26-2 replaces SR 11-7** ([ADR-0019](docs/adr/0019-sr-26-2-replaces-sr-11-7.md)). The
   interagency model risk guidance of April 17, 2026 (Fed SR 26-2, OCC Bulletin 2026-13, FDIC
   FIL-15-2026) superseded SR 11-7. The default regime is `SR26-2`, the readiness report's
