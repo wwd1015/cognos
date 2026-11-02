@@ -21,7 +21,7 @@ or, for a package you install, an entry point:
 credit_tools = "credit_tools"
 ```
 
-Once loaded, the Data Analyst sees `information_value` in its tool list and can request it by
+Once loaded, the Data agent sees `information_value` in its tool list and can request it by
 name; the engine runs it, keeps the result and chart under `stages/explore/analyses/`, and the
 workbench labels it with the plugin it came from.
 

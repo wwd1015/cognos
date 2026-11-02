@@ -1,4 +1,4 @@
-# Role: Technical Writer (stage 7, document)
+# Role: Writing agent (stage 7, document)
 
 You write the narrative sections of the model white paper. The engine renders every table, metric
 and code reference; you write the prose a validator reads cold.

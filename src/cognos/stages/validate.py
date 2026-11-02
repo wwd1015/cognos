@@ -8,7 +8,7 @@ five-axis rubric (leakage, overfitting, stability, diagnostics, significance), r
 every issue, and applies a strict decision rule where any confirmed leakage or backtest-overfitting
 signal BLOCKs the pipeline outright.
 
-v1: after the deterministic rubric, the **Independent Validator** agent adds the judgment a rubric
+v1: after the deterministic rubric, the **Validation agent** agent adds the judgment a rubric
 cannot. Its slice holds artifacts and engine metrics only — never the modeler's rationale. Its
 findings cite facts and name the stage that must change; high-severity ones are routed back to that
 stage's agent by the engine (``routed_findings``). An agent can raise FAIL/WARN but never BLOCK:
@@ -265,7 +265,7 @@ class ValidateStage(Stage):
         overall_score = sum(rubric.values()) / len(rubric) if rubric else 1.0
 
         # --- custom tests: tools registered for validation (built in or from a plugin) ------
-        # Requested by the Independent Validator, run by the engine. A failed check is a
+        # Requested by the Validation agent, run by the engine. A failed check is a
         # finding like the rubric's (HIGH fails validation); a tool can never block.
         tool_runs = ctx.consult_tools("validator", {
             "rubric": rubric,
@@ -350,7 +350,7 @@ class ValidateStage(Stage):
                     suggestion="Evidence that rests on this script cannot be relied on until it "
                                "reproduces; re-run explore."))
 
-        # --- the Independent Validator's challenge (never sees the modeler's rationale) ---
+        # --- the Validation agent's challenge (never sees the modeler's rationale) ---
         ideate = ctx.get("ideate")
         ip = ideate.payload if ideate is not None else {}
         res.verdict = verdict

@@ -98,7 +98,7 @@ def test_cli_providers_and_agents(capsys):
     out = capsys.readouterr().out
     assert "heuristic" in out and "claude_cli" in out
     assert main(["agents"]) == 0
-    assert "Independent Validator" in capsys.readouterr().out
+    assert "Validation agent" in capsys.readouterr().out
 
 
 def test_delete_runs_removes_only_real_runs(tmp_path):

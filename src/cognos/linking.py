@@ -392,7 +392,7 @@ def resolve(base: str, choices: list[dict[str, str]], prof: dict[str, Any]
 
 
 def suggest(prof: dict[str, Any], base: str | None = None, target: str = "") -> dict[str, Any]:
-    """A plan built from the measurements alone (what the deterministic Data Analyst proposes).
+    """A plan built from the measurements alone (what the deterministic Data agent proposes).
     Base: the stated one, else the table holding the target, else the table with most rows.
     Then, for each other table, the link to something already joined that matches most rows."""
     tables = prof["tables"]

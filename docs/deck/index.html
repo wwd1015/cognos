@@ -332,7 +332,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 7, "system_version": "1.0.0", "date": "2026-10-25"}</script>
+<script type="application/json" id="edition">{"edition": 8, "system_version": "1.0.0", "date": "2026-11-01"}</script>
 
 <div class="stage" id="stage">
 
@@ -480,7 +480,7 @@ body.moving .chrome { opacity: 1; }
       <div class="pips reveal d1"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><span>01 / 08</span></div>
       <div class="kicker reveal d1">No LLM math</div>
       <h2 class="reveal d1">The cook writes the menu. The scale prints every number on it.</h2>
-      <div class="gloss reveal d2"><span>In COGNOS</span><p>Agents cite facts by id and the writer leaves placeholders. The engine renders every number from the record; a typed number or an unknown fact is rejected.</p></div>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>Agents cite facts by id and the Writing agent leaves placeholders. The engine renders every number from the record; a typed number or an unknown fact is rejected.</p></div>
     </div>
     <div class="fig reveal d3" id="letter">
       <span class="corner c-fig">Fig 2</span><span class="corner c-title">The menu card</span>
@@ -518,7 +518,7 @@ body.moving .chrome { opacity: 1; }
       <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><span>03 / 08</span></div>
       <div class="kicker reveal d1">Independent challenge</div>
       <h2 class="reveal d1">A second taster gets the plate, never the cook's notes.</h2>
-      <div class="gloss reveal d2"><span>In COGNOS</span><p>The validator re-derives risk from the model and its results. It is never handed the modeler's reasoning, so independence does not depend on an instruction being obeyed.</p></div>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>The Validation agent re-derives risk from the model and its results. It is never handed the Modeling agent's reasoning, so independence does not depend on an instruction being obeyed.</p></div>
     </div>
     <div class="fig reveal d3" id="taster">
       <span class="corner c-fig">Fig 5</span><span class="corner c-title">The second taster</span>
@@ -712,6 +712,7 @@ body.moving .chrome { opacity: 1; }
         <tr><td class="mono">5</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>Model risk guidance is SR 26-2 (April 2026), which replaced SR 11-7. The readiness report and the agents cite it; a profile that names SR 11-7 is read as SR 26-2 (ADR-0019).</td></tr>
         <tr><td class="mono">6</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>The data catalog: the developer chooses the team's tables (the template's are checked) and adds any other data; documented links are offered and measured, never imposed (ADR-0020).</td></tr>
         <tr><td class="mono">7</td><td class="mono">v1.0.0</td><td class="mono">2026-10-25</td><td>The engine comes first: the engine disposes, agents recommend, people decide. COGNOS is pictured as a restaurant kitchen (the scale weighs, cooks suggest, the chef decides, the ticket rail keeps the record), and every slide after it is drawn in that kitchen. The logo's two O's carry the creed.</td></tr>
+        <tr><td class="mono">8</td><td class="mono">v1.0.0</td><td class="mono">2026-11-01</td><td>The agents are named for their work: Intake, Data, Design, Modeling, Backtest, Validation, Compliance and Writing agent. Job titles belong to the people (developer, reviewer, approver).</td></tr>
       </tbody>
     </table>
   </div>
@@ -735,7 +736,7 @@ body.moving .chrome { opacity: 1; }
    =========================================== */
 /* FLOW:BEGIN */
 const FLOW = [
-  { id: "intake", label: "Understand the intent", short: "Intent", agentName: "Intake Analyst",
+  { id: "intake", label: "Understand the intent", short: "Intent", agentName: "Intake agent",
     engine: "Reads the business intent document and, for an update, the existing model's artifacts. Copies them into the run.",
     agent: "Fills the engagement brief, quoting the document. Where the goal is unclear it asks: the interview.",
     person: "" },
@@ -743,41 +744,41 @@ const FLOW = [
     person: "Records the sponsor's answers and confirms the intent. The stated design becomes part of the run." },
   { id: "gate_source", label: "Provide the data", seat: "Model developer",
     person: "Gives the data once the intent stands: tables from the team's data catalog (the template's are checked), plus any file, Snowflake table or query to add." },
-  { id: "explore", label: "Explore data", short: "Data", agentName: "Data Analyst",
+  { id: "explore", label: "Explore data", short: "Data", agentName: "Data agent",
     engine: "Fetches the data once and keeps a snapshot. Measures how several sources connect. Runs every analysis that is asked for.",
     agent: "Proposes the join and the target, asks for analyses or writes a script, names candidate features and columns to exclude.",
     person: "" },
   { id: "gate_data", label: "Review data decisions", seat: "Model developer",
     person: "Accepts or changes the target, the join and the exclusions, and reads any script the agent wrote." },
-  { id: "ideate", label: "Design the model", short: "Design", agentName: "Design Lead",
+  { id: "ideate", label: "Design the model", short: "Design", agentName: "Design agent",
     engine: "Assesses the data structure and which frameworks apply. Recommends a development plan from the shape of the data: how to split it, how to shorten the factor list, how models are built.",
     agent: "Ranks the slate of specifications, may change the plan, and raises what only the sponsor can decide.",
     person: "" },
   { id: "gate_design", label: "Review the design", seat: "Model developer",
     person: "Keeps, drops or reorders the slate, confirms or edits the plan, and answers the design questions." },
-  { id: "model", label: "Search & build the candidate pool", short: "Pool", agentName: "Modeler",
+  { id: "model", label: "Search & build the candidate pool", short: "Pool", agentName: "Modeling agent",
     engine: "Fits every factor alone, cuts the list by the developer's rules, builds models one factor at a time, and ranks all of them. The holdout stays sealed.",
     agent: "Recommends the pool of candidates that goes on, and checks coefficient signs. No champion is chosen here.",
     person: "" },
   { id: "gate_candidates", label: "Review the candidate pool", seat: "Model developer",
     person: "Accepts the pool, adds or removes candidates from anything the search evaluated, or sends the work back." },
-  { id: "backtest", label: "Outcomes analysis of the pool", short: "Outcomes", agentName: "Outcomes Analyst",
+  { id: "backtest", label: "Outcomes analysis of the pool", short: "Outcomes", agentName: "Backtest agent",
     engine: "Scores every candidate on the test sample and under each scenario, side by side, and counts every look.",
     agent: "Recommends the champion on how the candidates forecast, and reads its discrimination, calibration and stability.",
     person: "" },
   { id: "gate_champion", label: "Choose the champion", seat: "Model developer",
     person: "Accepts the recommended champion, chooses another candidate from the pool, or sends the search back." },
-  { id: "validate", label: "Independent validation", short: "Validation", agentName: "Independent Validator",
+  { id: "validate", label: "Independent validation", short: "Validation", agentName: "Validation agent",
     engine: "Scores the sealed holdout once, for the champion. Re-derives risk with its own rubric, re-runs every analysis script, challenges each assumption and limitation. Blocks on confirmed leakage.",
-    agent: "Adds an effective challenge. It never sees the modeler's reasoning. High findings go back to the stage that owns them.",
+    agent: "Adds an effective challenge. It never sees the Modeling agent's reasoning. High findings go back to the stage that owns them.",
     person: "" },
   { id: "gate_validation", label: "Review validation", seat: "Independent reviewer",
     person: "A different seat from the developer. Accepts, accepts a fail with a recorded reason, or sends the work back to any stage." },
-  { id: "comply", label: "Model-risk readiness", short: "Readiness", agentName: "Model-Risk Analyst",
+  { id: "comply", label: "Model-risk readiness", short: "Readiness", agentName: "Compliance agent",
     engine: "Organises the evidence against model-risk expectations. A report, never a gate.",
     agent: "Reads the evidence for gaps and lists the steps only a person can take.",
     person: "No gate here." },
-  { id: "document", label: "Write the white paper", short: "White paper", agentName: "Technical Writer",
+  { id: "document", label: "Write the white paper", short: "White paper", agentName: "Writing agent",
     engine: "Builds the documentation bundle and renders every number from a recorded fact.",
     agent: "Drafts the narrative with placeholders where numbers go, and lists assumptions and limitations apart.",
     person: "No gate here." },
@@ -1102,7 +1103,7 @@ const span = (t, a, b) => easeOut((t - a) / (b - a));
     slip.style.opacity = u < 0.1 || u > 1.6 || t > 7.8 ? 0 : 1;
     fills.forEach((f, j) => f.classList.toggle("hide", !(j < i || (j === i && u > 1.5))));
     const n = fills.filter(f => !f.classList.contains("hide")).length;
-    ro.textContent = n && t < 7.8 ? `{{fact:${ids[n - 1]}}} → ${vals[n - 1]} · ${n} of 3, none typed` : n === 3 ? "3 of 3 filled · none typed by the agent" : "The writer leaves three blanks";
+    ro.textContent = n && t < 7.8 ? `{{fact:${ids[n - 1]}}} → ${vals[n - 1]} · ${n} of 3, none typed` : n === 3 ? "3 of 3 filled · none typed by the agent" : "The Writing agent leaves three blanks";
   });
 })();
 

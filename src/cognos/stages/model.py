@@ -9,7 +9,7 @@ The stage follows the development plan confirmed at the design gate (``modeling/
    to a shortlist, and every dropped factor keeps the rule and the reason.
 4. **Multi-factor selection.** Each method of the plan (forward, backward, stepwise, best
    subset, grid) builds models from the shortlist; every model evaluated lands in one ledger.
-5. **Candidate pool.** The ledger is ranked by the plan's ranking. The **Modeler** recommends
+5. **Candidate pool.** The ledger is ranked by the plan's ranking. The **Modeling agent** recommends
    which of the leaders go forward; the developer adds or removes members at the gate.
 
 No champion is chosen here. Every pool member is fitted on the development sample, tested
@@ -466,7 +466,7 @@ class ModelStage(Stage):
     @staticmethod
     def plan_in_force(ctx: RunContext, df: pd.DataFrame, features: list[str],
                       families: list[str] | None) -> dict:
-        """The plan this run works to: the developer's edit, the profile, the Design Lead's
+        """The plan this run works to: the developer's edit, the profile, the Design agent's
         proposal (recorded by ideate), the engine's recommendation, in that order."""
         from ..modeling.fit import DEFAULT_FAMILIES
 
@@ -496,7 +496,7 @@ class ModelStage(Stage):
 
     @staticmethod
     def _expected_signs(profile: dict, plan: dict) -> dict[str, str]:
-        """The direction each explored column is expected to act in: the Data Analyst's
+        """The direction each explored column is expected to act in: the Data agent's
         reading, overruled by what the developer states in the plan."""
         out = {c["column"]: c["relationship"] for c in profile.get("feature_candidates") or []
                if c.get("relationship") in ("+", "-")}
@@ -607,11 +607,11 @@ class ModelStage(Stage):
             out.append({"feature": f, "sign": "0" if abs(v) < 1e-12 else ("+" if v > 0 else "-")})
         return out
 
-    # --- leaders, the Modeler's pool, and finalizing a member ---------------------------
+    # --- leaders, the Modeling agent's pool, and finalizing a member ---------------------------
     def _leaders(self, evaluator, ranked, cfg, plan: dict, expected: dict, corr,
                  guided_entry, train_df, y_train, is_clf: bool,
                  must: list[str] | None = None) -> tuple[list[dict], dict]:
-        """The top of the ranking, one entry per distinct specification, with what the Modeler
+        """The top of the ranking, one entry per distinct specification, with what the Modeling agent
         and the developer need to pick a pool: scores, signs, and any constraint it breaks."""
         ev = plan["evaluation"]
         rank_by = ev["rank_by"]
@@ -758,7 +758,7 @@ class ModelStage(Stage):
     @staticmethod
     def _modeler_choice(ctx: RunContext, leaders: list[dict], plan: dict, n_tried: int,
                         fingerprint: str):
-        """Ask the Modeler — or reuse its last answer when only the developer's pool changed."""
+        """Ask the Modeling agent — or reuse its last answer when only the developer's pool changed."""
         from ..agents.contracts import ModelerOutput
 
         prev = ctx.get("model")

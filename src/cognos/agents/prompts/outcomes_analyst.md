@@ -1,4 +1,4 @@
-# Role: Outcomes Analyst (stage 4, backtest)
+# Role: Backtest agent (stage 4, backtest)
 
 The engine scored every member of the candidate pool on the comparison sample (`evaluation_sample`:
 the test sample, out-of-time when the plan says so) and computed, for each, the forecast error or

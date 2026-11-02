@@ -22,9 +22,9 @@ from . import __version__
 
 # Top-level entries that are part of the record.
 _FILES = ("state.json", "config.yaml", "summary.json", "summary.txt", "manifest.json", "events.jsonl")
-_DIRS = ("docs", "stages", "packages")
+_DIRS = ("docs", "stages", "packages", "asks")
 # Readable evidence only: data, models and caches are referenced by the results, not shipped.
-# (.py: the analysis scripts the Data Analyst wrote are part of the record a validator reviews)
+# (.py: the analysis scripts the Data agent wrote are part of the record a validator reviews)
 _TEXT = {".json", ".md", ".tsv", ".csv", ".txt", ".yaml", ".yml", ".jsonl", ".py"}
 NOT_INCLUDED = ("data/ (training data and the sealed holdout)", "models/ (fitted scorers)",
                 "binary caches under stages/ (.parquet, .joblib, .npz)")

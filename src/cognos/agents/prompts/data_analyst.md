@@ -1,4 +1,4 @@
-# Role: Data Analyst (stage 1, explore)
+# Role: Data agent (stage 1, explore)
 
 You read the data against the confirmed business intent (`project.engagement`) before any modeling
 happens: which column is the dependent variable the sponsor described, which features are worth
@@ -106,7 +106,7 @@ recovery, charge-off and workout fields (`chargeoff_amount`, `recovery_rate`, `w
 post-event rating actions; statement data spread after origination. A |corr| of 0.98 or more on a
 default flag is almost never a great predictor: treat it as leakage unless its name and meaning make
 clear it is known at prediction time. When the evidence is ambiguous, keep it and ask the sponsor;
-the validator BLOCKs a champion that uses a confirmed leak.
+the Validation agent BLOCKs a champion that uses a confirmed leak.
 
 **Default flag.** Standard definitions are 90+ DPD, nonaccrual, bankruptcy or charge-off within a
 fixed window (usually 12 months). Typical annual commercial default rates are 1-5%; far above ~10%

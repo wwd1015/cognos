@@ -40,7 +40,7 @@ class AgentOutput(Contract):
         default_factory=list, description="Exactly one entry per item in context.challenges")
 
 
-# --- intake: intake analyst ----------------------------------------------------------------
+# --- intake: Intake agent ----------------------------------------------------------------
 BriefFieldId = Literal[
     "objective", "use_case", "segment", "default_definition", "horizon", "intended_use",
     "out_of_scope_use", "interpretability", "success_criteria", "constraints", "data_sources",
@@ -94,7 +94,7 @@ class IntakeAnalystOutput(AgentOutput):
                                 "existing model uses, or empty when the artifacts do not say")
 
 
-# --- explore: data analyst ---------------------------------------------------------------
+# --- explore: Data agent ---------------------------------------------------------------
 class ColumnDecision(Contract):
     column: str
     decision: Literal["keep", "exclude"]
@@ -169,7 +169,7 @@ class LeftOutTable(Contract):
 
 
 class DataLinkerOutput(Contract):
-    """The Data Analyst's join plan when a run has several sources."""
+    """The Data agent's join plan when a run has several sources."""
 
     base_table: str = Field(description="The table whose rows are the modelling observations")
     base_rationale: str
@@ -196,7 +196,7 @@ class ToolRequestOutput(Contract):
     notes: str = ""
 
 
-# --- ideate: design lead --------------------------------------------------------------------
+# --- ideate: Design agent --------------------------------------------------------------------
 class FrameworkChoice(Contract):
     framework: str = Field(description="A framework id from context.framework_assessment")
     decision: Literal["primary", "candidate", "challenger", "rejected"]
@@ -281,7 +281,7 @@ class ExperimentProposal(Contract):
     rationale: str = ""
 
 
-# --- backtest: outcomes analyst -------------------------------------------------------------
+# --- backtest: Backtest agent -------------------------------------------------------------
 class AgentFinding(Contract):
     id: str
     severity: Severity3
@@ -315,7 +315,7 @@ class ValidatorOutput(AgentOutput):
     conditions: list[str] = Field(default_factory=list)
 
 
-# --- comply: model-risk analyst -------------------------------------------------------------
+# --- comply: Compliance agent -------------------------------------------------------------
 class RiskAnalystOutput(AgentOutput):
     readiness: Literal["ready", "ready_with_actions", "not_ready"]
     narrative: str
@@ -335,6 +335,18 @@ class Section(Contract):
 
 class WriterOutput(AgentOutput):
     sections: list[Section]
+
+
+# --- any stage: a question from the page (ADR-0021) ----------------------------------------
+class AskAnswer(Contract):
+    answer: str = Field(description="The answer in plain sentences, for the person reading the "
+                                    "page; every number is a {{fact:<id>}} placeholder")
+    cites: list[str] = Field(default_factory=list,
+                             description="Ids from context.facts the answer relies on")
+    suggested_challenge: str = Field(
+        default="", description="When the question shows something this stage's work should "
+                                "reconsider: what to ask the agent to reconsider, in one or two "
+                                "sentences a person could send back at the gate. Empty otherwise")
 
 
 CONTRACTS: dict[str, type[Contract]] = {
@@ -370,14 +382,33 @@ def tool_step_of(agent: str) -> str | None:
     return base if base in TOOL_USERS else None
 
 
-FRIENDLY = {"intake_analyst": "Intake Analyst", "data_analyst": "Data Analyst",
-            "data_scout": "Data Analyst (analysis requests)",
-            "data_linker": "Data Analyst (joining sources)", "design_lead": "Design Lead", "modeler": "Modeler",
-            "experiment": "Modeler (guided search)", "outcomes_analyst": "Outcomes Analyst",
-            "validator": "Independent Validator", "risk_analyst": "Model-Risk Analyst",
-            "writer": "Technical Writer"}
+FRIENDLY = {"intake_analyst": "Intake agent", "data_analyst": "Data agent",
+            "data_scout": "Data agent (analysis requests)",
+            "data_linker": "Data agent (joining sources)", "design_lead": "Design agent", "modeler": "Modeling agent",
+            "experiment": "Modeling agent (guided search)", "outcomes_analyst": "Backtest agent",
+            "validator": "Validation agent", "risk_analyst": "Compliance agent",
+            "writer": "Writing agent"}
 
 for _agent in TOOL_USERS:
     CONTRACTS[f"{_agent}_tools"] = ToolRequestOutput
     AGENT_STAGE[f"{_agent}_tools"] = AGENT_STAGE[_agent]
     FRIENDLY[f"{_agent}_tools"] = f"{FRIENDLY[_agent]} (tool requests)"
+
+# Every stage agent answers questions about its page (``<agent>_ask``, ADR-0021): with its own
+# scope and prompt, never a decision.
+ASKABLE = tuple(STAGE_AGENT.values())
+for _agent in ASKABLE:
+    CONTRACTS[f"{_agent}_ask"] = AskAnswer
+    AGENT_STAGE[f"{_agent}_ask"] = AGENT_STAGE[_agent]
+    FRIENDLY[f"{_agent}_ask"] = f"{FRIENDLY[_agent]} (questions)"
+
+
+def ask_step_of(agent: str) -> str | None:
+    """The role agent a question step belongs to, or None."""
+    base = agent[:-len("_ask")] if agent.endswith("_ask") else ""
+    return base if base in ASKABLE else None
+
+
+def role_of(agent: str) -> str:
+    """The role agent behind a step: its own name, or the agent a tool or question step serves."""
+    return tool_step_of(agent) or ask_step_of(agent) or agent

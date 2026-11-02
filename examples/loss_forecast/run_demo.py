@@ -187,7 +187,7 @@ def main(save: bool = False) -> int:
         mark = "  ← recommended" if c["id"] == backtest["champion_id"] else ""
         say(f"  {c['name']:16s} {c['development_score']:10.4f} {o['rmse']:10.4f} {o['r2']:6.3f} "
               f"{o['bias']:+8.4f}   {severe:+.3f}{mark}")
-    say(f"  Outcomes Analyst: {backtest['champion_rationale']}")
+    say(f"  Backtest agent: {backtest['champion_rationale']}")
     say("  The test sample was the only out-of-sample evidence and it was used to choose: "
           f"sealed holdout = {backtest['sealed_holdout']}")
 

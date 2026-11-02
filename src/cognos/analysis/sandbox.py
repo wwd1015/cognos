@@ -1,4 +1,4 @@
-"""Run Python the Data Analyst wrote, without trusting it.
+"""Run Python the Data agent wrote, without trusting it.
 
 Two layers. **Before** anything runs, the script's syntax tree is checked against a short list of
 what an analysis needs: it may import only numerical libraries, and it may not open files, reach

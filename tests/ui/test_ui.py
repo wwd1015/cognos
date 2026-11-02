@@ -270,8 +270,8 @@ def test_own_data_form_builds_a_source_and_explore_shows_charts_and_code(root, t
     panel = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light"))
     assert "Agent-written script" in panel and "Code to review" in panel and "groupby" in panel
     assert "Rate by sector" in panel and '"type": "Graph"' in panel
-    assert "proposed by the Data Analyst" in panel and "loans.csv" in panel
-    assert "analysis script(s) written by the Data Analyst" in panel  # the gate says what is accepted
+    assert "proposed by the Data agent" in panel and "loans.csv" in panel
+    assert "analysis script(s) written by the Data agent" in panel  # the gate says what is accepted
     assert '"c": null' not in panel
 
 
@@ -495,7 +495,7 @@ def test_assumptions_and_limitations_reach_validation_and_the_white_paper(root):
     from cognos.engine.state import Gap
 
     eng = service.engine(run_id)
-    with eng.lock:  # two data questions, as the Data Analyst raises them
+    with eng.lock:  # two data questions, as the Data agent raises them
         state = eng.state
         state.gaps += [Gap(id="data-t1", question="Is utilization known at origination?",
                            category="data", stage="explore", reentry="explore"),

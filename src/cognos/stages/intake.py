@@ -2,7 +2,7 @@
 
 The engine reads the engagement's documents (the business intent document, supporting material
 and, for a model update, the existing model's artifacts), inventories them, and parses the intent
-template. The **Intake Analyst** agent fills the engagement brief, judges whether the goal is clear
+template. The **Intake agent** agent fills the engagement brief, judges whether the goal is clear
 and interviews the sponsor where it is not: every question becomes an open gap, each answer
 re-runs this stage, and the loop ends when no blocking question is left. The human confirms the
 brief at ``gate_intent``; what the sponsor's document states then becomes part of the effective

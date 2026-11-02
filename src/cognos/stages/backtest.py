@@ -4,7 +4,7 @@ Models that rank together on the development sample can forecast very differentl
 is where that shows: every pool member is scored on the comparison sample (the test sample,
 out of time when the plan says so) and measured the same way — forecast error and bias, or
 discrimination, calibration and population stability — and, when scenarios are defined, under
-each scenario. The **Outcomes Analyst** reads the comparison and recommends the champion; the
+each scenario. The **Backtest agent** reads the comparison and recommends the champion; the
 developer accepts or chooses another member at the champion gate.
 
 For the champion in force the stage then does what it always did: embeds the model as an IMPACT
@@ -135,7 +135,7 @@ class BacktestStage(Stage):
         if forecasts is not None:
             res.add_artifact(forecasts)
 
-        # --- the Outcomes Analyst's recommendation (engine-checked; cites facts) -----
+        # --- the Backtest agent's recommendation (engine-checked; cites facts) -----
         public = [{k: v for k, v in c.items() if not k.startswith("_")} for c in candidates]
         comparison = {"metric": metric, "direction": metric_direction(metric), "sample": sample,
                       "n_rows": int(len(eval_df)), "n_candidates": len(candidates)}
@@ -301,7 +301,7 @@ class BacktestStage(Stage):
     # --- helpers ----------------------------------------------------------------
     def _analyst(self, ctx: RunContext, res: StageResult, candidates: list[dict],
                  comparison: dict, sealed: bool, stage_model: dict, lead_scorer: str | None):
-        """Ask the Outcomes Analyst — or reuse its last answer when only the developer's choice
+        """Ask the Backtest agent — or reuse its last answer when only the developer's choice
         of champion changed (the same pool, compared on the same sample)."""
         from ..agents.contracts import OutcomesAnalystOutput
 

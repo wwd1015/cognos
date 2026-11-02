@@ -226,7 +226,7 @@ def main(save: bool = False) -> int:
         say(f"  {c['name']:15s} {c['n_features']:7d} {c['development_score']:10.4f} "
             f"{c['metrics']['roc_auc']:9.4f} {o['gini']:6.3f} {o['ks']:6.3f} "
             f"{o['expected_calibration_error']:7.4f} {o['psi']:6.3f}   {severe:+.4f}{mark}")
-    say(f"  Outcomes Analyst: {backtest['champion_rationale']}")
+    say(f"  Backtest agent: {backtest['champion_rationale']}")
     say(f"  The test sample has been looked at {backtest['test_evaluations']} times. "
         f"Sealed holdout kept: {backtest['sealed_holdout']} (not opened yet)")
 

@@ -173,7 +173,7 @@ def _override_rows(sa: RunState, sb: RunState) -> list[dict]:
         def fams(slate):
             return None if slate is None else sorted({i.get("family", "?") for i in slate})
         rows.append({"what": "Hypothesis slate", "a": fams(oa.slate), "b": fams(ob.slate),
-                     "note": "None = the design lead's slate was accepted"})
+                     "note": "None = the Design agent's slate was accepted"})
     if oa.champion != ob.champion:
         rows.append({"what": "Champion override", "a": oa.champion, "b": ob.champion, "note": None})
     return rows

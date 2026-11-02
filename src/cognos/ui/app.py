@@ -21,6 +21,8 @@ import dash_mantine_components as dmc
 from dash import ALL, MATCH, Dash, Input, Output, State, ctx, dcc, html, no_update
 
 from .. import __version__, service
+from ..agents.contracts import FRIENDLY
+from ..ask import agent_for
 from ..engine import GateError
 from ..engine.graph import (
     GATE_BEFORE_STAGE,
@@ -32,6 +34,7 @@ from ..engine.graph import (
     STAGES,
 )
 from ..engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, next_action, seat_label
+from . import ask as ask_ui
 from .components import (
     empty,
     fmt,
@@ -109,7 +112,7 @@ def start_note(ref: str | None, templates: list[dict]) -> Any:
     """What the chosen template is for, what it sets up, and the data it is usually built on."""
     t = next((t for t in templates if t["ref"] == ref), None)
     if t is None:
-        return dmc.Text("Every choice is made in the run: the Design Lead proposes the plan from "
+        return dmc.Text("Every choice is made in the run: the Design agent proposes the plan from "
                         "the intent and the data, and you confirm it at the gates.",
                         size="xs", c="dimmed")
     saved = (f"Saved by {t['saved_by']} on {t['saved_at'][:10]} from run {t['from_run']}. "
@@ -157,7 +160,7 @@ def runs_page() -> Any:
             ], justify="space-between"),
             upload_box("new-intent", "Drop the filled-in template, or click to choose "
                                      "(.md, .txt, .docx)", multiple=False),
-            dmc.Text("What the model is for, in the sponsor's words. The Intake Analyst reads it "
+            dmc.Text("What the model is for, in the sponsor's words. The Intake agent reads it "
                      "and asks about anything left unclear. You give the data once the intent "
                      "is confirmed.", size="xs", c="dimmed", id="new-intent-help"),
         ], gap=4),
@@ -530,6 +533,7 @@ def workspace_page(run_id: str) -> Any:
         dmc.Modal(id="io-modal", size="80%", title="Agent call", children=html.Div(id="io-body")),
         trial_modal(), promote_modal(), template_modal(),
         dcc.Download(id="export-download"),
+        ask_ui.dock(),
     ])
 
 
@@ -842,15 +846,26 @@ def stamp(at: str | None) -> Any:
     return html.Span((at or "")[:19].replace("T", " "), className="stamp")
 
 
+def call_label(call_id: str) -> str:
+    """A call as a person reads it: the time it was made and its short code. The agent has its
+    own column, so the id's agent part is left out instead of cut through."""
+    stamp_, _, rest = call_id.partition("_")
+    code = rest.rsplit("_", 1)[-1] if rest else ""
+    if len(stamp_) == 15 and stamp_[8] == "-":
+        t = stamp_[9:]
+        return f"{t[:2]}:{t[2:4]}:{t[4:]} · {code}" if code else f"{t[:2]}:{t[2:4]}:{t[4:]}"
+    return call_id
+
+
 def audit_tab(run_id: str) -> Any:
     rows = []
     for a in service.audit(run_id)[::-1]:
         color = {"ok": "green", "invalid": "orange", "error": "red"}.get(a["status"], "gray")
         rows.append([
-            dmc.Button(a["call_id"][-14:], id={"type": "audit-row", "call": a["call_id"]},
+            dmc.Button(call_label(a["call_id"]), id={"type": "audit-row", "call": a["call_id"]},
                        variant="subtle", size="compact-xs", ff="monospace", n_clicks=0,
                        leftSection=icon("tabler:file-search", 12)),
-            a["agent"], a["attempt"], dmc.Badge(a["status"], color=color, size="xs", variant="light"),
+            FRIENDLY.get(a["agent"], a["agent"]), a["attempt"], dmc.Badge(a["status"], color=color, size="xs", variant="light"),
             dmc.Code(backend_label(a.get("provider"), a.get("model"))),
             fmt(a.get("duration_s"), 2), f"${a['cost_usd']:.4f}" if a.get("cost_usd") else "—",
             dmc.Text((a.get("error") or "")[:140], size="xs", c="dimmed"),
@@ -1136,6 +1151,75 @@ def register_callbacks(app: Dash) -> None:
         if not ctx.triggered_id or not any(clicks or []):
             return no_update, no_update
         return ctx.triggered_id["step"], "workflow"
+
+    # --- Ask: a floating chat with the page's agent (ADR-0021) ------------------------------
+    @app.callback(Output("ask-open", "data"), Input("ask-fab", "n_clicks"),
+                  Input("ask-close", "n_clicks"), State("ask-open", "data"),
+                  prevent_initial_call=True)
+    def ask_toggle(_fab, _close, is_open):
+        return ctx.triggered_id == "ask-fab" and not is_open
+
+    @app.callback(Output("ask-dock", "hidden"), Output("ask-window", "hidden"),
+                  Output("ask-title", "children"), Output("ask-sub", "children"),
+                  Output("ask-foot", "children"), Output("ask-thread", "children"),
+                  Input("ws-tab", "value"), Input("ws-step", "data"), Input("ws-key", "data"),
+                  Input("ask-open", "data"), Input("ask-version", "data"),
+                  State("ws-run", "data"))
+    def ask_window(tab, step, _key, is_open, _version, run_id):
+        hold = (no_update,) * 4
+        if not run_id or tab != "workflow":
+            return (True, True, *hold)
+        st = service.state(run_id)
+        sel = step or auto_step(st)
+        agent = agent_for(sel)
+        if agent is None:
+            return (True, True, *hold)
+        if not is_open:
+            return (False, True, *hold)
+        gate = GATE_OF_STAGE.get(sel)
+        return (False, False, *ask_ui.heading(agent, sel),
+                ask_ui.thread(service.ask_thread(run_id, sel), agent, sel,
+                              gate_open=bool(gate) and st.status_of(gate) == "awaiting"))
+
+    @app.callback(Output("ask-version", "data"), Output("ask-input", "value"),
+                  Output("ask-error", "children"),
+                  Input("ask-send", "n_clicks"), State("ask-input", "value"),
+                  State("ws-run", "data"), State("ws-step", "data"), State("ask-version", "data"),
+                  running=[(Output("ask-send", "loading"), True, False)],
+                  prevent_initial_call=True)
+    def ask_send(_n, text, run_id, step, version):
+        sel = step or auto_step(service.state(run_id))
+        try:
+            service.ask(run_id, sel, text or "")
+        except Exception as exc:  # no valid answer, a spent budget, an empty question
+            return no_update, no_update, dmc.Text(str(exc), size="xs", c="red", px="sm")
+        return (version or 0) + 1, "", None
+
+    @app.callback(Output("ask-input", "value", allow_duplicate=True),
+                  Input({"type": "ask-example", "q": ALL}, "n_clicks"), prevent_initial_call=True)
+    def ask_example(clicks):
+        if not any(clicks or []):
+            return no_update
+        return ctx.triggered_id["q"]
+
+    @app.callback(
+        Output({"type": "gate-field", "gate": ALL, "field": "message"}, "value",
+               allow_duplicate=True),
+        Output({"type": "gate-sendback", "gate": ALL}, "value"),
+        Output("notify", "sendNotifications", allow_duplicate=True),
+        Input({"type": "ask-use", "turn": ALL}, "n_clicks"),
+        State("ws-run", "data"), State("ws-step", "data"), prevent_initial_call=True)
+    def ask_use(clicks, run_id, step):
+        fields, panels = ctx.outputs_list[0], ctx.outputs_list[1]
+        if not any(clicks or []) or not fields:
+            return no_update, no_update, no_update
+        sel = step or auto_step(service.state(run_id))
+        turns = service.ask_thread(run_id, sel)
+        i = ctx.triggered_id["turn"]
+        text = turns[i].get("suggested_challenge", "") if i < len(turns) else ""
+        return ([text] * len(fields), ["send"] * len(panels),
+                [notice("Copied into the send-back", "Read it, edit it if needed, and press "
+                        "Send back to send it.", "oxblood")])
 
     @app.callback(Output("ws-seat", "data"), Input("seat-switch", "value"))
     def choose_seat(value):

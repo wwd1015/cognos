@@ -7,7 +7,7 @@ result. Two tools here:
 - ``score_band_monotonicity`` (validation and outcomes analysis): a custom model test on the
   champion and the sealed holdout, with a pass/fail check. A failed check becomes a finding of
   the stage; at validation a ``high`` one fails the validation.
-- ``events_per_feature`` (design): a sample-size screen the Design Lead can run before it
+- ``events_per_feature`` (design): a sample-size screen the Design agent can run before it
   proposes a slate.
 
 Load it like any plugin: ``plugins: [validation_tools]`` in a profile,

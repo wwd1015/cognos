@@ -123,7 +123,7 @@ def test_a_run_recorded_before_intake_reads_it_as_skipped():
     assert state.status_of("explore") == "done"
 
 
-# --- the Intake Analyst's contract ------------------------------------------------------------
+# --- the Intake agent's contract ------------------------------------------------------------
 def _slice(kind: str, values: dict, decided: dict | None = None, **extra) -> dict:
     text = eg.render_template(kind, values)
     parsed = eg.parse_intent(text)

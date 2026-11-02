@@ -95,14 +95,14 @@ DEMO_PRESETS["loss_forecast"] = dict(
             "segment": "commercial real estate portfolio",
             "interpretability": "required"})
 # The C&I portfolio again, arriving as three sources of two kinds (two CSV files and a SQLite
-# table): the Data Analyst proposes how they join and the developer confirms it.
+# table): the Data agent proposes how they join and the developer confirms it.
 DEMO_PRESETS["linked"] = {**DEMO_PRESETS["cni"], "generator": "cni", "linked": True}
 DEMO_LABELS = {
     "cni": "C&I PD scorecard (obligors by vintage: stepwise logit, sealed holdout, hazard "
            "challengers, stress)",
     "loss_forecast": "Loss forecasting (quarterly series: lags and changes, forward selection, "
                      "rolling origin)",
-    "linked": "C&I portfolio from three linked sources (the Data Analyst proposes the join)",
+    "linked": "C&I portfolio from three linked sources (the Data agent proposes the join)",
     "commercial": "Commercial PD (vintage panel, out-of-time)",
     "migration": "Rating migration (agency transition matrix, loss forecast)",
     "credit": "Consumer-style credit with fair-lending scan",
@@ -225,7 +225,7 @@ def plugin_list(modules: list[str] | tuple[str, ...] = ()) -> dict[str, Any]:
 
 def config_from_data(name: str, source: dict[str, Any], *, description: str = "",
                      root: str | Path | None = None, **extra: Any) -> CognosConfig:
-    """A profile for "here is my data": no target, no task. The Data Analyst proposes the
+    """A profile for "here is my data": no target, no task. The Data agent proposes the
     dependent variable from the business intent and the model developer confirms it at the data
     gate. ``source`` is a ``data.source`` mapping (``{"kind": "file", "path": ...}``,
     ``{"kind": "snowflake", "table": ...}``)."""
@@ -465,6 +465,22 @@ def trial_stamp(run_id: str, root: str | Path | None = None) -> int:
         return trials.record_path(runs_root(root), trials.model_of(st)).stat().st_mtime_ns
     except OSError:
         return 0
+
+
+def ask(run_id: str, stage: str, question: str, *, root: str | Path | None = None,
+        by: str | None = None) -> dict[str, Any]:
+    """Ask the agent that owns a stage's page (ADR-0021). The run is unchanged; the question and
+    its answer are kept in the stage's thread, the call in the agent audit."""
+    from . import ask as ask_mod
+
+    return ask_mod.ask(engine(run_id, root), stage, question, by=by or whoami())
+
+
+def ask_thread(run_id: str, stage: str, root: str | Path | None = None) -> list[dict[str, Any]]:
+    """The questions asked on a stage's page, oldest first."""
+    from . import ask as ask_mod
+
+    return ask_mod.thread(_run_dir(run_id, root), stage)
 
 
 def whoami() -> str:

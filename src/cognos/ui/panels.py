@@ -38,22 +38,22 @@ from .components import (
 
 STAGE_BLURB = {
     "intake": "The engine reads the business intent and, for an update, the existing model's "
-              "artifacts; the Intake Analyst fills the brief and interviews the sponsor where the "
+              "artifacts; the Intake agent fills the brief and interviews the sponsor where the "
               "goal is not clear.",
-    "explore": "The engine fetches and profiles the data and runs the analyses the Data Analyst "
-               "asks for; the analyst names the dependent variable, the features worth "
+    "explore": "The engine fetches and profiles the data and runs the analyses the Data agent "
+               "asks for; the agent names the dependent variable, the features worth "
                "considering and the columns that may not be inputs.",
-    "ideate": "The engine assesses structure and frameworks; the Design Lead ranks the slate and "
+    "ideate": "The engine assesses structure and frameworks; the Design agent ranks the slate and "
               "raises what only the sponsor can decide.",
     "model": "The engine follows the development plan: every factor fitted alone, the library "
              "cut to a shortlist, multi-factor models built by the plan's methods and ranked. The "
-             "Modeler recommends the pool of candidates that goes on; no champion is chosen here.",
+             "Modeling agent recommends the pool of candidates that goes on; no champion is chosen here.",
     "backtest": "The engine scores every pool member on the test sample and under each scenario; "
-                "the Outcomes Analyst reads the comparison and recommends the champion.",
-    "validate": "The engine's rubric re-derives risk from artifacts; the Independent Validator adds "
-                "an effective challenge — it never sees the modeler's reasoning.",
+                "the Backtest agent reads the comparison and recommends the champion.",
+    "validate": "The engine's rubric re-derives risk from artifacts; the Validation agent adds "
+                "an effective challenge — it never sees the Modeling agent's reasoning.",
     "comply": "A non-gating readiness report: evidence organized, human-only steps listed.",
-    "document": "The white paper as an OKF bundle. The Technical Writer drafts prose; every number "
+    "document": "The white paper as an OKF bundle. The Writing agent drafts prose; every number "
                 "is rendered from a recorded fact.",
     "review": "The engine verifies every docs↔code anchor; stale references BLOCK.",
 }
@@ -225,7 +225,8 @@ def _send_back(gate: str, choose_target: bool) -> Any:
             dmc.Group([dmc.Button("Send back", id=_act(gate, "send_back"), color="oxblood",
                                   variant="light", leftSection=icon("tabler:arrow-back-up"))]),
         ], gap="xs")),
-    ], value="send")], value=None, variant="contained", mt="sm")
+    ], value="send")], id={"type": "gate-sendback", "gate": gate}, value=None,
+        variant="contained", mt="sm")
 
 
 def gate_block(gate: str, state: RunState, res: StageResult | None, body: list | None = None,
@@ -371,7 +372,7 @@ def catalog_origin(cat: dict) -> str:
 def source_form(info: dict | None = None) -> list:
     """Where the data comes from: tables from the team's data catalog, with what each holds,
     and any data to add (files, Snowflake tables, read-only queries). The engine measures how
-    they connect and the Data Analyst proposes the join at explore."""
+    they connect and the Data agent proposes the join at explore."""
     info = info or {}
     f = "gate_source"
     cat = info.get("catalog")
@@ -408,7 +409,7 @@ def source_form(info: dict | None = None) -> list:
     return [
         *catalog_part,
         dmc.Text("Add data (optional)", fw=600, size="sm", mt="md"),
-        dmc.Text("Data the catalog does not have. The Data Analyst measures how it connects to "
+        dmc.Text("Data the catalog does not have. The Data agent measures how it connects to "
                  "the tables above and proposes the join; you confirm it at the data gate.",
                  size="xs", c="dimmed"),
         _src_upload("add_files", "Drop files, or click to choose (.csv, .xlsx, .parquet)",
@@ -422,7 +423,7 @@ def source_form(info: dict | None = None) -> list:
                  size="xs", c="dimmed"),
         dmc.Group([
             dmc.TextInput(id=_field(f, "target"), label="Dependent variable (optional)",
-                          description="Left empty, the Data Analyst proposes it", w=260),
+                          description="Left empty, the Data agent proposes it", w=260),
             dmc.TextInput(id=_field(f, "datetime_col"), label="Date column (optional)",
                           description="Left empty: the base table's, from the catalog", w=260),
         ], align="flex-start", mt="xs"),
@@ -563,7 +564,7 @@ def intake_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
     n_decided = sum(1 for b in brief if b.get("value") or later.get(b["field"]))
     return [
         kpis([("Development mode", p.get("kind_label", "—"), None),
-              ("Intent", str(p.get("clarity", "—")).replace("_", " "), "the Intake Analyst's read"),
+              ("Intent", str(p.get("clarity", "—")).replace("_", " "), "the Intake agent's read"),
               ("Brief decided", f"{n_decided} / {len(brief)}", "* = needed to start"),
               ("Open questions", fmt(len(open_gaps)),
                f"{sum(1 for g in open_gaps if g.id in blocking)} blocking")]),
@@ -612,7 +613,7 @@ def source_counts(analyses: list[dict]) -> Any:
 
 def analysis_card(run_id: str, a: dict, scheme: str) -> Any:
     """One analysis: the question, what it found, its chart and table and, for a script, the
-    code exactly as the analyst wrote it."""
+    code exactly as the Data agent wrote it."""
     try:
         result = json.loads(service.read_artifact(run_id, a["artifact"]) or "{}")
     except ValueError:
@@ -754,7 +755,7 @@ def join_canvas(linked: dict, target: str | None, chosen: list[str], *,
                              "kind": "proposed" if lk["id"] in proposed else "measured"},
                          className=chip_class(lk["id"] in chosen, lk["id"] in proposed),
                          disabled=disabled, n_clicks=0,
-                         title=_link_label(lk) + (" · suggested by the Data Analyst"
+                         title=_link_label(lk) + (" · suggested by the Data agent"
                                                   if lk["id"] in proposed else ""),
                          **{"data-a": lk["a"], "data-b": lk["b"], "data-link": lk["id"]})
              for lk in linked["links"]]
@@ -764,7 +765,7 @@ def join_canvas(linked: dict, target: str | None, chosen: list[str], *,
                           style={"height": f"{height}px", "minWidth": f"{width}px"}),
                  className="jc-wrap"),
         html.Div([html.Span([html.I(className="m"), "Measured by the engine"]),
-                  html.Span([html.I(className="p"), "Suggested by the Data Analyst"]),
+                  html.Span([html.I(className="p"), "Suggested by the Data agent"]),
                   html.Span([html.I(className="c"), "In your join"]),
                   html.Span("Drag a table to arrange. Click a link to add or remove it.")],
                  className="jc-legend"),
@@ -789,7 +790,7 @@ def linking_section(linked: dict | None) -> Any:
     reasons = why.get("joins") or {}
     unmatched = why.get("unmatched") or {}
     how = {"profile": "stated in the project profile", "decision": "set at the data gate",
-           "agent": "proposed by the Data Analyst"}.get(plan["source"], "")
+           "agent": "proposed by the Data agent"}.get(plan["source"], "")
     used = {s["link"] for s in plan["steps"]}
     sources = table(["Source", "Connector", "Location", "Rows × columns", "Role"], [
         [dmc.Text(t["name"], ff="monospace", size="sm", fw=600), t.get("connector") or "—",
@@ -877,7 +878,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
     src = p.get("source") or {}
     fixed = p.get("target_source") == "profile"
     how = {"profile": "fixed in the project profile", "decision": "set at the data gate",
-           "agent": "proposed by the Data Analyst"}.get(p.get("target_source", ""), "")
+           "agent": "proposed by the Data agent"}.get(p.get("target_source", ""), "")
     target_options = ([{"value": c["column"], "label": f"{c['column']} — {c['why']}"}
                        for c in p.get("target_candidates", [])]
                       or [{"value": p.get("target", ""), "label": p.get("target", "")}])
@@ -933,7 +934,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                    disabled=fixed, searchable=True,
                    description="Fixed in the project profile." if fixed else
                    "Changing it re-runs the exploration against the new target."),
-        dmc.Alert(f"{len(scripts)} analysis script(s) written by the Data Analyst are part of "
+        dmc.Alert(f"{len(scripts)} analysis script(s) written by the Data agent are part of "
                   "what you are accepting. Read the code under “Analyses” below: it goes to "
                   "validation and into the white paper as it stands.", color="grape",
                   variant="light", icon=icon("tabler:code"), mt="xs") if scripts else None,
@@ -943,7 +944,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                                    if state.last_decision("gate_data")
                                    else p.get("recommended_exclusions", [])),
                         searchable=True, clearable=True,
-                        description="Pre-filled with the Data Analyst's recommendation."),
+                        description="Pre-filled with the Data agent's recommendation."),
     ], primary=[
         dmc.Button("Accept recommendation", id=_act("gate_data", "accept"),
                    leftSection=icon("tabler:check")),
@@ -968,13 +969,13 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                 description="The outcome the business intent describes.") if p.get("target") else None,
         linking_section(linked),
         section("Features to consider", table(["Feature", "Expected", "Corr.", "Why"], cand_rows),
-                description="The Data Analyst's candidates for the design stage: hypotheses, "
+                description="The Data agent's candidates for the design stage: hypotheses, "
                             "not a selection.") if cand_rows else None,
         section(f"Analyses ({len(analyses)})",
                 source_counts(analyses),
                 dmc.SimpleGrid([analysis_card(state.run_id, a, scheme) for a in analyses],
                                cols={"base": 1, "lg": 2}, spacing="md"),
-                description="Requested by the Data Analyst, run by the engine. Each one says "
+                description="Requested by the Data agent, run by the engine. Each one says "
                             "where it came from: a built-in tool and a plugin tool are reviewed "
                             "code; a script is code the agent wrote for this run, kept with its "
                             "hash and re-run at validation.")
@@ -1066,7 +1067,7 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
 
 # --- the development plan (shown at design, restated at model) ------------------------------
 _SOURCE_COLOR = {"human": "oxblood", "profile": "blue", "agent": "grape", "engine": "gray"}
-_SOURCE_LABEL = {"human": "developer", "profile": "profile", "agent": "Design Lead",
+_SOURCE_LABEL = {"human": "developer", "profile": "profile", "agent": "Design agent",
                  "engine": "engine"}
 
 
@@ -1144,7 +1145,7 @@ def plan_form(plan: dict) -> Any:
 
     def by(field: str) -> str:
         src = sources.get(field)
-        return {"engine": "recommended by the engine", "agent": "recommended by the Design Lead",
+        return {"engine": "recommended by the engine", "agent": "recommended by the Design agent",
                 "profile": "set in the profile", "human": "set by the developer"}.get(src, "")
 
     def pick(field: str, label: str, value: Any, choices: list[str], source: str = "", **kw) -> Any:
@@ -1265,7 +1266,7 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
     def tags(c: dict) -> Any:
         return dmc.Group([
             dmc.Badge("in the pool", color="oxblood", size="xs") if c["id"] in pool_ids else None,
-            dmc.Badge("Modeler", color="blue", size="xs", variant="light")
+            dmc.Badge("Modeling agent", color="blue", size="xs", variant="light")
             if c["id"] in recommended else None,
             dmc.Badge("within 1 SE", color="gray", size="xs", variant="outline")
             if c.get("within_one_se") else None,
@@ -1604,7 +1605,7 @@ def validate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
     loops = state.loops.get("validator", 0)
     routed = p.get("routed_findings") or []
     gate = gate_block("gate_validation", state, res, seat=seat,
-                      proposal=(f"Verdict {verdict}: the validator recommends "
+                      proposal=(f"Verdict {verdict}: the Validation agent recommends "
                                 f"{str(v.get('recommendation', '—')).replace('_', ' ')}."
                                 if v else f"Verdict {verdict}."),
                       evidence=[("rubric", fmt(p.get("overall_score"), 2)),
@@ -1628,7 +1629,7 @@ def validate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
         trials_section(p.get("trials")),
         section("Findings", findings_table(_findings(res)),
                 description="Engine findings re-derive risk from artifacts; agent findings "
-                            "(val-*) are the validator's challenge."),
+                            "(val-*) are the Validation agent's challenge."),
     ]
 
 

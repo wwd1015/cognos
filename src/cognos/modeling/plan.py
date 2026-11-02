@@ -2,11 +2,11 @@
 single factors become models (ADR-0016).
 
 ``recommend`` reads the shape of the data and the intent and returns a complete plan with a
-reason for every choice and the options the data allow. The Design Lead may choose differently
+reason for every choice and the options the data allow. The Design agent may choose differently
 among those options, the developer confirms or edits at the design gate, and ``resolve`` is the
 one place that puts the layers together:
 
-    developer's edit (``overrides.plan``)  >  the profile  >  the Design Lead  >  the engine
+    developer's edit (``overrides.plan``)  >  the profile  >  the Design agent  >  the engine
 
 Nothing here measures anything. The plan says what will be done; ``splits``, ``factors`` and
 ``selection`` do it.
@@ -49,7 +49,7 @@ def shape_of(df: pd.DataFrame, cfg) -> dict[str, Any]:
 
 
 def options(shape: dict[str, Any], cfg, columns: list[str]) -> dict[str, list[str]]:
-    """What this data allows. The gate and the Design Lead choose among these."""
+    """What this data allows. The gate and the Design agent choose among these."""
     has_date = bool(shape.get("datetime_col"))
     is_clf = bool(cfg.task and cfg.task.is_classification)
     tests = ["random", "none"] if not has_date else ["out_of_time", "random", "none"]
@@ -317,13 +317,13 @@ def resolve(cfg, shape: dict[str, Any], *, families: list[str], columns: list[st
     for patch, source in ((proposed, "agent"), (human, "human")):
         if not patch:
             continue
-        if source == "agent":  # the profile outranks the Design Lead
+        if source == "agent":  # the profile outranks the Design agent
             patch = {s: {k: v for k, v in (patch.get(s) or {}).items() if k not in profile_set}
                      for s in SECTIONS}
         trial = merge(plan, patch, source)
         bad = problems(trial)
         if bad:
-            ignored.append(f"the {'Design Lead' if source == 'agent' else 'developer'}'s plan "
+            ignored.append(f"the {'Design agent' if source == 'agent' else 'developer'}'s plan "
                            f"was not applied: {'; '.join(bad)}")
             continue
         plan = trial

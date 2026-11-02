@@ -1,4 +1,4 @@
-"""The data stage end to end: a database source, a target the Data Analyst proposes, analyses
+"""The data stage end to end: a database source, a target the Data agent proposes, analyses
 it requests through tools and plugins, and Python it writes — kept, reviewed, delivered to
 validation and printed in the white paper."""
 
@@ -105,7 +105,7 @@ def test_open_target_run_completes_unattended_and_documents_the_data(book, runs_
     assert state.status == "completed" and state.overrides.target == "default"
     assert eng.summary().champion_metric_name == "roc_auc"
     doc = (eng.run_dir / "docs" / "analysis.md").read_text(encoding="utf-8")
-    assert "SQLite database" in doc and "proposed by the Data Analyst" in doc
+    assert "SQLite database" in doc and "proposed by the Data agent" in doc
     assert "## Analyses run" in doc and "target_relationship" in doc
     assert "analysis" in eng.results()["document"].payload["concepts"]
 
@@ -144,7 +144,7 @@ def test_agent_written_code_is_kept_reviewed_validated_and_delivered(make_config
     assert "KeyError" in a3["error"] and any(f.id == "analysis-failed" for f in res.findings)
     # the script is an artifact: the code as written, under a header saying who wrote it and why
     saved = (eng.run_dir / a1["code_path"]).read_text(encoding="utf-8")
-    assert saved.startswith("# COGNOS analysis script") and "Written by: the Data Analyst agent" in saved
+    assert saved.startswith("# COGNOS analysis script") and "Written by: the Data agent agent" in saved
     assert SCRIPT.strip() in saved and a1["code_sha256"] == sandbox.sha256(SCRIPT.strip())
     result = json.loads((eng.run_dir / a1["artifact"]).read_text(encoding="utf-8"))
     assert result["charts"][0]["title"] == "High-leverage default rate by sector"

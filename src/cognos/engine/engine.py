@@ -332,7 +332,7 @@ class Engine:
                                   f"{', '.join(LABELS[t] for t in sorted(set(targets), key=STEPS.index))} "
                                   f"(loop {loops + 1} of {limit})")
         events.publish(self.run_dir, "challenge",
-                       f"Validator sent {len(routed)} finding(s) back to {', '.join(sorted(set(targets)))} "
+                       f"The Validation agent sent {len(routed)} finding(s) back to {', '.join(sorted(set(targets)))} "
                        f"(loop {loops + 1} of {limit}).", step="validate")
 
     # --- gates -------------------------------------------------------------------------

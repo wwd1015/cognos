@@ -7,7 +7,7 @@ that stage (built in or from a plugin). The agent *requests* runs (the ``<agent>
 facts (``tools.<stage>.<id>.<key>``) the recommendation can cite. Agents still execute nothing.
 
 A stage with no available tool skips the step entirely: no agent call, no change in behaviour.
-The Data Analyst's own request step (``data_scout``, which may also write code) is in
+The Data agent's own request step (``data_scout``, which may also write code) is in
 ``stages/explore.py``.
 """
 

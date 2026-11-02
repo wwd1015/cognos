@@ -6,7 +6,7 @@ distributions, correlations) and flags data-quality risks the downstream stages 
 especially **target-leakage suspects** (features near-perfectly correlated with the target), the
 #1 way automated systems silently overfit.
 
-The **Data Analyst** agent reads the data against the confirmed business intent in two steps.
+The **Data agent** agent reads the data against the confirmed business intent in two steps.
 First it *requests analyses* — a registered tool (built in or from a plugin) or Python it writes
 — and the engine runs them, keeping every result and every script as an artifact
 (``stages/explore/analyses/``). When the profile leaves the dependent variable open, the analyst
@@ -118,7 +118,7 @@ _ID_NAME = re.compile(r"(^|_)(id|key|code|number|no|num)$", re.I)
 def identifiers(df: pd.DataFrame, features: list[str], cfg) -> list[str]:
     """Feature columns that name a row rather than describe it: a key the data catalog
     declares, or a text column with many distinct values (most rows its own, or an id-like name
-    with more than 50). Measured, for the Data Analyst to recommend excluding: coded as a
+    with more than 50). Measured, for the Data agent to recommend excluding: coded as a
     category, an identifier is one column per obligor and carries nothing that generalizes."""
     sources = cfg.data.sources or ([cfg.data.source] if cfg.data.source else [])
     declared = {k for s in sources for k in s.keys}
@@ -148,7 +148,7 @@ def dictionary(cfg, columns: list) -> dict[str, str]:
 
 def linked_dataset(ctx: RunContext) -> tuple[pd.DataFrame, dict]:
     """Several sources as one modelling table, and how it was made. The plan in force is the
-    data-gate decision, else the profile's stated join, else the Data Analyst's proposal. The
+    data-gate decision, else the profile's stated join, else the Data agent's proposal. The
     engine runs it and writes the snapshot every later stage reads."""
     import hashlib
     import json
@@ -280,7 +280,7 @@ class ExploreStage(Stage):
         tools = [{"name": t.name, "description": t.description, "params": t.params,
                   "needs_target": t.needs_target, "origin": t.origin}
                  for t in reg.tools_for("explore")]
-        author = f"the Data Analyst agent ({ctx.runner.provider['id']})"
+        author = f"the Data agent agent ({ctx.runner.provider['id']})"
         with_missing = [c for c in df.columns if df[c].isna().any()]
         described = dictionary(base, list(df.columns))
         records: list[dict] = []
@@ -307,7 +307,7 @@ class ExploreStage(Stage):
                                        summary=f"The dependent variable could not be settled: {exc}")
                 res.add_finding(Finding(
                     id="analysis-requests-failed", severity=Severity.LOW, category="analysis",
-                    message=f"The Data Analyst's analysis requests could not be obtained: {exc}"))
+                    message=f"The Data agent's analysis requests could not be obtained: {exc}"))
                 break
             if not target:
                 target, target_rationale = out.target_column, out.target_rationale
@@ -320,7 +320,7 @@ class ExploreStage(Stage):
                 records += analysis.execute(ctx, reqs, df, env, start=len(records) + 1,
                                             author=author)
                 events.publish(ctx.run_dir, "progress",
-                               f"Ran {len(reqs)} analysis request(s) for the Data Analyst.",
+                               f"Ran {len(reqs)} analysis request(s) for the Data agent.",
                                step="explore")
             if out.done:
                 break
@@ -415,7 +415,7 @@ class ExploreStage(Stage):
             # outcome data the catalog names that is not the target: never a feature
             "other_outcomes": [c for c in outcomes if c in features],
         }
-        # --- the Data Analyst's recommendation (engine-checked) --------------------
+        # --- the Data agent's recommendation (engine-checked) --------------------
         res.payload = profile
         constant = [c for c in numeric_cols if f"const-{c}" in {f.id for f in res.findings}]
         out = ctx.recommend("data_analyst", {
@@ -477,13 +477,13 @@ class ExploreStage(Stage):
         res.summary = (
             f"Profiled {profile['n_rows']} rows x {profile['n_cols']} cols; {len(features)} features; "
             f"{len(leakage)} leakage suspect(s); {len(res.findings)} data-quality finding(s). "
-            f"Data Analyst recommends excluding {len(profile['recommended_exclusions'])} column(s)."
-            + (f" Target '{target}' ({task}) proposed by the Data Analyst."
+            f"Data agent recommends excluding {len(profile['recommended_exclusions'])} column(s)."
+            + (f" Target '{target}' ({task}) proposed by the Data agent."
                if target_source == "agent" else "")
             + (f" {len(records)} analysis(es) run, {n_code} from agent-written code."
                if records else "")
             + (f" Built from {len(linked['plan']['steps']) + 1} joined source(s)"
-               + (" as the Data Analyst proposed." if linked["plan"]["source"] == "agent"
+               + (" as the Data agent proposed." if linked["plan"]["source"] == "agent"
                   else ".") if linked else "")
         )
         return res

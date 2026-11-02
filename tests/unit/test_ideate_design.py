@@ -185,7 +185,7 @@ def test_design_lead_widens_slate_and_questions(tmp_path, runs_dir, replay_dir):
     assert [h["family"] for h in res.payload["hypotheses"]] == ["logit", "gradient_boosting"]
     # the widened family joins the search list so the ratchet can judge it on evidence
     assert "gradient_boosting" in res.payload["families"]
-    assert "Design Lead" in res.payload["notes"]
+    assert "Design agent" in res.payload["notes"]
 
 
 def test_design_config_round_trips_yaml(tmp_path):

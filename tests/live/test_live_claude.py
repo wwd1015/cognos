@@ -6,7 +6,7 @@ Skipped unless ``COGNOS_LIVE=1`` and the ``claude`` CLI is on PATH — the defau
     COGNOS_LIVE=1 pytest tests/live -q        # ~5-7 min, about $1-2 with the default model (opus)
 
 It exercises what the heuristic agents cannot: real recommendations passing the engine checks
-(the Intake Analyst's quotes found in the intent document among them), a human send-back answered
+(the Intake agent's quotes found in the intent document among them), a human send-back answered
 by a live agent, and a completed, signed-off run.
 """
 

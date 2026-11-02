@@ -26,13 +26,13 @@ It runs in two **development modes**:
   request** written on the same template: `cognos intent-template --kind update`.
 
 The data can be an **uploaded file** or a **database** (Snowflake, SQLite, or a connector a
-plugin adds). You do not have to name the target: the **Data Analyst** reads the data against the
+plugin adds). You do not have to name the target: the **Data agent** reads the data against the
 confirmed intent, proposes the dependent variable and the features worth considering, and shows
 its work as charts. It can call analysis tools, including ones you add as **plugins**, or write
 Python on the fly; the engine runs that code restricted, and every script is kept, shown to you
 at the data gate, re-run by validation and printed in the white paper.
 
-In both, an **Intake Analyst** agent reads the documents, restates the goal, and **interviews**
+In both, an **Intake agent** agent reads the documents, restates the goal, and **interviews**
 you wherever the intent is not clear, before any data is touched.
 
 At every judgment step an **LLM agent recommends** — which columns may be inputs, which econometric
@@ -68,14 +68,14 @@ gates, a challenger loop, and an audit trail — on top of COGNOS's econometric 
 
 | Stage | The engine computes | The agent recommends | You decide at the gate |
 |---|---|---|---|
-| `intake` | reads the intent document and the prior model's artifacts, parses the template, inventories and hashes every document | **Intake Analyst** — the engagement brief (every "stated" position quoted from the documents), whether the goal is clear, interview questions; for an update, the change items and scope | answer the interview; confirm the intent |
-| `explore` | fetches the data and keeps a snapshot; profile, missingness, leakage suspects; runs every analysis the agent requests (tools, plugin tools, restricted Python) | **Data Analyst** — the dependent variable, the features to consider, analysis requests and code, keep/exclude each suspect, sponsor questions | the target; which columns are inputs; the analyst's code |
-| `ideate` | data structure, framework applicability, fittable families, and a **development plan** recommended from the shape of the data and the intent, with a reason per choice | **Design Lead** — framework roles, ranked slate, changes to the plan, feature transforms (engine-validated), sponsor questions | the slate; the plan (split, validation, ranking, screen rules, selection methods); answers to design questions |
-| `model` | the plan's samples; the **factor library**; every factor fitted alone and the library cut by the screen; multi-factor models by forward / backward / stepwise / best subset / grid; one ranked ledger; every pool member fitted, tested and saved | **Modeler** — the **pool** of candidates that goes on (no champion yet), economic sign checks; opt-in guided experiments | accept the pool, or add and remove members |
-| `backtest` | every pool member scored on the test sample: forecast error and bias or Gini/KS, calibration, PSI; every scenario for every member; then IMPACT scoring, portfolio sim and stress for the champion | **Outcomes Analyst** — the **champion**, on how the candidates forecast, and its discrimination, calibration, stability | accept the champion, or choose another pool member |
-| `validate` ⛔ | the effective-challenge rubric; the sealed holdout scored once, for the champion; **BLOCKs on confirmed leakage** | **Independent Validator** — findings routed back to the stage that must change (never sees the modeler's reasoning) | accept the risk / send back / reject |
-| `comply` | SR 26-2 / NIST AI RMF readiness report (non-gating) | **Model-Risk Analyst** — readiness and priority human actions | — |
-| `document` | OKF bundle, Model Card, EU Annex IV, decision log | **Technical Writer** — narrative with `{{fact:…}}` placeholders the engine renders | — |
+| `intake` | reads the intent document and the prior model's artifacts, parses the template, inventories and hashes every document | **Intake agent** — the engagement brief (every "stated" position quoted from the documents), whether the goal is clear, interview questions; for an update, the change items and scope | answer the interview; confirm the intent |
+| `explore` | fetches the data and keeps a snapshot; profile, missingness, leakage suspects; runs every analysis the agent requests (tools, plugin tools, restricted Python) | **Data agent** — the dependent variable, the features to consider, analysis requests and code, keep/exclude each suspect, sponsor questions | the target; which columns are inputs; the analyst's code |
+| `ideate` | data structure, framework applicability, fittable families, and a **development plan** recommended from the shape of the data and the intent, with a reason per choice | **Design agent** — framework roles, ranked slate, changes to the plan, feature transforms (engine-validated), sponsor questions | the slate; the plan (split, validation, ranking, screen rules, selection methods); answers to design questions |
+| `model` | the plan's samples; the **factor library**; every factor fitted alone and the library cut by the screen; multi-factor models by forward / backward / stepwise / best subset / grid; one ranked ledger; every pool member fitted, tested and saved | **Modeling agent** — the **pool** of candidates that goes on (no champion yet), economic sign checks; opt-in guided experiments | accept the pool, or add and remove members |
+| `backtest` | every pool member scored on the test sample: forecast error and bias or Gini/KS, calibration, PSI; every scenario for every member; then IMPACT scoring, portfolio sim and stress for the champion | **Backtest agent** — the **champion**, on how the candidates forecast, and its discrimination, calibration, stability | accept the champion, or choose another pool member |
+| `validate` ⛔ | the effective-challenge rubric; the sealed holdout scored once, for the champion; **BLOCKs on confirmed leakage** | **Validation agent** — findings routed back to the stage that must change (never sees the Modeling agent's reasoning) | accept the risk / send back / reject |
+| `comply` | SR 26-2 / NIST AI RMF readiness report (non-gating) | **Compliance agent** — readiness and priority human actions | — |
+| `document` | OKF bundle, Model Card, EU Annex IV, decision log | **Writing agent** — narrative with `{{fact:…}}` placeholders the engine renders | — |
 | `review` ⛔ | AST-verified docs↔code anchors; **BLOCKs on stale references** | — | sign off / reject |
 
 ### The interview
@@ -93,7 +93,7 @@ the sponsor's document states becomes part of the effective config when you conf
 ```yaml
 data:
   source: {kind: snowflake, table: RISK.LOANS.ORIGINATIONS}   # or kind: file / sqlite, or query:
-  target: ""        # open: the Data Analyst proposes it, you confirm it at the data gate
+  target: ""        # open: the Data agent proposes it, you confirm it at the data gate
 plugins: [credit_tools]                                       # your own tools and connectors
 ```
 
@@ -116,7 +116,7 @@ and what every column means, plus the links between tables as their owners docum
 the intent is confirmed the Explore page lists them with their size and date range, the
 template's tables checked; you uncheck or add tables, and add data the catalog does not have
 (files, Snowflake tables, queries). The documented links are offered and measured with the
-others; the Data Analyst proposes the join and reads the column meanings, and you confirm the
+others; the Data agent proposes the join and reads the column meanings, and you confirm the
 join at the data gate. COGNOS ships a default catalog with synthetic commercial-credit tables, so
 every built-in template runs out of the box. It is in force until your runs folder has its own
 `_catalog/catalog.yaml`, which then replaces it entirely; `cognos catalog --init` starts that
@@ -136,7 +136,7 @@ data:
 If you already have the join, write it as one `query`. Use `sources` when the inputs are of
 different kinds or you want the connection found. The engine fetches each source, measures
 every plausible link between two tables (key columns, share of rows matched, one row or many
-per key), and the Data Analyst proposes a base table and the joins from those links only. The
+per key), and the Data agent proposes a base table and the joins from those links only. The
 engine runs the plan: a join never adds or repeats a base row, a table with several rows per
 key is aggregated first, and a base row without a match is kept or dropped as the plan says,
 counted either way. The recommendation to drop is made only when those rows are few and their
@@ -150,8 +150,8 @@ linked` shows it on two CSVs and a SQLite table.
 ### Tools at every stage
 
 Plugins are not limited to data exploration. A tool names the stages it serves, and the agent of
-each of those stages can request it before it recommends: the Design Lead a sample-size screen,
-the Independent Validator your institution's own model tests. The engine runs the tool with
+each of those stages can request it before it recommends: the Design agent a sample-size screen,
+the Validation agent your institution's own model tests. The engine runs the tool with
 exactly the inputs it declared, keeps the result, and turns a failed check into a finding (a
 `high` one fails validation; a tool can never block a run).
 
@@ -175,11 +175,11 @@ registers a tool under the same name replaces it.
 
 The engine reads the existing model mechanically: the family named in its artifacts, the dataset
 columns its code refers to and, when it is an earlier COGNOS run, the champion and scores that run
-recorded. The Intake Analyst turns the request into change items and a scope (recalibrate,
+recorded. The Intake agent turns the request into change items and a scope (recalibrate,
 re-estimate, redevelop). The design keeps the existing model's family at the front of the slate as
-the benchmark, the validator checks that every requested change was delivered, and the white paper
+the benchmark, the Validation agent checks that every requested change was delivered, and the white paper
 gains a **model change record** with the existing model beside the update. The existing model's
-scores reach only the agents that read results; the modeler still chooses blind.
+scores reach only the agents that read results; the Modeling agent still chooses blind.
 
 Any decision can be revised later; the engine marks everything downstream stale and re-runs it.
 Send-backs and high-severity validator findings reach the stage's agent as **challenges** it must
@@ -324,7 +324,7 @@ are chosen. Use a real network share, not a syncing folder
   engine checks (unknown fact ids, a pool or a champion outside the candidates on the page, a non-fittable family, an
   excluded target, a typed metric value…) and retried with the errors; failures are visible, never
   silent.
-- **No assumed intent.** The Intake Analyst may only call a sponsor position "stated" with a quote
+- **No assumed intent.** The Intake agent may only call a sponsor position "stated" with a quote
   the engine finds in the documents; everything else is asked, and the answers are on the record.
 - **Agent-written code is on the record.** The analyst's scripts run restricted, are kept with
   their hash, are read by a person at the data gate, and are re-run by validation.
@@ -335,7 +335,7 @@ are chosen. Use a real network share, not a syncing folder
 - **Alternatives are on the record.** A decision can be tried another way in a trial run. It
   cannot reach the holdout, its looks at the test sample count for the model, and its line
   survives deletion.
-- **Independent challenge.** The validator's context never contains the modeler's rationale; its
+- **Independent challenge.** The Validation agent's context never contains the Modeling agent's rationale; its
   high findings loop back to the responsible stage (bounded) and the rest reach you.
 - **BLOCK is load-bearing.** Only the engine BLOCKs (confirmed leakage, stale docs↔code references);
   a BLOCK can be sent back or rejected, never accepted.
