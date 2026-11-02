@@ -6,6 +6,14 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- Catalog sources (ADR-0022): the data catalog answers search, describe, links and defaults
+  behind one plugin contract (`catalog.CatalogSource`, `registry.add_catalog`,
+  `COGNOS_CATALOG`), so a metadata system or a skill can supply it. The YAML catalog is the
+  built-in source; `examples/plugins/metadata_catalog.py` reads a metadata system's export.
+- Each chosen table says whether it fits the intent (fits / check / unclear) and why: the
+  source's assessment, else the engine's mechanical one. Advice, recorded with the decision.
+- Draw a link on the join canvas: drag from a column of one table to a column of another; the
+  engine measures it before it can be joined and records who drew it.
 - **Ask the agent on a page** ([ADR-0021](docs/adr/0021-ask-the-agent-on-a-page.md)). Every
   stage page has an Ask button, bottom right, that opens a small window to question the agent
   that owns the page. The agent answers in its own scope, writes every number as a fact the
@@ -43,6 +51,11 @@ versioning is SemVer.
   the choice is kept in the browser.
 
 ### Changed
+- "Provide the data" lists only the chosen tables, one line each, and finds the rest by
+  searching (about 330 px instead of 2,000 for the default catalog). Data the catalog does
+  not have is added under a fold.
+- Clicking a link on the join canvas opens its settings (in the join, several rows per key,
+  rows with no match), set per link instead of once for all links.
 - **Agents are named for their work**: Intake, Data, Design, Modeling, Backtest, Validation,
   Compliance and Writing agent. Job titles are kept for the people (developer, reviewer,
   approver). Ids are unchanged.

@@ -932,16 +932,84 @@ def data_info(run_id: str, root: str | Path | None = None, *,
         from . import catalog
 
         try:
-            info["catalog"] = catalog.listing(root)
+            src = catalog.source(root)
+            info["catalog"] = src.info()
         except Exception as exc:  # an unreadable catalog leaves the form for added data
             info["catalog"], info["catalog_error"] = None, str(exc)
             return info
         last = st.last_decision("gate_source")
         chosen = list((last.payload or {}).get("catalog") or []) if last else []
-        known = {t["id"] for t in info["catalog"]["tables"]}
-        info["preselected"] = ([i for i in chosen if i in known] if last
+        info["preselected"] = ([i for i in chosen if catalog._known(src, i)] if last
                                else catalog.preselected(cfg, root))
+        info["cards"] = catalog_cards(info["preselected"], root)
+        info["fit"] = catalog_fit(run_id, info["preselected"], root)
     return info
+
+
+def catalog_intent(run_id: str | None, root: str | Path | None = None) -> dict[str, Any]:
+    """What the run is for, in the words a catalog source can match tables against: the
+    restated objective and the brief's decided fields (the intake, then later answers)."""
+    if not run_id:
+        return {}
+    res = results(run_id, root).get("intake")
+    p = (res.payload or {}) if res is not None else {}
+    fields = {b["field"]: b.get("value") for b in p.get("brief") or [] if b.get("value")}
+    fields.update({k: v for k, v in state(run_id, root).overrides.design.items() if v})
+    return {"objective": p.get("objective") or "", "fields": fields}
+
+
+def catalog_search(text: str, run_id: str | None = None, root: str | Path | None = None,
+                   limit: int = 12) -> list[dict[str, Any]]:
+    """Catalog tables for some words, best first (the intent breaks ties), as page cards."""
+    from . import catalog
+
+    src = catalog.source(root)
+    return [catalog.card(t, root) for t in src.search(text, catalog_intent(run_id, root),
+                                                      limit)]
+
+
+def catalog_cards(ids: list[str], root: str | Path | None = None) -> list[dict[str, Any]]:
+    """The chosen tables as page cards, in order; an id the catalog lost is left out."""
+    from . import catalog
+
+    src = catalog.source(root)
+    out = []
+    for i in dict.fromkeys(ids):
+        try:
+            out.append(catalog.card(src.describe(i), root))
+        except KeyError:
+            continue
+    return out
+
+
+def catalog_fit(run_id: str | None, ids: list[str], root: str | Path | None = None
+                ) -> list[dict[str, Any]]:
+    """Whether each chosen table suits the run's intent, with reasons and who says so."""
+    from . import catalog
+
+    if not ids:
+        return []
+    src = catalog.source(root)
+    return [f.model_dump() for f in catalog.fit(src, list(ids), catalog_intent(run_id, root),
+                                                root)]
+
+
+def measure_link(run_id: str, a: str, a_on: list[str], b: str, b_on: list[str],
+                 root: str | Path | None = None) -> dict[str, Any]:
+    """A link a person is drawing on the join canvas, measured on the run's sources the way
+    every offered link is (how many rows match, one or many per key). Nothing is recorded:
+    the decision measures it again when it is sent. Raises ``ValueError`` when it cannot be
+    measured."""
+    from . import linking
+
+    run_dir = _run_dir(run_id, root)
+    tables = linking.read_snapshot(run_dir / "data")
+    if not tables:
+        raise ValueError("the sources have not been fetched yet: wait for the exploration")
+    res = results(run_id, root).get("explore")
+    target = ((res.payload or {}).get("target") if res is not None else "") or ""
+    return linking.measure_drawn(tables, {"a": a, "a_on": list(a_on), "b": b,
+                                          "b_on": list(b_on)}, target)
 
 
 def catalog_line(table: dict[str, Any]) -> str:
@@ -960,6 +1028,7 @@ def catalog_listing(root: str | Path | None = None) -> dict[str, Any]:
 
 def data_payload(catalog: list[str] = (), files: list[str] = (), lines: str = "", *,
                  datetime_col: str | None = None, target: str | None = None,
+                 run_id: str | None = None,
                  root: str | Path | None = None) -> dict[str, Any]:
     """The gate_source payload for what the workbench form describes: catalog tables, data
     files added, and Snowflake lines (``name = TABLE`` or ``name = SELECT ...``)."""
@@ -972,8 +1041,11 @@ def data_payload(catalog: list[str] = (), files: list[str] = (), lines: str = ""
                                      root=root)
     except (KeyError, ValueError) as exc:  # LinkError is a ValueError
         raise GateError(str(exc).strip("'\"")) from exc
-    return {"catalog": list(catalog), "data": data,
-            **({"target": target} if target else {})}
+    out = {"catalog": list(catalog), "data": data, **({"target": target} if target else {})}
+    if catalog:  # what the developer was told about the tables, and by which source
+        out["catalog_source"] = catalog_mod.source(root).name
+        out["fit"] = catalog_fit(run_id, list(catalog), root)
+    return out
 
 
 def provide_data(run_id: str, data: dict[str, Any] | None = None, *,

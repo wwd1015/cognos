@@ -444,23 +444,32 @@ def _cmd_catalog(args) -> int:
             return 1
         print(f"wrote {path}, a copy of the default catalog: edit it to list your team's tables")
         return 0
-    cat = catalog.load(args.runs_dir)
-    path, origin = catalog.in_force(args.runs_dir)
-    print(cat.title or "Data catalog")
-    if origin == "default":
-        print(f"  the default catalog shipped with COGNOS ({path})\n  to use your team's tables, "
-              f"write {catalog.team_file(args.runs_dir)} (cognos catalog --init)")
+    try:
+        src = catalog.source(args.runs_dir)
+    except ValueError as exc:
+        print(f"the catalog cannot be read: {exc}")
+        return 1
+    meta = src.info()
+    print(src.title or "Data catalog")
+    if meta.get("kind") == "default":
+        print(f"  the default catalog shipped with COGNOS ({meta['file']})\n  to use your team's "
+              f"tables, write {meta['team_file']} (cognos catalog --init)")
+    elif meta.get("kind") == "team":
+        print(f"  your team's catalog ({meta['file']})")
     else:
-        print(f"  your team's catalog ({path})")
-    for t in cat.tables:
-        mark = "*" if t.id in cat.defaults else " "
+        print(f"  from the catalog source {src.name} ({src.origin})")
+    tables = src.search("", None, limit=10_000)
+    defaults = set(src.defaults())
+    for t in tables:
+        mark = "*" if t.id in defaults else " "
         print(f"\n{mark} {t.id:<22} {t.title}")
         print(f"  {'':<22} {catalog.summary_line({**t.model_dump(), 'summary': catalog.measure(t, args.runs_dir, fetch=args.measure)})}")
         if t.description:
             print(f"  {'':<22} {t.description}")
-    if cat.links:
+    links = src.links([t.id for t in tables])
+    if links:
         print("\nDocumented links:")
-        for lk in cat.links:
+        for lk in links:
             on = ", ".join(f"{a} = {b}" for a, b in zip(lk.left_on, lk.right_on, strict=False))
             print(f"  {lk.left} -> {lk.right} on {on}" + (f"  ({lk.note})" if lk.note else ""))
     print("\n* preselected for a run started from scratch")

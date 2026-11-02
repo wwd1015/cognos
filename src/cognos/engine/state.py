@@ -123,6 +123,9 @@ class Overrides(BaseModel):
     task: str | None = None  # ... and the task it implies
     # Several sources: the confirmed join ({"base": table, "steps": [...]}, see linking.py)
     join: dict[str, Any] | None = None
+    # Links people drew between two sources at the data gate ({"a", "a_on", "b", "b_on",
+    # "by"}), in the order drawn: explore measures them with the rest (ids D1, D2, ...).
+    drawn_links: list[dict[str, Any]] = Field(default_factory=list)
     design: dict[str, str] = Field(default_factory=dict)
     compliance: dict[str, str] = Field(default_factory=dict)  # intended / out-of-scope use
     slate: list[dict[str, Any]] | None = None

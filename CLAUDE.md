@@ -108,6 +108,13 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
   decision: the developer still confirms the target and the exclusions at the data gate.
 - Front ends go through `service.data_payload` / `data_info(with_catalog=True)`; the decision
   records the catalog ids chosen.
+- **Every catalog read goes through the source in force** (`catalog.source`, ADR-0022): a
+  `CatalogSource` answers `search`, `describe`, `links`, `defaults` and optionally `assess`.
+  The YAML catalog is `YamlCatalog`; a plugin adds one with `registry.add_catalog` and
+  `COGNOS_CATALOG` names it. Do not read `catalog.yaml` around the source. `search` must stay
+  fast enough to run as a person types.
+- **Fit is advice** (`catalog.fit`): the source's `assess`, else the engine's mechanical check,
+  shown with who said it and recorded on the gate_source decision. Never block on it.
 
 ## Plan, pool and champion (ADR-0016)
 - **The model stage ends on a pool, never a champion.** `model` follows the development plan
@@ -219,6 +226,11 @@ measures.
 - **Plan precedence**: `overrides.join` (data gate) > `data.join` (profile, not changeable at
   the gate) > the Data agent's proposal. Accepting the gate writes the plan to
   `overrides.join`.
+- **A person may draw a link; the engine measures it first** (ADR-0022). Drawn links live in
+  `overrides.drawn_links` (in order, with `by`), are measured by `linking.measure_drawn` before
+  the lock and again by explore (ids `D1`, `D2`, ...), and are cleared by new data. Each link
+  carries its own rules (`join.rules`: `many`, `unmatched`). The canvas keeps the join in the
+  `join_spec` field; never let the canvas decide anything the decision does not record.
 - **Keep or drop is advice from measurements** (`linking.unmatched_advice`: share of rows,
   outcome among unmatched vs matched). Do not turn it back into a blanket default, and keep
   the reason on the page.

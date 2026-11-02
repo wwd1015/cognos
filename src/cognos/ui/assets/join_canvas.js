@@ -1,8 +1,13 @@
-/* The join canvas (panels.join_canvas): draws each measured link between its two tables, puts
-   the link's chip on the line, and lets the developer drag a table to arrange the canvas.
-   Arranging is only a view: what the decision reads are the join fields the chips and the
-   tiles' buttons write (app.py, clientside callbacks). Positions are kept per table for the
-   page's life, so a refresh of the stage page does not undo them. */
+/* The join canvas (panels.join_canvas): draws each measured link between its two tables and
+   puts the link's chip on the line. The developer can
+   - click a chip to open the link's settings: in the join or not, what to do when a key
+     matches several rows, and base rows with no match;
+   - drag from a column of one table to a column of another to draw a link: the server
+     measures it (/api/measure-link) before it appears, and it joins like any other;
+   - make a table the base table, and drag a table by its name to arrange the canvas.
+   The join as the canvas states it is kept in the data gate's hidden join_spec field
+   ({base, links, rules, drawn}), which the decision reads. Arranging is only a view;
+   positions are kept per table for the page's life. */
 (function () {
   "use strict";
   const NS = "http://www.w3.org/2000/svg";
@@ -42,7 +47,7 @@
       const other = chip.dataset.a === base ? chip.dataset.b : chip.dataset.b === base ? chip.dataset.a : null;
       const held = c => c !== chip && (c.classList.contains("chosen") || c.classList.contains("proposed"))
                         && (c.dataset.a === other || c.dataset.b === other) && (c.dataset.a === base || c.dataset.b === base);
-      const lead = chip.classList.contains("chosen") || chip.classList.contains("proposed");
+      const lead = ["chosen", "proposed", "drawn", "sel"].some(k => chip.classList.contains(k));
       /* one lane per table: a merely measured alternative steps aside for the link in use */
       const shown = lead || (other !== null && ![...cv.querySelectorAll(".jc-chip")].some(held));
       chip.hidden = !shown;
@@ -56,7 +61,8 @@
       }
       set(path, "d", `M${p[0]},${p[1]} C${p[0]},${my} ${q[0]},${my} ${q[0]},${q[1]}`);
       const kind = ["chosen", "proposed", "measured"].find(k => chip.classList.contains(k)) || "measured";
-      set(path, "class", "jc-line " + kind + (shown ? "" : " off"));
+      set(path, "class", "jc-line " + kind + (chip.classList.contains("drawn") ? " drawn" : "")
+                        + (chip.classList.contains("sel") ? " sel" : "") + (shown ? "" : " off"));
       chip.style.left = mx + "px";
       chip.style.top = my + "px";
     });
@@ -90,6 +96,7 @@
     let sx = 0, sy = 0, ox = 0, oy = 0, on = false;
     t.addEventListener("pointerdown", e => {
       if (e.target.closest("button")) return;
+      if (!cv.classList.contains("locked") && e.target.closest("li[data-col]")) return;
       on = true; t.setPointerCapture(e.pointerId); t.classList.add("dragging");
       sx = e.clientX; sy = e.clientY; ox = t.offsetLeft; oy = t.offsetTop;
     });
@@ -117,7 +124,188 @@
     /* a chip changes class when the join changes; the line follows it */
     new MutationObserver(() => draw(cv)).observe(cv, { attributes: true, subtree: true,
                                                        attributeFilter: ["class"] });
+    if (!cv.classList.contains("locked")) edit(cv);
     draw(cv);
+  }
+
+  /* ---- editing: the join as the canvas states it ---- */
+  const FIELD = { type: "gate-field", gate: "gate_data", field: "join_spec" };
+
+  function spec(cv) {
+    if (!cv._spec) {
+      const field = cv.closest(".jc").querySelector("input[type=text], input:not([type])");
+      try { cv._spec = JSON.parse(field.value); } catch (e) { cv._spec = null; }
+      cv._spec = cv._spec || { base: (cv.querySelector(".jc-tile.base") || {}).dataset?.table,
+                               links: [], rules: {}, drawn: [] };
+    }
+    return cv._spec;
+  }
+  function commit(cv) {
+    const value = JSON.stringify(spec(cv));
+    if (window.dash_clientside && window.dash_clientside.set_props) {
+      window.dash_clientside.set_props(FIELD, { value: value });
+    }
+  }
+  function chipState(cv, chip) {
+    const on = spec(cv).links.includes(chip.dataset.link);
+    chip.classList.toggle("chosen", on);
+    if (!on && !chip.classList.contains("proposed") && !chip.classList.contains("drawn")) {
+      chip.classList.add("measured");
+    } else if (on) {
+      chip.classList.remove("measured");
+    }
+  }
+  function el(tag, attrs, kids) {
+    const e = document.createElement(tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => {
+      if (k === "text") e.textContent = v; else if (k === "cls") e.className = v; else e.setAttribute(k, v);
+    });
+    (kids || []).forEach(k => k && e.appendChild(k));
+    return e;
+  }
+  function select(label, options, value, onchange) {
+    const s = el("select", {}, options.map(([v, t]) => {
+      const o = el("option", { value: v, text: t });
+      if (v === value) o.selected = true;
+      return o;
+    }));
+    s.addEventListener("change", () => onchange(s.value));
+    return el("label", { cls: "jc-field" }, [el("span", { text: label }), s]);
+  }
+
+  function inspect(cv, chip, error) {
+    const host = cv.closest(".jc");
+    let box = host.querySelector(".jc-insp");
+    if (box) box.remove();
+    cv.querySelectorAll(".jc-chip.sel").forEach(c => c.classList.remove("sel"));
+    if (!chip) return;
+    chip.classList.add("sel");
+    const id = chip.dataset.link, st = spec(cv), rule = st.rules[id] || {};
+    const on = st.links.includes(id);
+    const close = el("button", { cls: "jc-insp-x", text: "×", "aria-label": "Close" });
+    close.addEventListener("click", () => inspect(cv, null));
+    const kids = [
+      el("div", { cls: "jc-insp-head" }, [el("b", { text: chip.dataset.a + " ↔ " + chip.dataset.b }), close]),
+      el("div", { cls: "jc-insp-on", text: "on " + chip.dataset.on }),
+      el("div", { cls: "jc-insp-m", text: chip.dataset.match + " of rows match · " + chip.dataset.rel }),
+    ];
+    if (chip.dataset.by) kids.push(el("div", { cls: "jc-insp-m", text: "drawn by " + chip.dataset.by }));
+    if (chip.dataset.low === "1") kids.push(el("div", { cls: "jc-insp-warn", text: "Fewer than half the rows match: check the columns." }));
+    if (error) kids.push(el("div", { cls: "jc-insp-warn", text: error }));
+    const tick = el("input", { type: "checkbox" });
+    tick.checked = on;
+    tick.addEventListener("change", () => {
+      st.links = tick.checked ? st.links.concat([id]) : st.links.filter(v => v !== id);
+      chipState(cv, chip); commit(cv); inspect(cv, chip);
+    });
+    kids.push(el("label", { cls: "jc-check" }, [tick, el("span", { text: "In the join" })]));
+    if (on) {
+      if (chip.dataset.rel.includes("many")) {
+        kids.push(select("When a key matches several rows",
+          [["aggregate", "Average them (numbers)"], ["first", "Keep the first row"]],
+          rule.many || chip.dataset.many || "aggregate",
+          v => { st.rules[id] = Object.assign({}, st.rules[id], { many: v }); commit(cv); }));
+      }
+      const now = chip.dataset.unmatched;
+      kids.push(select("Base rows with no match",
+        [["", "As recommended" + (now ? " (" + now + ")" : "")],
+         ["keep", "Keep them, with missing values"], ["drop", "Drop them (counted)"]],
+        rule.unmatched || "",
+        v => { st.rules[id] = Object.assign({}, st.rules[id], { unmatched: v || undefined }); commit(cv); }));
+    }
+    box = el("div", { cls: "jc-insp", role: "dialog", "aria-label": "Link settings" }, kids);
+    host.appendChild(box);
+  }
+
+  function edit(cv) {
+    const st = spec(cv);
+    cv.querySelectorAll(".jc-chip").forEach(chip => wireChip(cv, chip));
+    cv.querySelectorAll(".jc-make-base").forEach(btn => btn.addEventListener("click", () => {
+      const t = btn.closest(".jc-tile");
+      st.base = t.dataset.table;
+      cv.querySelectorAll(".jc-tile").forEach(x => {
+        x.classList.toggle("base", x === t);
+        x.querySelector(".jc-make-base").textContent = x === t ? "base table" : "Make base";
+      });
+      commit(cv); draw(cv);
+    }));
+    /* draw a link: from a column of one table to a column of another */
+    cv.querySelectorAll(".jc-tile li[data-col]").forEach(li => li.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      const from = li.closest(".jc-tile"), r0 = cv.getBoundingClientRect();
+      const svg = cv.querySelector("svg.jc-links");
+      const line = document.createElementNS(NS, "path");
+      line.setAttribute("class", "jc-line drawing");
+      svg.appendChild(line);
+      li.classList.add("jc-from");
+      const lr = li.getBoundingClientRect();
+      const sx = lr.right - r0.left, sy = lr.top + lr.height / 2 - r0.top;
+      let over = null;
+      const move = ev => {
+        const x = ev.clientX - r0.left, y = ev.clientY - r0.top;
+        line.setAttribute("d", `M${sx},${sy} C${(sx + x) / 2},${sy} ${(sx + x) / 2},${y} ${x},${y}`);
+        const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+        const to = hit && hit.closest && hit.closest(".jc-tile li[data-col]");
+        if (over && over !== to) over.classList.remove("jc-to");
+        over = to && to.closest(".jc-tile") !== from ? to : null;
+        if (over) over.classList.add("jc-to");
+      };
+      const up = () => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        line.remove(); li.classList.remove("jc-from");
+        if (over) { over.classList.remove("jc-to"); propose(cv, li, over); }
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    }));
+  }
+
+  function wireChip(cv, chip) {
+    chip.addEventListener("click", e => {
+      e.stopPropagation();
+      inspect(cv, chip.classList.contains("sel") ? null : chip);
+    });
+  }
+
+  function propose(cv, fromLi, toLi) {
+    const st = spec(cv);
+    const a = fromLi.closest(".jc-tile").dataset.table, b = toLi.closest(".jc-tile").dataset.table;
+    const a_on = [fromLi.dataset.col], b_on = [toLi.dataset.col];
+    const same = st.drawn.find(d => d.a === a && d.b === b && d.a_on[0] === a_on[0] && d.b_on[0] === b_on[0]);
+    if (same) { inspect(cv, cv.querySelector('.jc-chip[data-link="' + same.id + '"]')); return; }
+    const run = (location.pathname.split("/run/")[1] || "").split("/")[0];
+    const id = "D" + (Number(cv.dataset.drawn || 0) + st.drawn.length + 1);
+    const chip = el("button", { cls: "jc-chip drawn measuring", text: "measuring…", type: "button",
+                                "data-a": a, "data-b": b, "data-link": id,
+                                "data-on": a_on[0] === b_on[0] ? a_on[0] : a_on[0] + " = " + b_on[0],
+                                "data-by": "you", "data-match": "", "data-rel": "" });
+    cv.appendChild(chip);
+    draw(cv);
+    fetch("/api/measure-link", { method: "POST", headers: { "Content-Type": "application/json" },
+                                 body: JSON.stringify({ run, a, a_on, b, b_on }) })
+      .then(r => r.json())
+      .then(res => {
+        if (!res.ok) { chip.remove(); draw(cv); flash(cv, res.error || "The link cannot be measured."); return; }
+        chip.classList.remove("measuring");
+        chip.textContent = res.chip;
+        chip.dataset.match = res.match; chip.dataset.rel = res.rel; chip.dataset.low = res.low ? "1" : "";
+        st.drawn.push({ id, a, a_on, b, b_on });
+        st.links.push(id);
+        chipState(cv, chip);
+        wireChip(cv, chip);
+        commit(cv); draw(cv); inspect(cv, chip);
+      })
+      .catch(() => { chip.remove(); draw(cv); flash(cv, "The server did not answer; try again."); });
+  }
+
+  function flash(cv, text) {
+    const host = cv.closest(".jc");
+    const old = host.querySelector(".jc-flash");
+    if (old) old.remove();
+    const note = el("div", { cls: "jc-flash", role: "status", text });
+    host.appendChild(note);
+    setTimeout(() => note.remove(), 6000);
   }
 
   const scan = () => document.querySelectorAll(".jc-canvas").forEach(setup);

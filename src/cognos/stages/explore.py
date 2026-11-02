@@ -161,7 +161,8 @@ def linked_dataset(ctx: RunContext) -> tuple[pd.DataFrame, dict]:
     target = base.data.target or ctx.overrides.target or ""
     prof = linking.profile(tables, base.data.join, target, documented=base.data.links,
                            described={s.name: s.description for s in base.data.sources
-                                      if s.description})
+                                      if s.description},
+                           drawn=ctx.overrides.drawn_links)
     rationale: dict = {}
     if ctx.overrides.join:
         source = "decision"

@@ -135,7 +135,8 @@ def changed(state: RunState) -> list[str]:
 
 
 CHANGE_LABELS = {"data": "the data", "exclude_columns": "excluded columns", "target": "dependent variable",
-                 "task": "task", "join": "join of the sources", "design": "design answers",
+                 "task": "task", "join": "join of the sources",
+                 "drawn_links": "links drawn between the sources", "design": "design answers",
                  "compliance": "intended use", "slate": "model families", "plan": "the plan",
                  "pool": "candidate pool", "names": "model names", "champion": "champion"}
 

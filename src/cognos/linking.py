@@ -25,6 +25,7 @@ import hashlib
 import json
 import re
 from itertools import combinations
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -55,8 +56,6 @@ def named_sources(files: list[str] = (), snowflake_lines: str = "",
     """``{"sources": [...]}`` from what a person gives a front end: data files (each named
     after its file) and Snowflake lines reading ``name = TABLE`` or ``name = SELECT ...``.
     Fewer than ``at_least`` is refused (data added to catalog tables may be one or none)."""
-    from pathlib import Path
-
     sources: list[dict[str, Any]] = []
 
     def unique(name: str) -> str:
@@ -230,14 +229,65 @@ def _relation(a_unique: bool, b_unique: bool) -> str:
             (True, False): "one-to-many", (False, False): "many-to-many"}[(a_unique, b_unique)]
 
 
+def read_snapshot(data_dir: Path) -> dict[str, pd.DataFrame]:
+    """The sources a run has fetched (``data/sources/``), by name; empty before explore."""
+    try:
+        names = [p["name"] for p in json.loads((Path(data_dir) / "sources.json")
+                                               .read_text(encoding="utf-8"))]
+    except (FileNotFoundError, ValueError):
+        return {}
+    folder = Path(data_dir) / "sources"
+    return {n: pd.read_parquet(folder / f"{n}.parquet") for n in names
+            if (folder / f"{n}.parquet").exists()}
+
+
+def check_drawn(tables: dict[str, pd.DataFrame], spec: dict[str, Any]) -> list[str]:
+    """What is wrong with a link a person drew (``{"a", "a_on", "b", "b_on"}``)."""
+    out = []
+    for side in ("a", "b"):
+        t, cols = spec.get(side), list(spec.get(f"{side}_on") or [])
+        if t not in tables:
+            out.append(f"{t!r} is not one of the sources")
+        elif not cols:
+            out.append(f"choose a column of {t}")
+        else:
+            out += [f"{t} has no column {c!r}" for c in cols if c not in tables[t].columns]
+    if spec.get("a") == spec.get("b"):
+        out.append("a link joins two different tables")
+    if len(spec.get("a_on") or []) != len(spec.get("b_on") or []):
+        out.append("both sides need the same number of columns")
+    return out
+
+
+def measure_drawn(tables: dict[str, pd.DataFrame], spec: dict[str, Any],
+                  target: str = "") -> dict[str, Any]:
+    """A link a person drew, measured the way every offered link is (no id yet)."""
+    bad = check_drawn(tables, spec)
+    if bad:
+        raise LinkError("; ".join(bad))
+    a, b = spec["a"], spec["b"]
+    a_on, b_on = [str(c) for c in spec["a_on"]], [str(c) for c in spec["b_on"]]
+    m = _measure(tables[a], a_on, tables[b], b_on)
+    return {"a": a, "a_on": a_on, "b": b, "b_on": b_on, **m,
+            "a_outcome": _outcome(tables[a], a_on, tables[b], b_on, target),
+            "b_outcome": _outcome(tables[b], b_on, tables[a], a_on, target),
+            "same_name": [_norm(x) for x in a_on] == [_norm(y) for y in b_on],
+            "relation": _relation(m["a_unique"], m["b_unique"]), "stated": False,
+            "documented": False, "drawn": True, "by": spec.get("by") or ""}
+
+
 def profile(tables: dict[str, pd.DataFrame], stated: list[Any] = (),
             target: str = "", documented: list[Any] = (),
-            described: dict[str, str] | None = None) -> dict[str, Any]:
+            described: dict[str, str] | None = None,
+            drawn: list[dict[str, Any]] = ()) -> dict[str, Any]:
     """The tables and every link worth offering between two of them, best first per pair.
     ``stated`` (the profile's ``data.join``) is always included, measured the same way, and so
     is each ``documented`` link (the data catalog's, ``data.links``) whose columns exist. With a
     ``target``, each link also says how the outcome differs between the rows it matches and
-    the rows it does not. ``described`` is each table's description from the catalog."""
+    the rows it does not. ``described`` is each table's description from the catalog.
+    ``drawn`` are the links people drew at the data gate (``overrides.drawn_links``): measured
+    the same way, with the ids ``D1``, ``D2``, ... in the order they were drawn; the others
+    are ``L1``, ``L2``, ..."""
     meta = []
     for name, df in tables.items():
         keyish = [c for c in df.columns if _key_like(df[c])]
@@ -248,6 +298,12 @@ def profile(tables: dict[str, pd.DataFrame], stated: list[Any] = (),
                         else {})})
     found: list[dict[str, Any]] = []
     unusable: list[str] = []
+    for n, spec in enumerate(drawn, 1):
+        try:
+            found.append({**measure_drawn(tables, spec, target), "id": f"D{n}"})
+        except LinkError as exc:  # the data changed under it: say so, offer the rest
+            unusable.append(f"The link drawn between {spec.get('a')} and {spec.get('b')} "
+                            f"cannot be used: {exc}.")
 
     def add(a: str, a_on: list[str], b: str, b_on: list[str], *, is_stated: bool = False,
             note: str | None = None) -> None:
@@ -322,7 +378,7 @@ def profile(tables: dict[str, pd.DataFrame], stated: list[Any] = (),
         pair.sort(key=lambda x: -x["score"])
         for x in pair[:MAX_LINKS_PER_PAIR]:
             add(x["a"], x["a_on"], x["b"], x["b_on"])
-    for i, lk in enumerate(found, 1):
+    for i, lk in enumerate((x for x in found if not x.get("drawn")), 1):
         lk["id"] = f"L{i}"
     return {"tables": meta, "links": found, **({"unusable": unusable} if unusable else {})}
 

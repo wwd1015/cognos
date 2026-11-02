@@ -68,3 +68,21 @@ def register(registry):
 
 A tool is your reviewed code: keep it a pure function of the data and its parameters. Chart kinds
 are `bar`, `line`, `scatter`, `histogram` and `heatmap` (see `cognos/analysis/charts.py`).
+
+## A catalog source
+
+[`metadata_catalog.py`](metadata_catalog.py) supplies the data catalog from a metadata
+system's export (ADR-0022). A catalog source answers `search`, `describe`, `links`,
+`defaults` and, optionally, `assess` (does each table fit the model's intent, with reasons);
+the YAML catalog is the built-in one.
+
+```bash
+export PYTHONPATH=examples/plugins
+export COGNOS_PLUGINS=metadata_catalog COGNOS_CATALOG=metadata METADATA_EXPORT=export.json
+cognos plugins      # the source, and whether it is available
+cognos catalog      # its tables
+```
+
+A source that calls an API, an MCP server or a Claude skill does so inside these methods.
+What it returns is advice and configuration: the developer still chooses the tables, and the
+engine still measures how they join.
