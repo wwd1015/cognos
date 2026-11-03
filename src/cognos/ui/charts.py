@@ -194,3 +194,33 @@ def from_spec(spec: dict | None, scheme: str) -> go.Figure | None:
         **({"bargap": 0.04} if kind == "histogram" else {})),
         height=280, showlegend=len(spec.get("series", [])) > 1)
     return fig
+
+
+def shape(entry: dict | None, scheme: str, *, column: str, rate: bool = True,
+          height: int = 230) -> go.Figure | None:
+    """One column's shape (ADR-0024): the observed outcome per band as dots, the fitted line
+    through its knees, each knee a dotted rule. ``rate`` formats the outcome as a percentage."""
+    if not entry or not entry.get("curve"):
+        return None
+    s, c = SERIES[scheme], CHROME[scheme]
+    fmt = ".2%" if rate else ".4g"
+    fig = go.Figure()
+    seen = entry.get("observed") or []
+    fig.add_trace(go.Scatter(
+        x=[o[0] for o in seen], y=[o[1] for o in seen], mode="markers", name="observed",
+        marker={"size": 8, "color": s[1 % len(s)], "line": {"width": 1.5, "color": c["surface"]}},
+        customdata=[o[2] for o in seen],
+        hovertemplate=f"{column} %{{x:.4g}}<br>observed %{{y:{fmt}}} (n=%{{customdata}})"
+                      "<extra></extra>"))
+    fig.add_trace(go.Scatter(
+        x=[p[0] for p in entry["curve"]], y=[p[1] for p in entry["curve"]], mode="lines",
+        name="fitted shape", line={"color": s[0], "width": 2.5},
+        hovertemplate=f"{column} %{{x:.4g}}<br>fitted %{{y:{fmt}}}<extra></extra>"))
+    for k in entry.get("knots") or []:
+        fig.add_vline(x=k, line={"color": c["axis"], "width": 1, "dash": "dot"})
+    fig.update_layout(**plot_layout(
+        scheme, xaxis={"title": {"text": column}},
+        yaxis={"title": {"text": "outcome rate" if rate else "outcome"},
+               **({"tickformat": ".1%"} if rate else {})},
+        margin={"l": 56, "r": 16, "t": 28, "b": 40}), height=height, showlegend=True)
+    return fig

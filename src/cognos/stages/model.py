@@ -151,6 +151,22 @@ class ModelStage(Stage):
             }
             migration_findings = self._check_migration(migration_model)
 
+        # --- shaped factors: fitted on the development sample, frozen for the others -------
+        # (ADR-0024) A cap or a knee is chosen with the outcome in view, so it is fitted here,
+        # after the split, on train_df alone; test and holdout get the same frozen points.
+        expected = self._expected_signs(profile, plan)
+        shaped, shape_report, shape_notes = factors_mod.shape_library(
+            train_df, coerce_target(train_df, cfg), features, plan["factors"],
+            expected=expected, classification=is_clf)
+        if shaped:
+            train_df = factors_mod.apply_library(train_df, shaped)
+            test_df = factors_mod.apply_library(test_df, shaped) if len(test_df) else test_df
+            holdout_df = (factors_mod.apply_library(holdout_df, shaped) if len(holdout_df)
+                          else holdout_df)
+            library = [*library, *shaped]
+            res.add_artifact(ctx.save_json("stages/model/shapes.json", shape_report))
+        lib_notes = [*lib_notes, *shape_notes]
+
         ctx.save_df("data/train.parquet", train_df)
         for name, part in (("test", test_df), ("holdout", holdout_df)):
             if len(part):
@@ -175,7 +191,6 @@ class ModelStage(Stage):
         # --- the search: single factors, the screen, the methods ----------------------
         rank_by = ev["rank_by"]
         rank_metric = rank_by[0]["metric"]
-        expected = self._expected_signs(profile, plan)
         factor_names = [f.name for f in library]
         fingerprint = self._fingerprint(cfg, train_df, y_train, factor_names, families,
                                         hazard_meta, plan, expected)
@@ -398,6 +413,10 @@ class ModelStage(Stage):
                 "n_factors": len(library), "n_sources": len({f.source for f in library}),
                 "transforms": plan["factors"]["transforms"], "notes": lib_notes,
             },
+            "shapes": {col: {k: r.get(k) for k in ("set_by", "factors", "cap", "knots",
+                                                   "knees_asked", "knees_used", "origin",
+                                                   "direction", "direction_from", "monotonic")}
+                       for col, r in shape_report.items()},
             "single_factor": [r for r in rows if r["status"] == "kept"][:40],
             "screen": [{k: line[k] for k in ("rule", "setting", "before", "after")}
                        for line in found["screen"]],
@@ -474,9 +493,15 @@ class ModelStage(Stage):
         families = families or DEFAULT_FAMILIES.get(cfg.task.value, DEFAULT_FAMILIES["regression"])
         ideate = ctx.get("ideate")
         proposed = ((ideate.payload or {}).get("plan_proposed") if ideate is not None else None)
-        return plan_mod.resolve(cfg, plan_mod.shape_of(df, cfg), families=list(families),
+        plan = plan_mod.resolve(cfg, plan_mod.shape_of(df, cfg), families=list(families),
                                 columns=list(df.columns), proposed=proposed,
                                 human=ctx.overrides.plan)
+        own = {c: {k: v for k, v in s.items() if k != "by"}
+               for c, s in (ctx.overrides.shapes or {}).items()}
+        if own:  # a person's shape for a column wins (ADR-0024)
+            plan["factors"]["shapes"] = {**(plan["factors"].get("shapes") or {}), **own}
+            plan["sources"]["factors.shapes"] = "human"
+        return plan
 
     @staticmethod
     def _names(ctx: RunContext, ranked: list) -> dict[str, str]:
@@ -751,6 +776,8 @@ class ModelStage(Stage):
             source, _, rest = name.partition("__")
             if name in expected:
                 out[name] = expected[name]
+            elif rest.startswith("knee"):
+                out[name] = "+"  # turned to rise with the outcome (factors.fit_shape)
             elif source in expected and not rest.startswith("square"):
                 out[name] = expected[source]
         return out

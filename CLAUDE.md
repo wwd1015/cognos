@@ -133,6 +133,10 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
 - **Target-hidden factors.** A library transformation (`modeling/factors.py`) is a function of
   one feature column and the rows before it, never of the target. That is why the library is
   built before the split and can be recomputed on any sample.
+- **Shaped factors are the one exception, kept narrow** (ADR-0024). A `cap` or a `knee` is
+  fitted by `factors.shape_library` after the split, on the development sample only, and
+  frozen as points: every other sample is computed from them. Explore may suggest a form
+  (`factors.survey`, read on all rows) but never place a knee.
 - **One evaluator.** Every selection method goes through `selection.Evaluator`, so a
   specification is fitted once and all models share one ledger. Candidate ids come from
   `selection.candidate_id` (a hash of the specification): never a position in a list.

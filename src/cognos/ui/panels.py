@@ -1472,6 +1472,7 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
             *[dmc.Text(n, size="xs", c="dimmed") for n in [samples.get("validation_note"),
                                                              *(lib.get("notes") or [])] if n],
             description=p.get("plan_summary")),
+        shapes_section(state.run_id, p, scheme),
         section("Single-factor screen",
                 table(["Rule", "Setting", "Factors in", "Factors out", "Dropped"], screen_rows),
                 dmc.Text("Shortlist", size="xs", fw=650, c="dimmed", mt="sm"),
@@ -1501,6 +1502,65 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
 
 
 # --- backtest -----------------------------------------------------------------------------
+def _is_rate(entry: dict) -> bool:
+    """A 0/1 outcome: its observed means and fitted line all lie between 0 and 1."""
+    values = [o[1] for o in entry.get("observed") or []] + [c[1] for c in entry.get("curve") or []]
+    return bool(values) and all(0 <= v <= 1 for v in values)
+
+
+def shape_caption(col: str, entry: dict) -> str:
+    """One line for a shaped column: where it is capped, where it bends, which way it runs."""
+    parts = []
+    if entry.get("cap"):
+        parts.append(f"capped to [{entry['cap'][0]:.4g}, {entry['cap'][1]:.4g}]")
+    knots = entry.get("knots") or []
+    if "knees_used" in entry:
+        asked = entry.get("knees_asked") or 0
+        if entry.get("origin") == "given":
+            parts.append("knees at " + ", ".join(f"{k:.4g}" for k in knots) + " (given)")
+        elif knots:
+            parts.append(f"{len(knots)} knee{'s' if len(knots) > 1 else ''} at "
+                         + ", ".join(f"{k:.4g}" for k in knots)
+                         + (f" (up to {asked} allowed)" if asked > len(knots) else ""))
+        else:
+            parts.append(f"straight: no knee earned its place (up to {asked} allowed)")
+        way = "rises" if entry.get("direction") == "+" else "falls"
+        parts.append(f"risk {way} with {col} ({entry.get('direction_from', 'the data')})")
+        if not entry.get("monotonic", True):
+            parts.append("not monotonic")
+    return " · ".join(parts)
+
+
+def shapes_section(run_id: str, p: dict, scheme: str, *, extra: Any = None,
+                   description: str | None = None) -> Any:
+    """The shaped columns (ADR-0024), as fitted on the development sample: the observed
+    outcome per band, the fitted line and its knees. None when nothing was shaped."""
+    if not p.get("shapes"):
+        return None
+    try:
+        report = json.loads(service.read_artifact(run_id, "stages/model/shapes.json", None)
+                            or "{}")
+    except ValueError:
+        report = {}
+    cells = []
+    for col, entry in (report or p["shapes"]).items():
+        cells.append(dmc.Stack([
+            dmc.Group([dmc.Text(col, size="sm", fw=650, ff="monospace"),
+                       *[dmc.Code(n) for n in entry.get("factors") or []]], gap=6),
+            graph(charts.shape(entry, scheme, column=col, rate=_is_rate(entry)))
+            if entry.get("curve") else None,
+            dmc.Text(shape_caption(col, entry), size="xs", c="dimmed"),
+        ], gap=2))
+    return section(
+        "Shaped factors", dmc.SimpleGrid(cells, cols={"base": 1, "md": 2}, spacing="lg"),
+        *([extra] if extra is not None else []),
+        description=description or (
+            "Fitted on the development sample only, after the split, then frozen: the test "
+            "sample and the sealed holdout get the same points. Dots are the observed outcome "
+            "per band; the line is the fitted shape. Every shaped factor competes with its "
+            "column as it is in the screen below."))
+
+
 def _forecast_spec(run_id: str, p: dict) -> dict | None:
     """Actual and forecast per pool member on the comparison sample, as a chart spec."""
     if not p.get("forecasts_path") or p.get("outcomes_analysis"):

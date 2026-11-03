@@ -31,6 +31,7 @@ from ..analysis import run as analysis
 from ..artifacts import Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..datautil import coerce_target, select_features
+from ..modeling import factors as factors_mod
 from .base import Stage, attach_recommendation, questions_from, register_stage
 
 LEAKAGE_CORR = 0.98
@@ -438,6 +439,15 @@ class ExploreStage(Stage):
         }, fresh={"explore": res})
         profile["target_rationale"] = out.target_rationale or target_rationale
         profile["feature_candidates"] = [c.model_dump() for c in out.feature_candidates]
+        if task in ("classification", "regression"):
+            # How each ratio bends against the outcome (ADR-0024): advice for the shape a
+            # column is given. Read on every row explore has; knees are fitted later, after
+            # the split, on the development sample alone.
+            signs = {c["column"]: c["relationship"] for c in profile["feature_candidates"]
+                     if c.get("relationship") in ("+", "-")}
+            signs.update(cfg.factors.expected_signs)
+            profile["shape_survey"] = factors_mod.survey(
+                df, y, numeric_cols, expected=signs, classification=task == "classification")
         profile["recommended_exclusions"] = [d.column for d in out.column_decisions
                                              if d.decision == "exclude"]
         profile["column_decisions"] = [d.model_dump() for d in out.column_decisions]

@@ -8,12 +8,17 @@ into every transformation the plan allows, ``single_factor`` fits each factor al
 A transformation is a function of one feature column and, for the time operations, of the rows
 before it. The target is never in scope, so a factor can be computed on any sample, the sealed
 holdout included, without seeing an outcome. Every number here is the engine's.
+
+A *shaped* factor (``cap``, ``knee``; ADR-0024) is the one exception, and it is kept narrow:
+its points are fitted by ``shape_library`` on the development sample alone, after the split,
+and then frozen. Computing it on any other sample reads the points, never an outcome.
 """
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import numpy as np
@@ -21,14 +26,17 @@ import pandas as pd
 
 TIME_OPS = ("diff", "pct", "yoy_diff", "yoy_pct", "ma")  # need rows in time order
 POINT_OPS = ("log", "sqrt", "square")  # row by row
-ALL_OPS = ("lag", *TIME_OPS, *POINT_OPS)
-SAME_DIRECTION = ("level", "diff", "pct", "yoy_diff", "yoy_pct", "ma", "log", "sqrt")
+SHAPE_OPS = ("cap", "knee")  # fitted on the development sample (shape_library)
+ALL_OPS = ("lag", *TIME_OPS, *POINT_OPS, *SHAPE_OPS)
+SAME_DIRECTION = ("level", "diff", "pct", "yoy_diff", "yoy_pct", "ma", "log", "sqrt", "cap")
+CAP_QUANTILES = (0.01, 0.99)
 
 OP_LABELS = {
     "level": "as explored", "lag": "lagged", "diff": "change on the period before",
     "pct": "growth on the period before", "yoy_diff": "change on a year before",
     "yoy_pct": "growth on a year before", "ma": "moving average", "log": "logarithm",
-    "sqrt": "square root", "square": "square",
+    "sqrt": "square root", "square": "square", "cap": "capped at the 1st and 99th percentiles",
+    "knee": "shaped with knees",
 }
 
 
@@ -39,8 +47,9 @@ class Factor:
     name: str
     source: str
     transform: str = "level"
-    param: int = 0  # periods: 1 for diff / pct, the year for yoy, the window for ma
+    param: int = 0  # periods: 1 for diff / pct, the year for yoy, the window for ma; knees
     lag: int = 0
+    points: list[list[float]] = field(default_factory=list)  # shaped: (x, value), fitted once
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -53,13 +62,18 @@ class Factor:
         text = OP_LABELS.get(self.transform, self.transform)
         if self.transform == "ma":
             text = f"{self.param}-period moving average"
+        if self.transform == "cap" and self.points:
+            text = f"capped to [{self.points[0][0]:.4g}, {self.points[-1][0]:.4g}]"
+        if self.transform == "knee" and self.points:
+            knots = ", ".join(f"{x:.4g}" for x, _ in self.points[1:-1])
+            text = f"{len(self.points) - 2} knee(s) at {knots}" if knots else "capped, straight"
         return text + (f", lagged {self.lag}" if self.lag else "")
 
 
 def factor_name(source: str, transform: str, param: int, lag: int) -> str:
     name = source
     if transform != "level":
-        name += f"__{transform}" + (str(param) if transform == "ma" else "")
+        name += f"__{transform}" + (str(param) if transform in ("ma", "knee") else "")
     return name + (f"__lag{lag}" if lag else "")
 
 
@@ -87,7 +101,7 @@ def resolve_transforms(asked: list[str], shape: str) -> list[str]:
         elif a in ALL_OPS:
             out.append(a)
     if shape != "series":  # a lag needs to know which row came before
-        out = [o for o in out if o in POINT_OPS]
+        out = [o for o in out if o in POINT_OPS or o in SHAPE_OPS]
     return list(dict.fromkeys(out))
 
 
@@ -119,6 +133,8 @@ def _base(x: pd.Series, transform: str, param: int) -> pd.Series | None:
 
 def _compute(frame: pd.DataFrame, f: Factor) -> pd.Series | None:
     x = pd.to_numeric(frame[f.source], errors="coerce").astype(float)
+    if f.transform in SHAPE_OPS:
+        return _through(x, f.points) if f.points else None
     out = _base(x, f.transform, f.param)
     if out is None:
         return None
@@ -151,7 +167,7 @@ def build_library(df: pd.DataFrame, columns: list[str], fc: dict[str, Any], *, s
             continue  # a category or a flag enters as it is
         bases: list[tuple[str, int]] = [("level", 0)]
         for op in ops:
-            if op == "lag":
+            if op == "lag" or op in SHAPE_OPS:  # shaped factors are fitted after the split
                 continue
             if op in ("diff", "pct"):
                 bases.append((op, 1))
@@ -212,6 +228,7 @@ def apply_library(df: pd.DataFrame, factors: list[Factor | dict], *,
     recomputes the ones it does carry, after their source columns were changed."""
     specs = [f if isinstance(f, Factor) else Factor(**f) for f in factors]
     todo = [f for f in specs if (f.transform != "level" or f.lag)
+            and (f.transform not in SHAPE_OPS or f.points)
             and (replace or f.name not in df.columns) and f.source in df.columns]
     if not todo:
         return df
@@ -223,6 +240,229 @@ def apply_library(df: pd.DataFrame, factors: list[Factor | dict], *,
         values = _compute(frame, f)
         if values is not None:
             out[f.name] = values.reindex(out.index)
+    return out
+
+
+# --- shaped factors (ADR-0024) --------------------------------------------------------------
+def _through(x: pd.Series, points: list[list[float]]) -> pd.Series:
+    """A shaped factor: the line through ``points``, flat beyond the first and the last."""
+    xs = np.array([pt[0] for pt in points], dtype=float)
+    ys = np.array([pt[1] for pt in points], dtype=float)
+    values = np.interp(x.to_numpy(dtype=float), xs, ys)
+    return pd.Series(np.where(x.isna().to_numpy(), np.nan, values), index=x.index)
+
+
+def shapeable(s: pd.Series) -> bool:
+    """A column a cap or a knee means something for: numeric, not a flag, many values."""
+    return (pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s)
+            and s.nunique(dropna=True) > 10)
+
+
+def shape_requests(frame: pd.DataFrame, columns: list[str], fc: dict[str, Any]) -> dict[str, dict]:
+    """Which columns are shaped, and how. A column's own form (``shapes``) wins; otherwise
+    ``cap`` / ``knee`` among the transformations shape every column that can be shaped."""
+    ops = set(fc.get("transforms") or [])
+    own = fc.get("shapes") or {}
+    out: dict[str, dict] = {}
+    for col in columns:
+        if col not in frame.columns or not shapeable(frame[col]):
+            continue
+        if col in own:
+            spec = own[col] if isinstance(own[col], dict) else own[col].model_dump()
+            req = {"cap": bool(spec.get("cap", True)), "knees": int(spec.get("knees") or 0),
+                   "knots": [float(k) for k in spec.get("knots") or []], "plain_cap": False,
+                   "set_by": "column"}
+            req["plain_cap"] = req["cap"] and not req["knees"] and not req["knots"]
+        elif "knee" in ops or "cap" in ops:
+            req = {"cap": True, "knees": int(fc.get("max_knees") or 2) if "knee" in ops else 0,
+                   "knots": [], "plain_cap": "cap" in ops, "set_by": "plan"}
+        else:
+            continue
+        if req["knees"] or req["knots"] or req["plain_cap"]:
+            out[col] = req
+    return out
+
+
+def _fit_line(u: np.ndarray, y: np.ndarray, knots: list[float], classification: bool
+              ) -> tuple[np.ndarray, float, float]:
+    """A straight line in ``u`` that may bend at ``knots``: coefficients, intercept and the
+    log-likelihood (logistic for a 0/1 outcome, Gaussian otherwise)."""
+    X = np.column_stack([u] + [np.maximum(u - k, 0.0) for k in knots])
+    if classification:
+        from sklearn.linear_model import LogisticRegression
+
+        m = LogisticRegression(C=1e4, max_iter=1000).fit(X, y)
+        p = np.clip(m.predict_proba(X)[:, 1], 1e-12, 1 - 1e-12)
+        return m.coef_[0], float(m.intercept_[0]), float(np.sum(y * np.log(p)
+                                                               + (1 - y) * np.log(1 - p)))
+    A = np.column_stack([np.ones(len(u)), X])
+    beta, *_ = np.linalg.lstsq(A, y, rcond=None)
+    resid = y - A @ beta
+    return beta[1:], float(beta[0]), float(-0.5 * len(y) * np.log(max(float(resid @ resid)
+                                                                     / len(y), 1e-300)))
+
+
+def fit_shape(x: pd.Series, y: Any, *, cap: bool = True, knees: int = 0,
+              knots: list[float] | None = None, direction: str | None = None,
+              classification: bool = True, grid: int = 9) -> dict | None:
+    """Fit one column's shape on the rows given (the development sample, ADR-0024).
+
+    The column is capped at its 1st and 99th percentiles, then a line that may bend at up to
+    ``knees`` knees is fitted, each segment held to ``direction`` (the expected sign, else the
+    data's) so the factor is monotonic. Knees are tried at the deciles; the number used is
+    the one with the best BIC, so asking for two is asking for at most two. Knots a person gave
+    are kept as given. Returns the points the factor runs through, the observed and fitted
+    curves, and what was decided, or None when the column cannot be shaped."""
+    s = pd.to_numeric(x, errors="coerce").astype(float).to_numpy()
+    yv = np.asarray(y, dtype=float)
+    ok = np.isfinite(s) & np.isfinite(yv)
+    xv, yv = s[ok], yv[ok]
+    if len(xv) < 30 or (classification and len(np.unique(yv)) < 2):
+        return None
+    lo, hi = (np.quantile(xv, CAP_QUANTILES) if cap else (xv.min(), xv.max()))
+    lo, hi = float(lo), float(hi)
+    if hi <= lo:
+        return None
+    u = (np.clip(xv, lo, hi) - lo) / (hi - lo)
+    direction_from = "expected sign" if direction in ("+", "-") else "the data"
+    if direction not in ("+", "-"):
+        coef, _, _ = _fit_line(u, yv, [], classification)
+        direction = "+" if coef[0] >= 0 else "-"
+    sign = 1.0 if direction == "+" else -1.0
+
+    def monotonic(coef: np.ndarray) -> bool:
+        return bool(np.all(sign * np.cumsum(coef) >= -1e-9))
+
+    def held(coef: np.ndarray) -> np.ndarray | None:
+        """The fit with a segment that turns slightly the wrong way laid flat (at most a
+        tenth of the steepest slope), or None when a segment turns clearly the wrong way."""
+        slopes = np.cumsum(coef)
+        wrong = sign * slopes < 0
+        if not wrong.any():
+            return coef
+        if np.max(np.abs(slopes[wrong])) > 0.1 * np.max(np.abs(slopes)):
+            return None
+        slopes = np.where(wrong, 0.0, slopes)
+        return np.diff(np.concatenate([[0.0], slopes]))
+
+    given = sorted((k - lo) / (hi - lo) for k in (knots or []) if lo < k < hi)
+    if given:
+        coef, b0, ll = _fit_line(u, yv, given, classification)
+        chosen, origin = (given, coef, b0), "given"
+    else:
+        cuts = np.unique(np.round(np.quantile(u, np.linspace(0.1, 0.9, grid)), 6))
+        cuts = [float(c) for c in cuts if 0 < c < 1]
+        best, best_bic = None, np.inf
+        for k in range(0, max(0, int(knees)) + 1):
+            for combo in itertools.combinations(cuts, k):
+                coef, b0, ll = _fit_line(u, yv, list(combo), classification)
+                bic = -2 * ll + (k + 2 + k) * np.log(len(u))  # a knee costs a slope and a place
+                kept = held(coef)
+                if kept is not None and bic < best_bic:
+                    best, best_bic = (list(combo), kept, b0), bic
+        if best is None:  # not even a straight line goes the expected way
+            coef, b0, _ = _fit_line(u, yv, [], classification)
+            best = ([], coef, b0)
+        chosen, origin = best, "fitted"
+    knots_u, coef, b0 = chosen
+
+    def g(uu: np.ndarray) -> np.ndarray:
+        return np.column_stack([uu] + [np.maximum(uu - k, 0.0) for k in knots_u]) @ coef
+
+    at = np.array([0.0, *knots_u, 1.0])
+    points = [[float(lo + a * (hi - lo)), float(v)] for a, v in zip(at, g(at), strict=True)]
+    line = np.linspace(0.0, 1.0, 61)
+    fitted = g(line) + b0
+    if classification:
+        fitted = 1.0 / (1.0 + np.exp(-fitted))
+    bands = pd.qcut(pd.Series(xv), q=min(12, len(np.unique(xv))), duplicates="drop")
+    seen = pd.DataFrame({"x": xv, "y": yv, "band": bands}).groupby("band", observed=True).agg(
+        x=("x", "mean"), y=("y", "mean"), n=("y", "size"))
+    return {
+        "cap": [lo, hi], "knots": [float(lo + k * (hi - lo)) for k in knots_u],
+        "knees_asked": int(knees), "knees_used": len(knots_u), "origin": origin,
+        "direction": direction, "direction_from": direction_from,
+        "monotonic": monotonic(coef), "points": points, "rows": int(len(xv)),
+        "observed": [[float(r.x), float(r.y), int(r.n)] for r in seen.itertuples()],
+        "curve": [[float(lo + a * (hi - lo)), float(v)] for a, v in zip(line, fitted,
+                                                                       strict=True)],
+    }
+
+
+def shape_library(dev: pd.DataFrame, y: Any, columns: list[str], fc: dict[str, Any], *,
+                  expected: dict[str, str], classification: bool
+                  ) -> tuple[list[Factor], dict[str, dict], list[str]]:
+    """The shaped factors, fitted on the development sample ``dev`` only (ADR-0024).
+
+    Returns the factors (their points frozen, so ``apply_library`` computes them on any other
+    sample without an outcome), a report per column for the record and the page, and notes."""
+    factors: list[Factor] = []
+    report: dict[str, dict] = {}
+    notes: list[str] = []
+    for col, req in shape_requests(dev, columns, fc).items():
+        entry: dict[str, Any] = {"set_by": req["set_by"], "factors": []}
+        if req["knees"] or req["knots"]:
+            fit = fit_shape(dev[col], y, cap=req["cap"], knees=req["knees"], knots=req["knots"],
+                            direction=expected.get(col), classification=classification)
+            if fit is None:
+                notes.append(f"{col} could not be shaped on the development sample")
+                continue
+            entry.update(fit)
+            f = Factor(name=factor_name(col, "knee", fit["knees_used"], 0), source=col,
+                       transform="knee", param=fit["knees_used"], points=fit["points"])
+            factors.append(f)
+            entry["factors"].append(f.name)
+            if not fit["monotonic"]:
+                notes.append(f"{col}: no shape keeps the expected direction "
+                             f"({fit['direction']}); its knee factor is not monotonic")
+        if req["plain_cap"]:
+            s = pd.to_numeric(dev[col], errors="coerce").dropna()
+            lo, hi = (float(v) for v in np.quantile(s, CAP_QUANTILES))
+            if hi > lo:
+                f = Factor(name=factor_name(col, "cap", 0, 0), source=col, transform="cap",
+                           points=[[lo, lo], [hi, hi]])
+                factors.append(f)
+                entry["factors"].append(f.name)
+                entry.setdefault("cap", [lo, hi])
+        if entry["factors"]:
+            report[col] = entry
+    if report:
+        notes.append(f"{len(report)} column(s) shaped on the development sample "
+                     f"({len(dev)} rows); the points are frozen for every other sample")
+    return factors, report, notes
+
+
+def survey(df: pd.DataFrame, y: Any, columns: list[str], *, expected: dict[str, str],
+           classification: bool, limit: int = 16, rows: int = 4000, seed: int = 0
+           ) -> list[dict]:
+    """How each shapeable column relates to the outcome, for the Explore page (ADR-0024).
+
+    Advice only, read on the rows explore has (the sample is not split yet): the observed
+    curve, whether it runs one way, and how many knees a fit would use. The knees themselves
+    are fitted later, on the development sample; nothing here reaches a model."""
+    yv = np.asarray(y, dtype=float)
+    take = np.arange(len(df))
+    if len(take) > rows:
+        take = np.sort(np.random.default_rng(seed).choice(take, rows, replace=False))
+    out = []
+    for col in [c for c in columns if c in df.columns and shapeable(df[c])][:limit]:
+        fit = fit_shape(df[col].iloc[take], yv[take], cap=True, knees=2,
+                        direction=expected.get(col), classification=classification, grid=5)
+        if fit is None:
+            continue
+        seen = [o[1] for o in fit["observed"]]
+        steps = np.sign(np.diff(seen))
+        runs_one_way = bool(len(steps) and (np.all(steps >= 0) or np.all(steps <= 0)))
+        knees = fit["knees_used"]
+        why = ("the observed rate runs one way and bends little: a straight line will do"
+               if not knees else
+               f"the rate bends: a line with {knees} knee{'s' if knees > 1 else ''} fits "
+               "better than a straight one, at the cost of the extra slopes")
+        out.append({"column": col, "direction": fit["direction"],
+                    "direction_from": fit["direction_from"], "runs_one_way": runs_one_way,
+                    "suggested_knees": knees, "why": why, "observed": fit["observed"],
+                    "curve": fit["curve"], "knots": fit["knots"], "cap": fit["cap"],
+                    "rows": fit["rows"]})
     return out
 
 
@@ -301,6 +541,8 @@ def strength(row: dict) -> float | None:
 def expected_sign(row: dict, expected: dict[str, str]) -> str | None:
     if row["name"] in expected:
         return expected[row["name"]]
+    if row.get("transform") == "knee":
+        return "+"  # a knee factor is already turned to rise with the outcome
     if row.get("transform", "level") in SAME_DIRECTION:
         return expected.get(row["source"])
     return None

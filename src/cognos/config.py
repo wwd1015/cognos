@@ -283,6 +283,18 @@ class EvaluationConfig(BaseModel):
     pool_size: int = 6  # candidates the engine proposes; the developer may carry any number
 
 
+class ShapeSpec(BaseModel):
+    """How one column is shaped before it is fitted (ADR-0024, ``factors.shape_library``).
+
+    ``cap`` holds the column to its 1st and 99th percentiles. ``knees`` (0 to 2) lets the
+    line bend that many times while it keeps one direction, so the factor is monotonic. Where
+    the knees go is fitted on the development sample unless a person gives ``knots``."""
+
+    cap: bool = True
+    knees: int = Field(0, ge=0, le=2)
+    knots: list[float] = Field(default_factory=list)  # given by a person: kept, not fitted
+
+
 class FactorConfig(BaseModel):
     """The factor library and the single-factor screen (modeling/factors.py).
 
@@ -294,6 +306,9 @@ class FactorConfig(BaseModel):
 
     transforms: list[str] = Field(default_factory=lambda: ["auto"])
     # auto | none | lag | diff | pct | yoy_diff | yoy_pct | ma | log | sqrt | square
+    # | cap | knee (shaped: fitted on the development sample, every numeric column)
+    max_knees: int = Field(2, ge=1, le=2)  # "knee" in transforms: knees per column at most
+    shapes: dict[str, ShapeSpec] = Field(default_factory=dict)  # by column; wins over transforms
     lags: list[int] = Field(default_factory=lambda: [1, 2, 3, 4])
     windows: list[int] = Field(default_factory=lambda: [4])  # moving-average lengths
     period: int | None = None  # periods per year (yoy); None => read from the date spacing
