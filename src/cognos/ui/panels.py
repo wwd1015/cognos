@@ -1036,6 +1036,16 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
         section("Features to consider", table(["Feature", "Expected", "Corr.", "Why"], cand_rows),
                 description="The Data agent's candidates for the design stage: hypotheses, "
                             "not a selection.") if cand_rows else None,
+        section("Shape of each ratio",
+                dmc.SimpleGrid(survey_cards(
+                    p["shape_survey"], scheme,
+                    choose={c: form_of(s) for c, s in state.overrides.shapes.items()}),
+                    cols={"base": 1, "md": 2, "xl": 3}, spacing="lg"),
+                description="Choose how each column enters the model, then “Apply my changes” "
+                            "(“Accept recommendation” takes the suggested forms). The curves "
+                            "read every row explore has; the knees are fitted later, after the "
+                            "split, on the development sample only, and shown on the model "
+                            "page.") if p.get("shape_survey") else None,
         section(f"Analyses ({len(analyses)})",
                 source_counts(analyses),
                 dmc.SimpleGrid([analysis_card(state.run_id, a, scheme) for a in analyses],

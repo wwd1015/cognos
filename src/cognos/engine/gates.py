@@ -127,6 +127,28 @@ def send_back(state: RunState, gate: str, payload: dict[str, Any], reason: str) 
     return [target]
 
 
+FORMS = {"none": None, "cap": {"cap": True, "knees": 0}, "knee1": {"cap": True, "knees": 1},
+         "knee2": {"cap": True, "knees": 2}}
+
+
+def _apply_forms(state: RunState, forms: dict[str, str], profile: dict) -> bool:
+    """Lay the forms chosen at the data gate over ``overrides.shapes``; True when it changed."""
+    known = {s["column"] for s in profile.get("shape_survey") or []}
+    shapes = dict(state.overrides.shapes)
+    for col, form in (forms or {}).items():
+        if col not in known:
+            raise GateError(f"{col!r} is not a column the exploration surveyed")
+        if form not in FORMS:
+            raise GateError(f"unknown shape {form!r} for {col}; choose from {sorted(FORMS)}")
+        if FORMS[form] is None:
+            shapes.pop(col, None)
+        else:
+            shapes[col] = {**FORMS[form], "knots": []}
+    changed = shapes != state.overrides.shapes
+    state.overrides.shapes = shapes
+    return changed
+
+
 def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], reason: str,
            results: dict[str, Any], *, config: Any = None,
            drawn: list[dict[str, Any]] = ()) -> tuple[list[str], bool]:
@@ -253,6 +275,13 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
                 raise GateError("the target column cannot be excluded")
         changed = sorted(new) != sorted(state.overrides.exclude_columns)
         state.overrides.exclude_columns = sorted(set(new))
+        # Version A (ADR-0024): the form of each surveyed column is decided here. Accepting
+        # takes the suggested form; the knees themselves are fitted after the split.
+        forms = payload.get("shapes") if action == "edit" else None
+        if forms is None:
+            forms = {s["column"]: (f"knee{s['suggested_knees']}" if s["suggested_knees"]
+                                   else "none") for s in profile.get("shape_survey") or []}
+        changed = _apply_forms(state, forms, profile) or changed
         return (_changed_downstream(gate) if changed else []), True
 
     if gate == "gate_design":

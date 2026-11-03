@@ -1549,6 +1549,10 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
         return source_payload(fields, run_id), reason
     if gate == "gate_data" and action == "edit":
         payload["exclude_columns"] = list(fields.get("exclude") or [])
+        forms = {k.split("::", 1)[1]: v for k, v in fields.items()
+                 if k.startswith("shape::") and v}
+        if forms:
+            payload["shapes"] = forms
         if fields.get("target"):
             payload["target"] = fields["target"]
         if fields.get("join_spec"):  # several sources: the join as the canvas now states it

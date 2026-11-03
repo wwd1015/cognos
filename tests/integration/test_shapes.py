@@ -7,9 +7,11 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from cognos import service
 from cognos.config import ShapeSpec
+from cognos.engine import GateError
 from cognos.modeling import factors
 
 
@@ -86,3 +88,28 @@ def test_a_run_shapes_on_the_development_sample_and_freezes_the_points(runs_dir)
     knee = factors.Factor(name=name, source="interest_coverage", transform="knee", points=points)
     again = factors.apply_library(test.drop(columns=[name]), [knee])
     assert np.allclose(again[name], test[name], equal_nan=True)
+
+
+def test_version_a_the_form_is_chosen_at_the_data_gate(runs_dir):
+    """Version A: each column's form is part of the data gate decision."""
+    cfg = service.template_config("built-in:pd_logistic_scorecard", "pd", root=runs_dir)
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic", root=runs_dir)
+    service.run_until_idle(run_id, runs_dir)
+    service.submit_gate(run_id, "gate_intent", "accept", reason="test", root=runs_dir,
+                        background=False)
+    service.run_until_idle(run_id, runs_dir)
+    info = service.data_info(run_id, runs_dir, with_catalog=True)
+    service.submit_gate(run_id, "gate_source", "accept",
+                        service.data_payload(info["preselected"], root=runs_dir),
+                        root=runs_dir, background=False)
+    service.run_until_idle(run_id, runs_dir)
+    with pytest.raises(GateError):
+        service.submit_gate(run_id, "gate_data", "edit", {"shapes": {"nope": "knee1"}},
+                            root=runs_dir, background=False)
+    service.submit_gate(run_id, "gate_data", "edit",
+                        {"shapes": {"interest_coverage": "knee2", "leverage": "cap"}},
+                        root=runs_dir, by="dana", background=False)
+    st = service.state(run_id, runs_dir)
+    assert st.overrides.shapes["interest_coverage"]["knees"] == 2
+    assert st.overrides.shapes["leverage"] == {"cap": True, "knees": 0, "knots": []}
+    assert st.last_decision("gate_data").by == "dana"
