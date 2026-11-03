@@ -518,8 +518,10 @@ def make_catalog_tables(n_obligors: int = 400, seed: int = 26) -> dict[str, pd.D
                                           0.0, 1.0))
             util = float(np.mean([f["util"] for f in facs]))
             coll = float(np.mean([f["coll"] for f in facs]))
-            z = (-4.7 + 3.2 * lev - 0.18 * np.log(cov) + 0.7 * stress - 0.25 * (size - 18.5)
-                 - 4.0 * margin - 0.35 * current + 2.0 * util - 0.4 * coll
+            # Coverage and liquidity help until a point, then stop helping: a knee at 3x
+            # interest coverage and at a current ratio of 1.5 (ADR-0024's shaped factors).
+            z = (2.6 + 3.2 * lev - 1.5 * min(cov, 3.0) + 0.7 * stress - 0.25 * (size - 18.5)
+                 - 4.0 * margin - 3.0 * min(current, 1.5) + 2.0 * util - 0.4 * coll
                  + 0.25 * (unemp[q] - 5.5) + ind_risk.get(ind[i], 0.0))
             pd12 = 1.0 / (1.0 + np.exp(-z))
             default = bool(rng.random() < pd12)

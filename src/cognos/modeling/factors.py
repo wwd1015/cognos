@@ -310,7 +310,8 @@ def fit_shape(x: pd.Series, y: Any, *, cap: bool = True, knees: int = 0,
     The column is capped at its 1st and 99th percentiles, then a line that may bend at up to
     ``knees`` knees is fitted, each segment held to ``direction`` (the expected sign, else the
     data's) so the factor is monotonic. Knees are tried at the deciles; the number used is
-    the one with the best BIC, so asking for two is asking for at most two. Knots a person gave
+    the one with the best BIC (a knee costs its slope; its place is one of
+    nine), so asking for two is asking for at most two. Knots a person gave
     are kept as given. Returns the points the factor runs through, the observed and fitted
     curves, and what was decided, or None when the column cannot be shaped."""
     s = pd.to_numeric(x, errors="coerce").astype(float).to_numpy()
@@ -356,7 +357,7 @@ def fit_shape(x: pd.Series, y: Any, *, cap: bool = True, knees: int = 0,
         for k in range(0, max(0, int(knees)) + 1):
             for combo in itertools.combinations(cuts, k):
                 coef, b0, ll = _fit_line(u, yv, list(combo), classification)
-                bic = -2 * ll + (k + 2 + k) * np.log(len(u))  # a knee costs a slope and a place
+                bic = -2 * ll + (k + 2) * np.log(len(u))  # a knee costs its slope
                 kept = held(coef)
                 if kept is not None and bic < best_bic:
                     best, best_bic = (list(combo), kept, b0), bic
@@ -450,14 +451,22 @@ def survey(df: pd.DataFrame, y: Any, columns: list[str], *, expected: dict[str, 
                         direction=expected.get(col), classification=classification, grid=5)
         if fit is None:
             continue
-        seen = [o[1] for o in fit["observed"]]
-        steps = np.sign(np.diff(seen))
-        runs_one_way = bool(len(steps) and (np.all(steps >= 0) or np.all(steps <= 0)))
+        # one way: the outcome in five equal bands moves in the column's direction throughout
+        x = pd.to_numeric(df[col].iloc[take], errors="coerce").to_numpy(dtype=float)
+        ok = np.isfinite(x)
+        bands = pd.qcut(pd.Series(x[ok]), q=5, duplicates="drop")
+        means = pd.Series(yv[take][ok]).groupby(bands.to_numpy(), observed=True).mean().to_numpy()
+        sign = 1.0 if fit["direction"] == "+" else -1.0
+        runs_one_way = bool(len(means) > 1 and np.all(sign * np.diff(means) >= 0))
         knees = fit["knees_used"]
-        why = ("the observed rate runs one way and bends little: a straight line will do"
-               if not knees else
-               f"the rate bends: a line with {knees} knee{'s' if knees > 1 else ''} fits "
-               "better than a straight one, at the cost of the extra slopes")
+        if knees:
+            why = (f"the rate bends: a line with {knees} knee{'s' if knees > 1 else ''} fits "
+                   "better than a straight one, after paying for the extra slopes")
+        elif runs_one_way:
+            why = "the rate runs one way and bends little: a straight line will do"
+        else:
+            why = ("the rate wobbles, but no knee earns its place: a straight line will do, "
+                   "capped if a few extreme values worry you")
         out.append({"column": col, "direction": fit["direction"],
                     "direction_from": fit["direction_from"], "runs_one_way": runs_one_way,
                     "suggested_knees": knees, "why": why, "observed": fit["observed"],
