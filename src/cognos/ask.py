@@ -1,7 +1,7 @@
 """Questions from a page (ADR-0021): a person asks the agent that owns a stage's page.
 
 The agent answers as ``<agent>_ask``, with its stage's scope (the same facts and the same walls:
-the validator never sees the modeler's reasoning, the modeler never a holdout fact), and every
+the Validation agent never sees the Modeling agent's reasoning, the Modeling agent never a holdout fact), and every
 number goes through a ``{{fact:<id>}}`` placeholder the engine renders. Asking changes nothing in
 the run: no state, no result, no gap. What should change goes through a gate, where the answer
 can suggest a send-back the person still has to make.
@@ -20,6 +20,7 @@ from typing import Any
 from .agents import facts as facts_mod
 from .agents import slices
 from .agents.contracts import STAGE_AGENT
+from .agents.ids import canonical
 from .fsutil import atomic_write
 
 MAX_QUESTION = 2000
@@ -50,7 +51,8 @@ def _page(ctx, stage: str, status: str, agent: str) -> dict[str, Any]:
     recommendation this agent recorded for it (never another agent's)."""
     res = ctx.get(stage)
     rec = (res.payload or {}).get("recommendation") if res is not None else None
-    own = rec.get("output") if isinstance(rec, dict) and rec.get("agent") == agent else None
+    own = (rec.get("output") if isinstance(rec, dict) and canonical(str(rec.get("agent"))) == agent
+           else None)
     return {"stage": stage, "status": status, "recommendation": own}
 
 

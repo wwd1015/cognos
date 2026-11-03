@@ -24,7 +24,7 @@ trustworthy. v1.0 architecture: **agents recommend, humans decide, the engine di
    The test sample (`data/test.parquet`) is what the pool is compared on, so it is used to
    choose: every evaluation on it is counted (`test_evaluations`), never passed off as untouched.
 6. **Independent challenge.** `validate`, `comply`, and `review` re-derive risk from artifacts. The
-   validator's slice never contains the modeler's rationale (`agents/slices.py` scopes).
+   Validation agent's slice never contains the Modeling agent's rationale (`agents/slices.py` scopes).
 7. **Gates BLOCK only on high-confidence harm.** Verdict gates: `validate` (confirmed target
    leakage) and `review` (stale docs↔code references). Agents can raise FAIL/WARN, never BLOCK, and a
    BLOCK can never be *accepted* at a human gate — only sent back or rejected. Compliance is a
@@ -186,7 +186,7 @@ measures.
 - The interview is gaps: `intake` raises questions (`category: intent`, `reentry: intake`), an
   answer re-runs it. Do not add a chat loop or a second question store. Core design questions keep
   the ids `design-<field>` so intake and ideate never ask twice.
-- A brief entry is `stated` only with a quote found in the documents (`checks.intake_analyst`).
+- A brief entry is `stated` only with a quote found in the documents (`checks.intake_agent`).
   Inferred positions are asked about, never written to overrides.
 - `intake` never loads the dataset. Prior-model scores are `prior.*` facts and stay out of the
   Design agent's and the modeler's scope (`slices.FACT_SCOPE`).
@@ -201,7 +201,7 @@ measures.
 - **Open target**: `data.target` / `task` may be empty. Read them from `ctx.config` (resolved from
   `overrides.target`), never from `ctx.base_config`, outside explore. Explore decides from
   `base_config` + overrides so a re-run does not treat its own earlier proposal as fixed.
-- **Agents still have no tools.** The Data agent *requests* analyses (`data_scout` contract);
+- **Agents still have no tools.** The Data agent *requests* analyses (`data_agent_requests` contract);
   the engine runs them (`analysis/run.py`). Do not give an agent a way to execute anything itself.
 - **A tool** (`plugins.AnalysisTool`) is reviewed code and a pure function of the data: its
   numbers are engine numbers. **A script** is agent-written: it must pass `sandbox.validate`,
@@ -218,7 +218,7 @@ measures.
   Every later stage still reads `data/dataset.parquet`; `ctx.load_dataset()` refuses before
   explore has built it.
 - **The agent chooses among measured links, it never names a key.** `linking.profile` is the
-  only source of links; `checks.data_linker` and the gate handler both go through
+  only source of links; `checks.data_agent_joins` and the gate handler both go through
   `linking.resolve`.
 - **A join never adds or repeats a base row.** Reduce a many-side to one row per key first;
   keep the row-count assertion in `linking.apply`. Dropping unmatched rows is allowed only
@@ -285,10 +285,13 @@ artifacts under `runs/<id>/stages/<name>/`, and obtains judgment only via
 ## Agents (agents/)
 Eight agents (Intake agent, Data agent, Design agent, Modeling agent, Backtest agent, Validation
 agent, Compliance agent, Writing agent). A display name is the work plus "agent", never a job
-title: titles belong to the people's seats (developer, reviewer, approver). The ids
-(`intake_analyst`, `data_analyst`, `design_lead`, `modeler`, `outcomes_analyst`, `validator`,
-`risk_analyst`, `writer`) stay as they are, since recorded runs and replays are keyed on them;
-`contracts.FRIENDLY` is the one place an id becomes a name. Each agent = a role prompt (`prompts/<agent>.md` + `_common.md`), an
+title: titles belong to the people's seats (developer, reviewer, approver). An id is the
+display name in snake case (ADR-0023): `intake_agent`, `data_agent` (with its steps
+`data_agent_requests` and `data_agent_joins`), `design_agent`, `modeling_agent` (and
+`modeling_agent_search`), `backtest_agent`, `validation_agent`, `compliance_agent`,
+`writing_agent`; tool and question steps add `_tools` / `_ask`. A new agent follows the same
+rule. Runs recorded with the old ids are never rewritten: anything that reads an id from disk
+goes through `agents/ids.py::canonical`, and `contracts.FRIENDLY` names old ids too. Each agent = a role prompt (`prompts/<agent>.md` + `_common.md`), an
 output contract (`contracts.py`, `extra="forbid"`, strict-grammar-friendly types — no free-form
 maps), a slice scope
 (`slices.FACT_SCOPE`), engine checks (`checks.py`), and a deterministic implementation

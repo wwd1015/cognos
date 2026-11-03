@@ -174,12 +174,12 @@ def test_design_lead_widens_slate_and_questions(tmp_path, runs_dir, replay_dir):
                                 "role": "challenger", "priority": 0.5,
                                 "rationale": "ceiling benchmark"})
     cfg = _cni_config(tmp_path, design=ANSWERED,
-                      agents={"replay_dir": replay_dir({"design_lead": [bogus, good]})})
+                      agents={"replay_dir": replay_dir({"design_agent": [bogus, good]})})
     orch, res = _run_ideate(cfg, runs_dir)
 
     # the engine rejected the unfittable family and the agent's corrected answer was kept
     audit = [line for line in (orch.ctx.agents_dir / "audit.jsonl").read_text(
-        encoding="utf-8").splitlines() if '"design_lead"' in line]
+        encoding="utf-8").splitlines() if '"design_agent"' in line]
     assert '"invalid"' in audit[0] and '"ok"' in audit[1]
     assert any(q["source"] == "agent" for q in res.payload["open_questions"])
     assert [h["family"] for h in res.payload["hypotheses"]] == ["logit", "gradient_boosting"]

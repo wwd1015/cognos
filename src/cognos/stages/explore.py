@@ -11,7 +11,7 @@ First it *requests analyses* — a registered tool (built in or from a plugin) o
 — and the engine runs them, keeping every result and every script as an artifact
 (``stages/explore/analyses/``). When the profile leaves the dependent variable open, the analyst
 names it in the first round. When the run has several sources, the analyst first proposes how
-they join (``data_linker``): the engine measures the links, runs the chosen plan and keeps one
+they join (``data_agent_joins``): the engine measures the links, runs the chosen plan and keeps one
 row per row of the base table. Then it *recommends*: the target, the features worth considering,
 keep/exclude for every leakage suspect, and questions for the sponsor. The target and the
 exclusions (and the join) take effect only when the human accepts them at ``gate_data``; downstream stages read
@@ -179,7 +179,7 @@ def linked_dataset(ctx: RunContext) -> tuple[pd.DataFrame, dict]:
             raise linking.LinkError("data.join: " + "; ".join(problems))
     else:
         source = "agent"
-        out = ctx.recommend("data_linker", {
+        out = ctx.recommend("data_agent_joins", {
             "tables": prof["tables"], "links": prof["links"], "target": target,
             "base_table": base.data.base or "",
         })
@@ -289,7 +289,7 @@ class ExploreStage(Stage):
         for round_no in range(1, base.analysis.rounds + (0 if target else 1) + 1):
             cfg = settled(target) if target else None
             try:
-                out = ctx.recommend("data_scout", {
+                out = ctx.recommend("data_agent_requests", {
                     "round": round_no, "columns": list(df.columns), "dictionary": described,
                     "dtypes": {c: str(df[c].dtype) for c in df.columns}, "n_rows": int(len(df)),
                     "target": target, "task": cfg.task.value if cfg else None,
@@ -419,7 +419,7 @@ class ExploreStage(Stage):
         # --- the Data agent's recommendation (engine-checked) --------------------
         res.payload = profile
         constant = [c for c in numeric_cols if f"const-{c}" in {f.id for f in res.findings}]
-        out = ctx.recommend("data_analyst", {
+        out = ctx.recommend("data_agent", {
             "columns": list(df.columns), "dictionary": described,
             "features": features,
             "leakage_suspects": leakage,
@@ -443,7 +443,7 @@ class ExploreStage(Stage):
         profile["column_decisions"] = [d.model_dump() for d in out.column_decisions]
         profile["questions"] = questions_from(out.questions_for_sponsor, category="data",
                                               reentry="explore", prefix="data")
-        attach_recommendation(profile, ctx, "data_analyst", out)
+        attach_recommendation(profile, ctx, "data_agent", out)
         ref = ctx.save_json("stages/explore/profile.json", profile)
         res.add_artifact(ref)
         res.payload = profile

@@ -312,7 +312,7 @@ class Engine:
     def _route_validator_findings(self, state: RunState, result: StageResult) -> None:
         routed = (result.payload or {}).get("routed_findings") or []
         limit = self.config.workflow.auto_challenge_loops
-        loops = state.loops.get("validator", 0)
+        loops = state.loops.get("validation_agent", 0)
         if not routed or loops >= limit:
             if routed:
                 events.publish(self.run_dir, "progress",
@@ -320,11 +320,11 @@ class Engine:
                                f"{loops} loop(s); they go to the human at the validation gate.",
                                step="validate")
             return
-        state.loops["validator"] = loops + 1
+        state.loops["validation_agent"] = loops + 1
         targets = []
         for f in routed:
             state.challenges.append(Challenge(
-                source="validator", target_stage=f["target_stage"], severity="high",
+                source="validation_agent", target_stage=f["target_stage"], severity="high",
                 message=f["message"], evidence=f.get("evidence", []), remedy=f.get("remedy")))
             targets.append(f["target_stage"])
         first = min(targets, key=STEPS.index)

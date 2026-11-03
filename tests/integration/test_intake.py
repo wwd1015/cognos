@@ -47,7 +47,7 @@ def test_new_development_reads_the_intent_and_the_accepted_brief_shapes_the_conf
     p = res.payload
     assert p["kind"] == "new" and p["clarity"] == "clear" and p["n_blocking"] == 0
     assert {b["field"]: b["basis"] for b in p["brief"]}["horizon"] == "stated"
-    assert p["recommendation"]["agent"] == "intake_analyst"
+    assert p["recommendation"]["agent"] == "intake_agent"
     # the documents live in the run, and the run's config points at its own copy
     assert eng.config.engagement.intent == "inputs/intent/intent.md"
     assert (eng.run_dir / "inputs" / "intent" / "intent.md").is_file()
@@ -69,7 +69,7 @@ def test_new_development_reads_the_intent_and_the_accepted_brief_shapes_the_conf
     assert ctx.config.compliance.intended_use == BRIEF["intended_use"]
     assert ctx.base_config.design.horizon == ""  # the profile itself is never edited
     # every later agent works from the confirmed brief
-    project = slices.build(ctx, "data_analyst", {})["project"]
+    project = slices.build(ctx, "data_agent", {})["project"]
     assert project["engagement"]["objective"] == BRIEF["objective"]
     assert project["engagement"]["brief"]["segment"] == BRIEF["segment"]
     assert project["development_mode"] == "new"
@@ -222,8 +222,8 @@ def test_model_update_reads_the_prior_model_and_records_the_change(baseline, run
 
     # the prior model's scores reach the agents that read results, never the modeler
     ctx = eng.context()
-    validator = slices.build(ctx, "validator", {})
-    modeler = slices.build(ctx, "modeler", {})
+    validator = slices.build(ctx, "validation_agent", {})
+    modeler = slices.build(ctx, "modeling_agent", {})
     assert validator["facts"]["prior.test_metric"] == round(
         old.results()["backtest"].payload["oos_metric"], 4)
     assert not [k for k in modeler["facts"] if k.startswith("prior.")]

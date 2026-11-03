@@ -104,12 +104,12 @@ def test_the_deterministic_analyst_passes_the_engine_checks(tables):
     prof = linking.profile(tables)
     sl = {"tables": prof["tables"], "links": prof["links"], "target": "default_flag",
           "base_table": "", "facts": {}, "challenges": []}
-    raw = heuristic.data_linker(sl)
-    out = CONTRACTS["data_linker"].model_validate(raw)
-    assert checks.run_checks("data_linker", out, sl) == []
+    raw = heuristic.data_agent_joins(sl)
+    out = CONTRACTS["data_agent_joins"].model_validate(raw)
+    assert checks.run_checks("data_agent_joins", out, sl) == []
     # an agent that leaves the target's table out, or a table unexplained, is sent back
-    bad = CONTRACTS["data_linker"].model_validate({**raw, "base_table": "obligors", "joins": []})
-    errs = checks.run_checks("data_linker", bad, sl)
+    bad = CONTRACTS["data_agent_joins"].model_validate({**raw, "base_table": "obligors", "joins": []})
+    errs = checks.run_checks("data_agent_joins", bad, sl)
     assert any("target" in e for e in errs)
 
 
@@ -160,8 +160,8 @@ def test_unmatched_rows_are_dropped_only_when_that_is_low_risk(kwargs, expect, s
     assert plan["joins"][0]["unmatched"] == expect and says in plan["joins"][0]["unmatched_reason"]
     sl = {"tables": prof["tables"], "links": prof["links"], "target": "default",
           "base_table": "", "facts": {}, "challenges": []}
-    out = CONTRACTS["data_linker"].model_validate(heuristic.data_linker(sl))
-    assert checks.run_checks("data_linker", out, sl) == []
+    out = CONTRACTS["data_agent_joins"].model_validate(heuristic.data_agent_joins(sl))
+    assert checks.run_checks("data_agent_joins", out, sl) == []
     assert (expect == "keep") == any("missing values" in c for c in out.concerns)
 
 

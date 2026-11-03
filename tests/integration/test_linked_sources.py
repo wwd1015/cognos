@@ -45,7 +45,7 @@ def test_the_analyst_proposes_the_join_and_the_engine_runs_it(at_data_gate):
     assert all((run_dir / "data" / "sources" / f"{n}.parquet").exists()
                for n in ("loans", "financials", "macro"))
     audit = [a["agent"] for a in service.audit(run_id, root)]
-    assert "data_linker" in audit
+    assert "data_agent_joins" in audit
 
 
 def test_the_developer_changes_the_join_at_the_gate(at_data_gate):
@@ -96,5 +96,5 @@ def test_a_stated_join_is_run_without_asking_the_agent(tmp_path):
     service.run_until_idle(run_id, root)
     ep = service.results(run_id, root)["explore"].payload
     assert ep["linking"]["plan"]["source"] == "profile" and ep["linking"]["left_out"] == ["macro"]
-    assert "data_linker" not in [a["agent"] for a in service.audit(run_id, root)]
+    assert "data_agent_joins" not in [a["agent"] for a in service.audit(run_id, root)]
     assert service.state(run_id, root).overrides.join is None  # the profile stays the authority

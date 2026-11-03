@@ -84,7 +84,7 @@ def _change(text: str) -> dict[str, str]:
     return {"change": text, "type": "re_estimation", "affects": "ideate"}
 
 
-def intake_analyst(sl: dict[str, Any]) -> dict[str, Any]:
+def intake_agent(sl: dict[str, Any]) -> dict[str, Any]:
     """Reads the intent template as written: a filled section is the sponsor's stated position
     (quoted from its first line), an empty required one becomes a blocking interview question.
     A free-form document that does not follow the template is all 'missing' to this agent."""
@@ -157,7 +157,7 @@ def intake_analyst(sl: dict[str, Any]) -> dict[str, Any]:
 
 
 # --- explore -----------------------------------------------------------------------------
-def data_analyst(sl: dict[str, Any]) -> dict[str, Any]:
+def data_agent(sl: dict[str, Any]) -> dict[str, Any]:
     features = list(sl.get("features", []))
     suspects = list(sl.get("leakage_suspects", []))
     current = set(sl.get("current_exclusions", []))
@@ -256,7 +256,7 @@ def data_analyst(sl: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def data_linker(sl: dict[str, Any]) -> dict[str, Any]:
+def data_agent_joins(sl: dict[str, Any]) -> dict[str, Any]:
     """The join the measurements point to: the table holding the target (else the largest) as
     the base, then for each other table the link that matches most rows, same-named keys first."""
     from .. import linking
@@ -304,7 +304,7 @@ def data_linker(sl: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def data_scout(sl: dict[str, Any]) -> dict[str, Any]:
+def data_agent_requests(sl: dict[str, Any]) -> dict[str, Any]:
     """The standard look at a dataset, as tool calls. Round one settles the target when the
     profile leaves it open (the engine's first candidate). Then the survey (overview, target,
     gaps, time, ranking, collinearity, outliers, drift) and, in a further round, the drill-down
@@ -365,7 +365,7 @@ _ROLE_TO_DECISION = {"primary": "primary", "candidate": "candidate", "challenger
                      "available": "rejected", "rejected": "rejected"}
 
 
-def design_lead(sl: dict[str, Any]) -> dict[str, Any]:
+def design_agent(sl: dict[str, Any]) -> dict[str, Any]:
     frameworks = [{
         "framework": f["framework"],
         "decision": _ROLE_TO_DECISION.get(f.get("role", "rejected"), "rejected"),
@@ -394,7 +394,7 @@ def _nm(c: dict) -> str:
     return str(c.get("name") or c.get("id"))
 
 
-def modeler(sl: dict[str, Any]) -> dict[str, Any]:
+def modeling_agent(sl: dict[str, Any]) -> dict[str, Any]:
     leaders = sl.get("leaders", [])
     size = int(sl.get("pool_size") or 1)
     picks = [c for c in leaders if c.get("engine_pick")][:size] or leaders[:1]
@@ -438,12 +438,12 @@ def modeler(sl: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def experiment(sl: dict[str, Any]) -> dict[str, Any]:
+def modeling_agent_search(sl: dict[str, Any]) -> dict[str, Any]:
     return {"stop": True, "rationale": "The deterministic agent does not propose experiments."}
 
 
 # --- backtest ----------------------------------------------------------------------------
-def outcomes_analyst(sl: dict[str, Any]) -> dict[str, Any]:
+def backtest_agent(sl: dict[str, Any]) -> dict[str, Any]:
     candidates = sl.get("candidates", [])
     required = sl.get("interpretability") == "required"
     eligible = [c for c in candidates if not (required and c.get("role") == "challenger")]
@@ -506,7 +506,7 @@ def outcomes_analyst(sl: dict[str, Any]) -> dict[str, Any]:
 
 
 # --- validate ----------------------------------------------------------------------------
-def validator(sl: dict[str, Any]) -> dict[str, Any]:
+def validation_agent(sl: dict[str, Any]) -> dict[str, Any]:
     verdict = sl.get("engine_verdict", "PASS")
     engine_findings = sl.get("engine_findings", [])
     rec = {"PASS": "approve", "WARN": "approve_with_conditions"}.get(verdict, "send_back")
@@ -525,7 +525,7 @@ def validator(sl: dict[str, Any]) -> dict[str, Any]:
 
 
 # --- comply ------------------------------------------------------------------------------
-def risk_analyst(sl: dict[str, Any]) -> dict[str, Any]:
+def compliance_agent(sl: dict[str, Any]) -> dict[str, Any]:
     steps = sl.get("outstanding_human_steps", [])
     sr = {k: v for k, v in sl.get("facts", {}).items() if k.startswith("comply.sr26_2.")}
     actions = [{"statement": s, "evidence": list(sr)[:1], "confidence": "high"} for s in steps[:4]]
@@ -542,7 +542,7 @@ def risk_analyst(sl: dict[str, Any]) -> dict[str, Any]:
 
 
 # --- document ----------------------------------------------------------------------------
-def writer(sl: dict[str, Any]) -> dict[str, Any]:
+def writing_agent(sl: dict[str, Any]) -> dict[str, Any]:
     f = sl.get("facts", {})
 
     def ph(key: str, fallback: str = "n/a") -> str:
@@ -630,17 +630,17 @@ def ask(sl: dict[str, Any]) -> dict[str, Any]:
 
 
 AGENTS = {
-    "intake_analyst": intake_analyst,
-    "data_analyst": data_analyst,
-    "data_scout": data_scout,
-    "data_linker": data_linker,
-    "design_lead": design_lead,
-    "modeler": modeler,
-    "experiment": experiment,
-    "outcomes_analyst": outcomes_analyst,
-    "validator": validator,
-    "risk_analyst": risk_analyst,
-    "writer": writer,
+    "intake_agent": intake_agent,
+    "data_agent": data_agent,
+    "data_agent_requests": data_agent_requests,
+    "data_agent_joins": data_agent_joins,
+    "design_agent": design_agent,
+    "modeling_agent": modeling_agent,
+    "modeling_agent_search": modeling_agent_search,
+    "backtest_agent": backtest_agent,
+    "validation_agent": validation_agent,
+    "compliance_agent": compliance_agent,
+    "writing_agent": writing_agent,
 }
 
 

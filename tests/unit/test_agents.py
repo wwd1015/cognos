@@ -10,9 +10,9 @@ import pytest
 from cognos.agents import checks, facts, heuristic, providers
 from cognos.agents.contracts import (
     CONTRACTS,
-    DataAnalystOutput,
-    ModelerOutput,
-    WriterOutput,
+    DataAgentOutput,
+    ModelingAgentOutput,
+    WritingAgentOutput,
 )
 from cognos.agents.runner import AgentRunError, AgentRunner, output_schema
 from cognos.engine import Engine
@@ -33,7 +33,7 @@ def test_render_replaces_placeholders_and_flags_bare_metrics():
 
 
 def test_default_check_rejects_unknown_facts_and_missing_challenge_answers():
-    out = DataAnalystOutput.model_validate({
+    out = DataAgentOutput.model_validate({
         "summary": "s", "column_decisions": [],
         "data_quality": [{"statement": "x", "evidence": ["explore.nope"]}]})
     sl = {"facts": {"explore.n_rows": 10}, "challenges": [{"id": "ch-1"}]}
@@ -45,9 +45,9 @@ def test_default_check_rejects_unknown_facts_and_missing_challenge_answers():
 def test_data_analyst_must_decide_every_suspect_and_never_drop_the_target():
     sl = {"columns": ["a", "b", "y"], "features": ["a", "b"], "leakage_suspects": ["b"],
           "project": {"target": "y"}}
-    out = DataAnalystOutput.model_validate({"summary": "s", "column_decisions": [
+    out = DataAgentOutput.model_validate({"summary": "s", "column_decisions": [
         {"column": "y", "decision": "exclude", "reason": "r"}]})
-    errs = checks.data_analyst(out, sl)
+    errs = checks.data_agent(out, sl)
     assert any("'b' has no keep/exclude" in e for e in errs)
     assert any("target" in e for e in errs)
 
@@ -59,42 +59,42 @@ def test_modeler_pools_from_the_leaders_and_respects_interpretability():
         {"id": "c3", "family": "probit", "role": "candidate", "features": ["b"]}]}
 
     def pool(*ids, **more):
-        return ModelerOutput.model_validate({"summary": "s", "pool": list(ids), "rationale": "r",
+        return ModelingAgentOutput.model_validate({"summary": "s", "pool": list(ids), "rationale": "r",
                                              **more})
-    assert "not in leaders" in checks.modeler(pool("c9"), sl)[0]
-    assert "at least one" in checks.modeler(pool(), sl)[0]
-    assert "challenger" in checks.modeler(pool("c2"), sl)[0]  # a pool of benchmarks only
-    assert "at most 2" in checks.modeler(pool("c1", "c2", "c3"), sl)[0]
-    assert "twice" in checks.modeler(pool("c1", "c1"), sl)[0]
+    assert "not in leaders" in checks.modeling_agent(pool("c9"), sl)[0]
+    assert "at least one" in checks.modeling_agent(pool(), sl)[0]
+    assert "challenger" in checks.modeling_agent(pool("c2"), sl)[0]  # a pool of benchmarks only
+    assert "at most 2" in checks.modeling_agent(pool("c1", "c2", "c3"), sl)[0]
+    assert "twice" in checks.modeling_agent(pool("c1", "c1"), sl)[0]
     signs = [{"feature": "z", "expected": "+", "observed": "+", "assessment": "consistent"}]
-    assert "not a factor of the pool" in checks.modeler(pool("c1", sign_checks=signs), sl)[0]
-    assert checks.modeler(pool("c1", "c2"), sl) == []  # a challenger may ride along
+    assert "not a factor of the pool" in checks.modeling_agent(pool("c1", sign_checks=signs), sl)[0]
+    assert checks.modeling_agent(pool("c1", "c2"), sl) == []  # a challenger may ride along
 
 
 def test_outcomes_analyst_names_a_champion_from_the_pool():
-    from cognos.agents.contracts import OutcomesAnalystOutput
+    from cognos.agents.contracts import BacktestAgentOutput
 
     sl = {"interpretability": "required", "candidates": [
         {"id": "c1", "family": "logit", "role": "candidate"},
         {"id": "c2", "family": "gradient_boosting", "role": "challenger"}]}
 
     def pick(cid):
-        return OutcomesAnalystOutput.model_validate({
+        return BacktestAgentOutput.model_validate({
             "summary": "s", "champion": cid, "champion_rationale": "r", "discrimination": "d",
             "calibration": "c", "stability": "s"})
-    assert "not in candidates" in checks.outcomes_analyst(pick("c9"), sl)[0]
-    assert "challenger" in checks.outcomes_analyst(pick("c2"), sl)[0]
-    assert checks.outcomes_analyst(pick("c1"), sl) == []
+    assert "not in candidates" in checks.backtest_agent(pick("c9"), sl)[0]
+    assert "challenger" in checks.backtest_agent(pick("c2"), sl)[0]
+    assert checks.backtest_agent(pick("c1"), sl) == []
 
 
 def test_writer_cannot_type_numbers_or_cite_unknown_facts():
     sections = [{"section": s, "markdown": "ok"} for s in
                 ("methodology_rationale", "alternatives_considered", "limitations",
                  "use_and_monitoring")]
-    out = WriterOutput.model_validate({"summary": "s", "sections": [
+    out = WritingAgentOutput.model_validate({"summary": "s", "sections": [
         {"section": "executive_summary", "markdown": "AUC 0.81 and {{fact:model.nope}}"},
         *sections]})
-    errs = checks.writer(out, {"facts": {"model.cv_mean": 0.81}})
+    errs = checks.writing_agent(out, {"facts": {"model.cv_mean": 0.81}})
     assert any("0.81" in e for e in errs)
     assert any("model.nope" in e for e in errs)
 
@@ -134,10 +134,10 @@ def test_modeler_never_sees_holdout_and_validator_never_sees_modeler_rationale(m
     for p in sorted((eng.run_dir / "agents").glob("*.input.json")):
         rec = json.loads(p.read_text(encoding="utf-8"))
         inputs[rec["agent"]] = rec["context"]
-    assert not [k for k in inputs["modeler"]["facts"] if k.startswith(("model.", "backtest."))]
-    assert "holdout" not in json.dumps(inputs["modeler"]).lower().replace("holdout_", "")
+    assert not [k for k in inputs["modeling_agent"]["facts"] if k.startswith(("model.", "backtest."))]
+    assert "holdout" not in json.dumps(inputs["modeling_agent"]).lower().replace("holdout_", "")
     modeler_rationale = eng.results()["model"].payload["recommendation"]["output"]["rationale"]
-    assert modeler_rationale not in json.dumps(inputs["validator"])
+    assert modeler_rationale not in json.dumps(inputs["validation_agent"])
 
 
 # --- runner ---------------------------------------------------------------------------------
@@ -166,13 +166,13 @@ def test_runner_retries_with_errors_then_succeeds(make_config, runs_dir):
 
     runner = AgentRunner(providers.get("heuristic"), eng.run_dir, backend=backend)
     ctx = eng.context()
-    out = runner.recommend(ctx, "modeler", _modeler_slice_data())
+    out = runner.recommend(ctx, "modeling_agent", _modeler_slice_data())
     assert out.pool == ["c1"]
     assert "previous answer was rejected" in seen_prompts[1] and "c7" in seen_prompts[1]
     audit = [json.loads(x) for x in (eng.run_dir / "agents" / "audit.jsonl")
              .read_text(encoding="utf-8").splitlines()]
     assert [a["status"] for a in audit] == ["invalid", "ok"]
-    assert len(list((eng.run_dir / "agents").glob("*modeler*.input.json"))) == 2
+    assert len(list((eng.run_dir / "agents").glob("*modeling_agent_a*.input.json"))) == 2
 
 
 def test_runner_gives_up_after_retries(make_config, runs_dir):
@@ -180,7 +180,7 @@ def test_runner_gives_up_after_retries(make_config, runs_dir):
     runner = AgentRunner(providers.get("heuristic"), eng.run_dir, max_retries=1,
                          backend=lambda **_: ({"summary": "s", "pool": ["zz"], "rationale": "r"}, {}))
     with pytest.raises(AgentRunError) as err:
-        runner.recommend(eng.context(), "modeler", _modeler_slice_data())
+        runner.recommend(eng.context(), "modeling_agent", _modeler_slice_data())
     assert "not in leaders" in str(err.value)
 
 
@@ -192,7 +192,7 @@ def test_budget_is_enforced_for_paid_providers(make_config, runs_dir):
     runner = AgentRunner(providers.get("anthropic"), eng.run_dir, budget_usd=5.0,
                          backend=lambda **_: ({}, {}))
     with pytest.raises(AgentRunError, match="budget"):
-        runner.recommend(eng.context(), "modeler", _modeler_slice_data())
+        runner.recommend(eng.context(), "modeling_agent", _modeler_slice_data())
 
 
 # --- providers ------------------------------------------------------------------------------

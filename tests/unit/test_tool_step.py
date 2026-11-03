@@ -137,25 +137,25 @@ def test_every_stage_agent_has_a_tool_step_and_the_heuristic_passes_its_checks(r
 
 def test_engine_rejects_requests_it_cannot_run():
     sl = _slice()
-    assert any("not a tool offered" in e for e in _checked("validator_tools", sl, [_req("nope")]))
-    assert any("no parameter" in e for e in _checked("validator_tools", sl, [_req(depth="3")]))
-    assert any("purpose" in e for e in _checked("validator_tools", sl, [_req(purpose=" ")]))
+    assert any("not a tool offered" in e for e in _checked("validation_agent_tools", sl, [_req("nope")]))
+    assert any("no parameter" in e for e in _checked("validation_agent_tools", sl, [_req(depth="3")]))
+    assert any("purpose" in e for e in _checked("validation_agent_tools", sl, [_req(purpose=" ")]))
     assert any("at most 2" in e for e in _checked(
-        "validator_tools", sl, [_req(bands="3"), _req(bands="4"), _req("other")]))
-    assert any("already" in e for e in _checked("validator_tools", sl, [_req(), _req()]))
+        "validation_agent_tools", sl, [_req(bands="3"), _req(bands="4"), _req("other")]))
+    assert any("already" in e for e in _checked("validation_agent_tools", sl, [_req(), _req()]))
     ran = _slice(tool_runs=[{"tool": "band_test", "params": {"bands": "5"}}])
-    assert any("already" in e for e in _checked("validator_tools", ran, [_req(bands="5")]))
-    assert _checked("validator_tools", ran, [_req(bands="10")]) == []
-    assert _checked("validator_tools", sl, [], done=True) == []  # asking for nothing is valid
+    assert any("already" in e for e in _checked("validation_agent_tools", ran, [_req(bands="5")]))
+    assert _checked("validation_agent_tools", ran, [_req(bands="10")]) == []
+    assert _checked("validation_agent_tools", sl, [], done=True) == []  # asking for nothing is valid
 
 
 def test_tool_results_follow_the_independence_scopes():
-    modeler = slices.fact_scope("modeler")
+    modeler = slices.fact_scope("modeling_agent")
     assert "tools.model." in modeler and "tools.explore." in modeler
     assert not any(p in modeler for p in ("model.", "backtest.", "tools.backtest.",
                                           "tools.validate.", "prior.", "tools.prior."))
-    assert slices.fact_scope("modeler_tools") == modeler
-    validator = slices.fact_scope("validator")
+    assert slices.fact_scope("modeling_agent_tools") == modeler
+    validator = slices.fact_scope("validation_agent")
     assert {"tools.model.", "tools.backtest.", "tools.validate."} <= set(validator)
     assert "tools.comply." not in validator
-    assert "tools.document." in slices.fact_scope("writer")
+    assert "tools.document." in slices.fact_scope("writing_agent")

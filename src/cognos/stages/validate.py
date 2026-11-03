@@ -267,7 +267,7 @@ class ValidateStage(Stage):
         # --- custom tests: tools registered for validation (built in or from a plugin) ------
         # Requested by the Validation agent, run by the engine. A failed check is a
         # finding like the rubric's (HIGH fails validation); a tool can never block.
-        tool_runs = ctx.consult_tools("validator", {
+        tool_runs = ctx.consult_tools("validation_agent", {
             "rubric": rubric,
             "engine_findings": [{"id": f.id, "severity": f.severity.value, "category": f.category,
                                  "message": f.message} for f in res.findings],
@@ -361,7 +361,7 @@ class ValidateStage(Stage):
                        "analysis_code": [{k: c[k] for k in ("id", "sha256", "ran", "reproduced",
                                                             "note")} for c in code_review]}
         diagnostics = model.get("diagnostics") or {}
-        out = ctx.recommend("validator", {
+        out = ctx.recommend("validation_agent", {
             "tool_runs": tool_runs,
             "tools_not_run": [{k: t[k] for k in ("name", "note")}
                               for t in ctx.tools_unavailable.get("validate", [])],
@@ -424,9 +424,9 @@ class ValidateStage(Stage):
         payload["routed_findings"] = routed
         payload["analysis_code"] = [{k: c[k] for k in ("id", "sha256", "ran", "reproduced", "note")}
                                     for c in code_review]
-        payload["validator"] = {"assessment": out.assessment, "recommendation": out.recommendation,
+        payload["validation_agent"] = {"assessment": out.assessment, "recommendation": out.recommendation,
                                 "conditions": out.conditions}
-        attach_recommendation(payload, ctx, "validator", out)
+        attach_recommendation(payload, ctx, "validation_agent", out)
 
         ref = ctx.save_json("stages/validate/validation.json", payload)
         res.add_artifact(ref)

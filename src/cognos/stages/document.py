@@ -887,8 +887,8 @@ class DocumentStage(Stage):
         challenge_log = [{"id": c.id, "source": c.source, "stage": c.target_stage,
                           "severity": c.severity, "message": c.message, "status": c.status,
                           "response": c.response} for c in (state.challenges if state else [])]
-        tool_runs = ctx.consult_tools("writer", {"sections_required": SECTIONS})
-        out = ctx.recommend("writer", {
+        tool_runs = ctx.consult_tools("writing_agent", {"sections_required": SECTIONS})
+        out = ctx.recommend("writing_agent", {
             "tool_runs": tool_runs,
             "sections_required": SECTIONS,
             "framework_choices": ip.get("framework_choices") or [],
@@ -902,7 +902,7 @@ class DocumentStage(Stage):
             "decisions": decisions,
             "challenge_log": challenge_log,
         })
-        facts = facts_mod.collect(ctx, prefixes=fact_scope("writer"))
+        facts = facts_mod.collect(ctx, prefixes=fact_scope("writing_agent"))
         titles = {"executive_summary": "Executive summary",
                   "methodology_rationale": "Methodology rationale",
                   "alternatives_considered": "Alternatives considered",
@@ -947,7 +947,7 @@ class DocumentStage(Stage):
                         description="Agent recommendations, human gate decisions, and challenges.",
                         tags=["governance", "audit"], body="\n".join(log)))
         payload: dict = {"narrative_sections": rendered}
-        attach_recommendation(payload, ctx, "writer", out)
+        attach_recommendation(payload, ctx, "writing_agent", out)
         return payload
 
     def _whitepaper(self, cfg, bundle: OKFBundle, names: list[str]) -> str:

@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 from typing import Any, NoReturn
 
+from ..agents.contracts import FRIENDLY
 from ..fsutil import atomic_write
 from .graph import LABELS, STAGES, STEPS
 from .state import PackageSeal, RunState, utcnow
@@ -236,7 +237,7 @@ def journal(state: RunState, results: dict[str, Any]) -> list[dict[str, str]]:
         rows.append({
             "at": getattr(res, "started_at", "") or "",
             "who": "agent",
-            "name": str(rec.get("agent") or stage),
+            "name": FRIENDLY.get(rec.get("agent") or "", str(rec.get("agent") or stage)),
             "what": summary or f"recommended at {stage}",
         })
     for decision in state.decisions:

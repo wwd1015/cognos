@@ -29,7 +29,7 @@ def test_demo_run_through_the_service(tmp_path):
             "agent_start", "agent_done"} <= kinds
     calls = service.audit(run_id, root)
     io = service.agent_io(run_id, calls[0]["call_id"], root)
-    assert io["input"]["agent"] == "intake_analyst" and "raw" in io["output"]
+    assert io["input"]["agent"] == "intake_agent" and "raw" in io["output"]
 
 
 def test_background_advance_reaches_the_next_gate(tmp_path):

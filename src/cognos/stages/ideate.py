@@ -414,8 +414,8 @@ class IdeateStage(Stage):
             return [f"transform {spec.name!r} rejected by the engine ({why}); fix or drop it"
                     for spec, why in rejected]
 
-        tool_runs = ctx.consult_tools("design_lead", {"data_structure": structure}, res=res)
-        out = ctx.recommend("design_lead", {
+        tool_runs = ctx.consult_tools("design_agent", {"data_structure": structure}, res=res)
+        out = ctx.recommend("design_agent", {
             "tool_runs": tool_runs,
             "data_structure": structure,
             "framework_assessment": [{k: f[k] for k in ("framework", "label", "applicable", "role",
@@ -516,7 +516,7 @@ class IdeateStage(Stage):
         }
         if incumbent:
             payload["incumbent"] = incumbent
-        attach_recommendation(payload, ctx, "design_lead", out)
+        attach_recommendation(payload, ctx, "design_agent", out)
         res.add_artifact(ctx.save_json("stages/ideate/hypotheses.json", payload))
         brief = self._design_brief_md(cfg, structure, frameworks, questions, hypotheses, notes,
                                       framework_choices)

@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .ids import LEGACY
+
 Confidence = Literal["low", "medium", "high"]
 Severity3 = Literal["low", "medium", "high"]
 
@@ -79,7 +81,7 @@ class ChangeItem(Contract):
         description="The earliest stage whose work this change alters")
 
 
-class IntakeAnalystOutput(AgentOutput):
+class IntakeAgentOutput(AgentOutput):
     restated_objective: str = Field(description="The business goal in your own words, in one or "
                                                 "two sentences the sponsor would agree with")
     clarity: Literal["clear", "needs_clarification", "unclear"]
@@ -110,7 +112,7 @@ class FeatureCandidate(Contract):
     evidence: list[str] = Field(default_factory=list)
 
 
-class DataAnalystOutput(AgentOutput):
+class DataAgentOutput(AgentOutput):
     target: str = Field(default="", description="The dependent variable: context.target when it "
                                                 "is fixed, else the column you recommend")
     target_rationale: str = Field(default="", description="Why this column is the outcome the "
@@ -137,7 +139,7 @@ class AnalysisRequest(Contract):
                                               "for what a script may use)")
 
 
-class DataScoutOutput(Contract):
+class DataRequestsOutput(Contract):
     target_column: str = Field(default="", description="Only when context.target is empty: the "
                                                        "column you take as the dependent variable")
     target_rationale: str = ""
@@ -168,7 +170,7 @@ class LeftOutTable(Contract):
     reason: str
 
 
-class DataLinkerOutput(Contract):
+class DataJoinsOutput(Contract):
     """The Data agent's join plan when a run has several sources."""
 
     base_table: str = Field(description="The table whose rows are the modelling observations")
@@ -242,7 +244,7 @@ class PlanChoice(Contract):
     rationale: str = Field(description="Why this plan fits the data and the intended use")
 
 
-class DesignLeadOutput(AgentOutput):
+class DesignAgentOutput(AgentOutput):
     frameworks: list[FrameworkChoice]
     slate: list[SlateItem]
     plan: PlanChoice | None = Field(
@@ -251,7 +253,7 @@ class DesignLeadOutput(AgentOutput):
     sponsor_questions: list[SponsorQuestion] = Field(default_factory=list)
 
 
-# --- model: modeler ---------------------------------------------------------------------------
+# --- model: Modeling agent ---------------------------------------------------------------------------
 class SignCheck(Contract):
     feature: str
     expected: Literal["+", "-", "none"]
@@ -259,7 +261,7 @@ class SignCheck(Contract):
     assessment: Literal["consistent", "wrong_sign", "no_prior", "not_applicable"]
 
 
-class ModelerOutput(AgentOutput):
+class ModelingAgentOutput(AgentOutput):
     pool: list[str] = Field(description="Ids from context.leaders: the candidates that go on "
                                         "to outcomes analysis, at most context.pool_size")
     rationale: str = Field(description="Why these, and what makes them different from each "
@@ -290,7 +292,7 @@ class AgentFinding(Contract):
     evidence: list[str] = Field(description="Ids from context.facts")
 
 
-class OutcomesAnalystOutput(AgentOutput):
+class BacktestAgentOutput(AgentOutput):
     champion: str = Field(description="The id of one candidate in context.candidates: the "
                                       "model you recommend on the outcomes evidence")
     champion_rationale: str = Field(
@@ -301,14 +303,14 @@ class OutcomesAnalystOutput(AgentOutput):
     findings: list[AgentFinding] = Field(default_factory=list)
 
 
-# --- validate: independent validator --------------------------------------------------------
+# --- validate: Validation agent --------------------------------------------------------
 class ValidatorFinding(AgentFinding):
     target_stage: Literal["explore", "ideate", "model", "none"] = Field(
         description="The stage whose work must change to resolve this finding")
     remedy: str
 
 
-class ValidatorOutput(AgentOutput):
+class ValidationAgentOutput(AgentOutput):
     assessment: str
     findings: list[ValidatorFinding] = Field(default_factory=list)
     recommendation: Literal["approve", "approve_with_conditions", "send_back"]
@@ -316,13 +318,13 @@ class ValidatorOutput(AgentOutput):
 
 
 # --- comply: Compliance agent -------------------------------------------------------------
-class RiskAnalystOutput(AgentOutput):
+class ComplianceAgentOutput(AgentOutput):
     readiness: Literal["ready", "ready_with_actions", "not_ready"]
     narrative: str
     priority_actions: list[Claim] = Field(default_factory=list)
 
 
-# --- document: technical writer -------------------------------------------------------------
+# --- document: Writing agent -------------------------------------------------------------
 SECTIONS = ["executive_summary", "methodology_rationale", "alternatives_considered",
             "limitations", "use_and_monitoring"]
 
@@ -333,7 +335,7 @@ class Section(Contract):
     markdown: str = Field(description="Prose; every number must be a {{fact:<id>}} placeholder")
 
 
-class WriterOutput(AgentOutput):
+class WritingAgentOutput(AgentOutput):
     sections: list[Section]
 
 
@@ -350,30 +352,30 @@ class AskAnswer(Contract):
 
 
 CONTRACTS: dict[str, type[Contract]] = {
-    "intake_analyst": IntakeAnalystOutput,
-    "data_analyst": DataAnalystOutput,
-    "data_scout": DataScoutOutput,
-    "data_linker": DataLinkerOutput,
-    "design_lead": DesignLeadOutput,
-    "modeler": ModelerOutput,
-    "experiment": ExperimentProposal,
-    "outcomes_analyst": OutcomesAnalystOutput,
-    "validator": ValidatorOutput,
-    "risk_analyst": RiskAnalystOutput,
-    "writer": WriterOutput,
+    "intake_agent": IntakeAgentOutput,
+    "data_agent": DataAgentOutput,
+    "data_agent_requests": DataRequestsOutput,
+    "data_agent_joins": DataJoinsOutput,
+    "design_agent": DesignAgentOutput,
+    "modeling_agent": ModelingAgentOutput,
+    "modeling_agent_search": ExperimentProposal,
+    "backtest_agent": BacktestAgentOutput,
+    "validation_agent": ValidationAgentOutput,
+    "compliance_agent": ComplianceAgentOutput,
+    "writing_agent": WritingAgentOutput,
 }
 
-# Which stage each agent serves (the experiment proposer is the modeler's guided-search role).
-AGENT_STAGE = {"intake_analyst": "intake", "data_analyst": "explore", "data_scout": "explore", "data_linker": "explore", "design_lead": "ideate", "modeler": "model",
-               "experiment": "model", "outcomes_analyst": "backtest", "validator": "validate",
-               "risk_analyst": "comply", "writer": "document"}
-STAGE_AGENT = {"intake": "intake_analyst", "explore": "data_analyst", "ideate": "design_lead", "model": "modeler",
-               "backtest": "outcomes_analyst", "validate": "validator", "comply": "risk_analyst",
-               "document": "writer"}
+# Which stage each agent serves (modeling_agent_search is the Modeling agent's guided-search step).
+AGENT_STAGE = {"intake_agent": "intake", "data_agent": "explore", "data_agent_requests": "explore", "data_agent_joins": "explore", "design_agent": "ideate", "modeling_agent": "model",
+               "modeling_agent_search": "model", "backtest_agent": "backtest", "validation_agent": "validate",
+               "compliance_agent": "comply", "writing_agent": "document"}
+STAGE_AGENT = {"intake": "intake_agent", "explore": "data_agent", "ideate": "design_agent", "model": "modeling_agent",
+               "backtest": "backtest_agent", "validate": "validation_agent", "comply": "compliance_agent",
+               "document": "writing_agent"}
 # Agents that get a tool-request step (``<agent>_tools``) before they recommend. The Data
-# Analyst has its own (``data_scout``), which may also write code.
-TOOL_USERS = ("intake_analyst", "design_lead", "modeler", "outcomes_analyst", "validator",
-              "risk_analyst", "writer")
+# Analyst has its own (``data_agent_requests``), which may also write code.
+TOOL_USERS = ("intake_agent", "design_agent", "modeling_agent", "backtest_agent", "validation_agent",
+              "compliance_agent", "writing_agent")
 
 
 def tool_step_of(agent: str) -> str | None:
@@ -382,12 +384,12 @@ def tool_step_of(agent: str) -> str | None:
     return base if base in TOOL_USERS else None
 
 
-FRIENDLY = {"intake_analyst": "Intake agent", "data_analyst": "Data agent",
-            "data_scout": "Data agent (analysis requests)",
-            "data_linker": "Data agent (joining sources)", "design_lead": "Design agent", "modeler": "Modeling agent",
-            "experiment": "Modeling agent (guided search)", "outcomes_analyst": "Backtest agent",
-            "validator": "Validation agent", "risk_analyst": "Compliance agent",
-            "writer": "Writing agent"}
+FRIENDLY = {"intake_agent": "Intake agent", "data_agent": "Data agent",
+            "data_agent_requests": "Data agent (analysis requests)",
+            "data_agent_joins": "Data agent (joining sources)", "design_agent": "Design agent", "modeling_agent": "Modeling agent",
+            "modeling_agent_search": "Modeling agent (guided search)", "backtest_agent": "Backtest agent",
+            "validation_agent": "Validation agent", "compliance_agent": "Compliance agent",
+            "writing_agent": "Writing agent"}
 
 for _agent in TOOL_USERS:
     CONTRACTS[f"{_agent}_tools"] = ToolRequestOutput
@@ -401,6 +403,14 @@ for _agent in ASKABLE:
     CONTRACTS[f"{_agent}_ask"] = AskAnswer
     AGENT_STAGE[f"{_agent}_ask"] = AGENT_STAGE[_agent]
     FRIENDLY[f"{_agent}_ask"] = f"{FRIENDLY[_agent]} (questions)"
+
+
+# Pages and files written before the ids matched the names still read: an old id shows the
+# agent's current name (agents/ids.py).
+for _old, _new in LEGACY.items():
+    for _suffix in ("", "_tools", "_ask"):
+        if _new + _suffix in FRIENDLY:
+            FRIENDLY.setdefault(_old + _suffix, FRIENDLY[_new + _suffix])
 
 
 def ask_step_of(agent: str) -> str | None:

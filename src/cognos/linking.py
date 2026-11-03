@@ -15,7 +15,7 @@ two files, ...). Everything here is mechanical:
   the plan says so (counted and reported; nothing is dropped silently).
 
 Who decides the plan is not decided here: the profile may state it (``data.join``), the Data
-Analyst proposes it otherwise (``data_linker``), and the developer confirms or changes it at
+Analyst proposes it otherwise (``data_agent_joins``), and the developer confirms or changes it at
 the data gate (``overrides.join``). See stages/explore.py.
 """
 

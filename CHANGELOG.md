@@ -51,6 +51,9 @@ versioning is SemVer.
   the choice is kept in the browser.
 
 ### Changed
+- Agent ids match their names (ADR-0023): `data_agent`, `validation_agent`, `writing_agent`,
+  ... instead of `data_analyst`, `validator`, `writer`. The run record names agents by their
+  display name. Older runs, audit files and replay recordings keep their ids and still read.
 - "Provide the data" lists only the chosen tables, one line each, and finds the rest by
   searching (about 330 px instead of 2,000 for the default catalog). Data the catalog does
   not have is added under a fold.

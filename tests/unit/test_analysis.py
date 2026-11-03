@@ -302,13 +302,13 @@ def _scout_slice(**over) -> dict:
 
 def _scout(sl: dict, **raw) -> list[str]:
     base = {"target_column": "", "requests": [], "done": True}
-    out = CONTRACTS["data_scout"].model_validate({**base, **raw})
-    return checks.run_checks("data_scout", out, sl)
+    out = CONTRACTS["data_agent_requests"].model_validate({**base, **raw})
+    return checks.run_checks("data_agent_requests", out, sl)
 
 
 def test_heuristic_scout_asks_for_the_standard_visuals_and_settles_an_open_target():
     sl = _scout_slice()
-    out = heuristic.data_scout(sl)
+    out = heuristic.data_agent_requests(sl)
     assert _scout(sl, **out) == [] and not out["done"]  # the survey first, then a drill-down
     survey = [r["tool"] for r in out["requests"]]
     assert survey == ["data_overview", "target_distribution", "time_trend", "predictive_power",
@@ -316,14 +316,14 @@ def test_heuristic_scout_asks_for_the_standard_visuals_and_settles_an_open_targe
     assert not any(r["code"] for r in out["requests"])  # the offline analyst never writes code
     again = _scout_slice(task="classification", columns_with_missing=["leverage"],
                          analyses=[{"id": f"a{i}", "tool": t} for i, t in enumerate(survey, 1)])
-    deeper = heuristic.data_scout(again)
+    deeper = heuristic.data_agent_requests(again)
     assert _scout(again, **deeper) == [] and deeper["done"]
     assert [r["tool"] for r in deeper["requests"]] == [
         "target_relationship", "woe_bins", "collinearity", "missing_vs_target"]
-    assert heuristic.data_scout(_scout_slice(
+    assert heuristic.data_agent_requests(_scout_slice(
         analyses=[{"id": "a1", "tool": "target_relationship"}]))["requests"] == []
     open_ = _scout_slice(target="", target_candidates=[{"column": "default", "why": "binary"}])
-    first = heuristic.data_scout(open_)
+    first = heuristic.data_agent_requests(open_)
     assert _scout(open_, **first) == [] and first["target_column"] == "default" and not first["done"]
 
 

@@ -18,17 +18,17 @@ from .contracts import (
     Claim,
     ColumnDecision,
     Contract,
-    DataAnalystOutput,
-    DataLinkerOutput,
-    DataScoutOutput,
-    DesignLeadOutput,
+    DataAgentOutput,
+    DataJoinsOutput,
+    DataRequestsOutput,
+    DesignAgentOutput,
     ExperimentProposal,
     FeatureCandidate,
-    IntakeAnalystOutput,
-    ModelerOutput,
+    IntakeAgentOutput,
+    ModelingAgentOutput,
     ToolRequestOutput,
-    ValidatorOutput,
-    WriterOutput,
+    ValidationAgentOutput,
+    WritingAgentOutput,
 )
 
 Check = Callable[[Contract, dict[str, Any]], list[str]]
@@ -71,7 +71,7 @@ def default(out: Contract, sl: dict[str, Any]) -> list[str]:
     return errs
 
 
-def intake_analyst(out: IntakeAnalystOutput, sl: dict[str, Any]) -> list[str]:
+def intake_agent(out: IntakeAgentOutput, sl: dict[str, Any]) -> list[str]:
     """The brief is grounded and complete: a 'stated' position quotes the documents the agent was
     shown, every undecided required field is asked about, and nothing decided is asked again."""
     from ..engagement import squash
@@ -142,7 +142,7 @@ def intake_analyst(out: IntakeAnalystOutput, sl: dict[str, Any]) -> list[str]:
     return errs
 
 
-def data_analyst(out: DataAnalystOutput, sl: dict[str, Any]) -> list[str]:
+def data_agent(out: DataAgentOutput, sl: dict[str, Any]) -> list[str]:
     errs: list[str] = []
     columns = set(sl.get("columns", []))
     decided = [d.column for d in out.column_decisions]
@@ -176,7 +176,7 @@ def data_analyst(out: DataAnalystOutput, sl: dict[str, Any]) -> list[str]:
     return errs
 
 
-def data_linker(out: DataLinkerOutput, sl: dict[str, Any]) -> list[str]:
+def data_agent_joins(out: DataJoinsOutput, sl: dict[str, Any]) -> list[str]:
     """A join plan the engine can run: a base table, links the engine measured, in an order
     that reaches the base, with a rule wherever a key matches several rows."""
     from .. import linking
@@ -208,7 +208,7 @@ def data_linker(out: DataLinkerOutput, sl: dict[str, Any]) -> list[str]:
     return errs
 
 
-def data_scout(out: DataScoutOutput, sl: dict[str, Any]) -> list[str]:
+def data_agent_requests(out: DataRequestsOutput, sl: dict[str, Any]) -> list[str]:
     """Analysis requests the engine can run: a known tool with known parameters and columns, or
     a script that passes the restricted-code check."""
     from ..analysis import sandbox
@@ -256,7 +256,7 @@ def data_scout(out: DataScoutOutput, sl: dict[str, Any]) -> list[str]:
     return errs[:12]
 
 
-def design_lead(out: DesignLeadOutput, sl: dict[str, Any]) -> list[str]:
+def design_agent(out: DesignAgentOutput, sl: dict[str, Any]) -> list[str]:
     errs: list[str] = []
     assessed = {f["framework"]: f for f in sl.get("framework_assessment", [])}
     chosen = [f.framework for f in out.frameworks]
@@ -300,7 +300,7 @@ def design_lead(out: DesignLeadOutput, sl: dict[str, Any]) -> list[str]:
     return errs
 
 
-def modeler(out: ModelerOutput, sl: dict[str, Any]) -> list[str]:
+def modeling_agent(out: ModelingAgentOutput, sl: dict[str, Any]) -> list[str]:
     errs: list[str] = []
     leaders = {c["id"]: c for c in sl.get("leaders", [])}
     if not out.pool:
@@ -325,7 +325,7 @@ def modeler(out: ModelerOutput, sl: dict[str, Any]) -> list[str]:
     return errs
 
 
-def experiment(out: ExperimentProposal, sl: dict[str, Any]) -> list[str]:
+def modeling_agent_search(out: ExperimentProposal, sl: dict[str, Any]) -> list[str]:
     if out.stop:
         return []
     allowed = set(sl.get("allowed_families", []))
@@ -334,7 +334,7 @@ def experiment(out: ExperimentProposal, sl: dict[str, Any]) -> list[str]:
     return []
 
 
-def outcomes_analyst(out, sl: dict[str, Any]) -> list[str]:
+def backtest_agent(out, sl: dict[str, Any]) -> list[str]:
     pool = {c["id"]: c for c in sl.get("candidates", [])}
     pick = pool.get(out.champion)
     if pick is None:
@@ -345,7 +345,7 @@ def outcomes_analyst(out, sl: dict[str, Any]) -> list[str]:
     return []
 
 
-def validator(out: ValidatorOutput, sl: dict[str, Any]) -> list[str]:
+def validation_agent(out: ValidationAgentOutput, sl: dict[str, Any]) -> list[str]:
     ids = [f.id for f in out.findings]
     errs = [f"duplicate finding id {i!r}" for i in {i for i in ids if ids.count(i) > 1}]
     for f in out.findings:
@@ -354,7 +354,7 @@ def validator(out: ValidatorOutput, sl: dict[str, Any]) -> list[str]:
     return errs
 
 
-def writer(out: WriterOutput, sl: dict[str, Any]) -> list[str]:
+def writing_agent(out: WritingAgentOutput, sl: dict[str, Any]) -> list[str]:
     errs: list[str] = []
     got = [s.section for s in out.sections]
     for name in SECTIONS:
@@ -425,16 +425,16 @@ def tool_request(out: ToolRequestOutput, sl: dict[str, Any]) -> list[str]:
 
 
 CHECKS: dict[str, Check] = {
-    "intake_analyst": intake_analyst,
-    "data_analyst": data_analyst,
-    "data_scout": data_scout,
-    "data_linker": data_linker,
-    "design_lead": design_lead,
-    "modeler": modeler,
-    "outcomes_analyst": outcomes_analyst,
-    "experiment": experiment,
-    "validator": validator,
-    "writer": writer,
+    "intake_agent": intake_agent,
+    "data_agent": data_agent,
+    "data_agent_requests": data_agent_requests,
+    "data_agent_joins": data_agent_joins,
+    "design_agent": design_agent,
+    "modeling_agent": modeling_agent,
+    "backtest_agent": backtest_agent,
+    "modeling_agent_search": modeling_agent_search,
+    "validation_agent": validation_agent,
+    "writing_agent": writing_agent,
 }
 
 

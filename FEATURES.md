@@ -190,8 +190,8 @@
 - **Validate-and-retry**: a contract violation or failed engine check (unknown fact id, champion
   outside the leaders or the pool, unfittable family, excluded target, unanswered challenge, typed metric
   in prose…) is fed back and retried; exhausted retries fail the step visibly.
-- **Challenges**: human send-backs and high-severity validator findings reach the responsible agent,
-  which must answer each; validator findings loop back automatically (bounded,
+- **Challenges**: human send-backs and high-severity Validation agent findings reach the responsible agent,
+  which must answer each; its findings loop back automatically (bounded,
   `workflow.auto_challenge_loops`).
 - **Independence**: the Modeling agent's slice has no model/backtest/holdout facts (it chooses before the
   holdout is scored); the Validation agent's slice never contains the Modeling agent's rationale.
@@ -232,7 +232,7 @@
   ringed), coefficients by significance, calibration by score band, validation rubric, PD term
   structure; the screen, selection paths, candidate pool, sign checks, statistical battery, framework assessment, slate, SR 26-2 /
   NIST tables; rendered narrative, decision log, model card and white paper.
-- **Out-of-date steps say why**: the decision, answer or validator loop that invalidated a stage is
+- **Out-of-date steps say why**: the decision, answer or Validation agent loop that invalidated a stage is
   shown on the rail and the panel, and once it has re-run, what the re-run changed (champion,
   verdict, metrics, findings) against the result it replaced.
 - **Compare runs**: pick two runs (or "Compare with previous run") to see what was decided

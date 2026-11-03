@@ -106,8 +106,8 @@ A profile that leaves the dependent variable to be proposed by the Data agent fr
 intent and confirmed by the model developer at the data gate.
 
 **Challenge**:
-Pushback routed to a stage's agent — a human send-back or a high-severity validator finding. The
-agent must answer every open challenge (`responses_to_challenges`); validator challenges loop back
+Pushback routed to a stage's agent — a human send-back or a high-severity Validation agent finding. The
+agent must answer every open challenge (`responses_to_challenges`); Validation agent challenges loop back
 automatically a bounded number of times.
 
 **Gap** (open question):

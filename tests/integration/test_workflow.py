@@ -41,9 +41,9 @@ def test_autonomous_run_completes_with_auto_decisions(make_config, runs_dir):
     assert state.package is None  # express preparation is not a signature
     # every agent call is audited; the white paper carries a decision log
     audit = (eng.run_dir / "agents" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
-    assert {json.loads(x)["agent"] for x in audit} >= {"data_analyst", "design_lead", "modeler",
-                                                         "outcomes_analyst", "validator",
-                                                         "risk_analyst", "writer"}
+    assert {json.loads(x)["agent"] for x in audit} >= {"data_agent", "design_agent", "modeling_agent",
+                                                         "backtest_agent", "validation_agent",
+                                                         "compliance_agent", "writing_agent"}
     assert (eng.run_dir / "docs" / "decisions.md").exists()
     narrative = (eng.run_dir / "docs" / "narrative.md").read_text(encoding="utf-8")
     assert "{{fact:" not in narrative  # every placeholder rendered by the engine
@@ -290,10 +290,10 @@ def test_validator_findings_loop_back_automatically(make_config, runs_dir, repla
                "target_stage": "model", "remedy": "Refit without the collinear ratio."}
     rec = {"summary": "Send back.", "assessment": "Sign issue.", "findings": [finding],
            "recommendation": "send_back"}
-    cfg = make_config("classification", agents={"replay_dir": replay_dir({"validator": rec})})
+    cfg = make_config("classification", agents={"replay_dir": replay_dir({"validation_agent": rec})})
     state = Engine(cfg, runs_root=runs_dir).run_until_idle()
-    assert state.loops["validator"] == 2  # bounded (workflow.auto_challenge_loops)
-    val = [c for c in state.challenges if c.source == "validator"]
+    assert state.loops["validation_agent"] == 2  # bounded (workflow.auto_challenge_loops)
+    val = [c for c in state.challenges if c.source == "validation_agent"]
     assert len(val) == 2 and all(c.status == "answered" for c in val)
     assert state.status == "completed"
 
@@ -303,14 +303,14 @@ def test_invalid_agent_fails_step_visibly_and_retry_recovers(make_config, runs_d
            "calibration": "x", "stability": "x",
            "findings": [{"id": "f", "severity": "low", "category": "c", "message": "m",
                          "evidence": ["backtest.not_a_fact"]}]}
-    d = replay_dir({"outcomes_analyst": bad})
+    d = replay_dir({"backtest_agent": bad})
     cfg = make_config("classification", agents={"replay_dir": d, "max_retries": 1})
     eng = Engine(cfg, runs_root=runs_dir)
     state = eng.run_until_idle()
     assert state.status == "failed" and state.status_of("backtest") == "failed"
     assert "backtest.not_a_fact" in state.steps["backtest"].message
     good = dict(bad, findings=[], champion=eng.results()["model"].payload["pool_ids"][0])
-    (eng.run_dir.parent.parent / "recorded" / "outcomes_analyst.json").write_text(
+    (eng.run_dir.parent.parent / "recorded" / "backtest_agent.json").write_text(
         json.dumps(good), encoding="utf-8")
     eng.retry("backtest")
     assert eng.run_until_idle().status == "completed"
@@ -337,6 +337,6 @@ def test_sponsor_answer_reaches_the_agent_and_changes_its_recommendation(leak_co
     assert "leaky" in eng.results()["explore"].payload["recommended_exclusions"]
     # the re-run's context carried the answer (call ids share a second, so don't rely on name order)
     inputs = [p.read_text(encoding="utf-8")
-              for p in (eng.run_dir / "agents").glob("*data_analyst*.input.json")]
+              for p in (eng.run_dir / "agents").glob("*data_agent_a*.input.json")]
     assert len(inputs) == 2
     assert sum("recorded after the outcome" in t for t in inputs) == 1

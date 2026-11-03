@@ -128,14 +128,14 @@ def test_agent_written_code_is_kept_reviewed_validated_and_delivered(make_config
                        "params": {"column": "leverage"}},
                       {"purpose": "broken on purpose", "code": "emit_value('x', df['nope'].sum())"})
     cfg = make_config("commercial", agents={"replay_dir": replay_dir(
-        {"data_scout": [rejected, recorded]})})
+        {"data_agent_requests": [rejected, recorded]})})
     eng = Engine(cfg, runs_root=runs_dir, mode="interactive")
     eng.run_until_idle()
     eng.submit_gate("gate_intent", "accept", reason="as written")
     state = eng.run_until_idle()
 
     # the engine refused the first answer (it reached for the OS) and the agent was asked again
-    audit = [a for a in service.audit(eng.run_id, runs_dir) if a["agent"] == "data_scout"]
+    audit = [a for a in service.audit(eng.run_id, runs_dir) if a["agent"] == "data_agent_requests"]
     assert [a["status"] for a in audit] == ["invalid", "ok"] and "import of 'os'" in audit[0]["error"]
 
     res = eng.results()["explore"]
@@ -151,7 +151,7 @@ def test_agent_written_code_is_kept_reviewed_validated_and_delivered(make_config
     assert result["tables"][0]["columns"] == ["sector", "mean", "size"]
     # what it found is citable, like any engine number
     from cognos.agents import slices
-    facts = slices.build(eng.context(), "design_lead", {})["facts"]
+    facts = slices.build(eng.context(), "design_agent", {})["facts"]
     assert facts["explore.analysis.a1.spread"] == round(a1["summary"]["spread"], 4)
     assert facts["explore.n_code_analyses"] == 1
 
@@ -169,7 +169,7 @@ def test_agent_written_code_is_kept_reviewed_validated_and_delivered(make_config
     # validation re-ran the script from the saved file and got the recorded result
     review = {c["id"]: c for c in eng.results()["validate"].payload["analysis_code"]}
     assert review["a1"]["reproduced"] and review["a1"]["ran"] and not review["a3"]["ran"]
-    sent = json.loads(next((eng.run_dir / "agents").glob("*validator*.input.json")).read_text(
+    sent = json.loads(next((eng.run_dir / "agents").glob("*validation_agent_a*.input.json")).read_text(
         encoding="utf-8"))["context"]["analysis_code"]
     assert "high.groupby" in sent[0]["code"] and sent[0]["reproduced"] is True
 
@@ -195,7 +195,7 @@ def test_agent_written_code_is_kept_reviewed_validated_and_delivered(make_config
 def test_code_can_be_switched_off_and_a_failed_request_round_does_not_fail_the_stage(
         make_config, runs_dir, replay_dir):
     cfg = make_config("commercial", analysis={"allow_code": False}, agents={
-        "max_retries": 1, "replay_dir": replay_dir({"data_scout": _scout({"code": SCRIPT})})})
+        "max_retries": 1, "replay_dir": replay_dir({"data_agent_requests": _scout({"code": SCRIPT})})})
     eng = Engine(cfg, runs_root=runs_dir)
     assert eng.run_until_idle().status == "completed"
     res = eng.results()["explore"]
@@ -208,7 +208,7 @@ def test_plugin_tool_is_requested_by_name_and_shown_with_its_origin(make_config,
                                                                     replay_dir, monkeypatch):
     monkeypatch.syspath_prepend(EXAMPLES)
     cfg = make_config("commercial", plugins=["credit_tools"], agents={"replay_dir": replay_dir({
-        "data_scout": _scout({"purpose": "How well does leverage separate defaults?",
+        "data_agent_requests": _scout({"purpose": "How well does leverage separate defaults?",
                               "tool": "information_value", "params": {"column": "leverage"}})})})
     eng = Engine(cfg, runs_root=runs_dir, mode="interactive")
     eng.run_until_idle()

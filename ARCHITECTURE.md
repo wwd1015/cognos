@@ -104,7 +104,7 @@ loop:
   ready = steps whose dependencies are done/skipped and that are pending or stale
   stage step : result = stage.run_guarded(ctx); record; sync gaps + challenge responses
                ERROR -> failed (retry later) · BLOCK at validate/review -> blocked (halts)
-               validate: high validator findings -> challenges -> target stage stale (≤ N loops)
+               validate: high Validation agent findings -> challenges -> target stage stale (≤ N loops)
   gate step  : interactive -> awaiting (the human decides) · autonomous -> auto-accept
   decision   : handler updates overrides / challenges / gaps -> changed steps + descendants stale
 ```
@@ -161,12 +161,12 @@ inputs, not how it scored.
 ```
 data.source ─▶ datasources.load ─▶ data/dataset.parquet + data/source.json (provenance, hash)
                                           │
-explore:  data_scout (agent) ──requests──▶ analysis.run.execute ──▶ stages/explore/analyses/
+explore:  data_agent_requests (agent) ──requests──▶ analysis.run.execute ──▶ stages/explore/analyses/
             ▲   tool name + params  ─▶ plugins.registry().tools[name].fn(df, …)     <id>.json
             │   or Python           ─▶ sandbox.validate ─▶ subprocess (restricted)   <id>.py
             └────── summaries ◀───────────────────────────────┘        (≤ analysis.rounds)
-          data_analyst (agent): target, feature candidates, keep/exclude  ─▶ gate_data
-validate: analysis.run.reproduce(script) ─▶ finding if it does not reproduce; code ─▶ validator
+          data_agent (agent): target, feature candidates, keep/exclude  ─▶ gate_data
+validate: analysis.run.reproduce(script) ─▶ finding if it does not reproduce; code ─▶ Validation agent
 document: docs/analysis.md (source, target, analyses, every script in full)
 ```
 
@@ -186,7 +186,7 @@ document: docs/analysis.md (source, target, analyses, every script in full)
 (candidate links between two tables, measured), `resolve` (a base table and chosen links into
 ordered join steps, or what is wrong), `apply` (left joins that never add a row). Explore calls
 `linked_dataset`, which takes the plan from `overrides.join`, the profile's `data.join`, or the
-Data agent (`data_linker`), and writes the usual `data/dataset.parquet`.
+Data agent (`data_agent_joins`), and writes the usual `data/dataset.parquet`.
 
 `engine/state.py::RunLock` makes the run lock hold across processes (a lock file under
 `<runs>/_locks/`); `identity.py` names the person on every human action.
@@ -295,7 +295,7 @@ enforces a per-call time limit and a per-run spend budget. Provider resolution:
   (every attempt's prompt, context slice and raw output) with the human decisions in `state.json`
   and the decision log, and are replayable with the `replay` provider.
 - **Agents recommend, humans decide** ([ADR-0010](docs/adr/0010-agents-recommend-humans-decide.md)):
-  seven review gates; one pushback mechanism (challenges) for human send-backs and validator findings;
+  seven review gates; one pushback mechanism (challenges) for human send-backs and Validation agent findings;
   sponsor questions as tracked gaps; only the engine BLOCKs, and a BLOCK is never acceptable.
 - **A plan, a pool, a champion chosen on outcomes**
   ([ADR-0016](docs/adr/0016-development-plan-candidate-pool-champion-on-outcomes.md)): how the

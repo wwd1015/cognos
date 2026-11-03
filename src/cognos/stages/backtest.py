@@ -263,11 +263,11 @@ class BacktestStage(Stage):
         sev = {"low": Severity.LOW, "medium": Severity.MEDIUM, "high": Severity.HIGH}
         for f in out.findings:
             res.add_finding(Finding(id=f"oa-{f.id}", severity=sev[f.severity], category=f.category,
-                                    message=f.message, location="outcomes_analyst",
+                                    message=f.message, location="backtest_agent",
                                     suggestion="Evidence: " + ", ".join(f.evidence)))
         payload["interpretation"] = {"discrimination": out.discrimination,
                                      "calibration": out.calibration, "stability": out.stability}
-        attach_recommendation(payload, ctx, "outcomes_analyst", out)
+        attach_recommendation(payload, ctx, "backtest_agent", out)
         res.add_artifact(ctx.save_json("stages/backtest/backtest.json", payload))
         res.payload = payload
         res.metrics = {"oos_metric": oos_metric, "used_impact": impact_res.used_impact,
@@ -303,7 +303,7 @@ class BacktestStage(Stage):
                  comparison: dict, sealed: bool, stage_model: dict, lead_scorer: str | None):
         """Ask the Backtest agent — or reuse its last answer when only the developer's choice
         of champion changed (the same pool, compared on the same sample)."""
-        from ..agents.contracts import OutcomesAnalystOutput
+        from ..agents.contracts import BacktestAgentOutput
 
         prev = ctx.get("backtest")
         prev_rec = ((prev.payload or {}).get("recommendation") or {}) if prev else {}
@@ -312,19 +312,19 @@ class BacktestStage(Stage):
         if (ctx.overrides.champion and same_pool and prev_rec.get("output")
                 and not ctx.challenges_for("backtest")):
             try:
-                out = OutcomesAnalystOutput.model_validate(prev_rec["output"])
-                ctx.runner.last["outcomes_analyst"] = {
+                out = BacktestAgentOutput.model_validate(prev_rec["output"])
+                ctx.runner.last["backtest_agent"] = {
                     **{k: v for k, v in prev_rec.items() if k != "output"}, "reused": True}
                 return out
             except Exception:  # recorded under an older contract: ask again
                 pass
-        tool_runs = ctx.consult_tools("outcomes_analyst", {
+        tool_runs = ctx.consult_tools("backtest_agent", {
             "evaluation_sample": comparison["sample"],
             "candidates": [c["id"] for c in candidates],
             "engine_findings": [f.line() for f in res.findings]}, res=res,
             # a tool that needs a model is given the pool's leading candidate on this sample
             inputs={"model": lead_scorer} if lead_scorer else None)
-        return ctx.recommend("outcomes_analyst", {
+        return ctx.recommend("backtest_agent", {
             "tool_runs": tool_runs,
             "evaluation_sample": comparison["sample"],
             "metric": comparison["metric"],

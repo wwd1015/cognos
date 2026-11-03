@@ -67,7 +67,7 @@ def test_every_stage_panel_renders_for_a_completed_run(completed_run, scheme):
     assert _serialize(ui.run_header(st)) and _serialize(ui.rail(st, "model"))
     assert _serialize(ui.activity(completed_run))
     assert "Decision log" in _serialize(ui.questions_tab(st))
-    assert "data_analyst" in _serialize(ui.audit_tab(completed_run))
+    assert "data_agent" in _serialize(ui.audit_tab(completed_run))
 
 
 def test_interactive_gate_forms_round_trip(root):
@@ -259,7 +259,7 @@ def test_own_data_form_builds_a_source_and_explore_shows_charts_and_code(root, t
                  "emit_chart('bar', by.index, {'rate': by.values}, title='Rate by sector')")}]}
     recorded = tmp_path / "recorded"
     recorded.mkdir()
-    (recorded / "data_scout.json").write_text(json.dumps(scout), encoding="utf-8")
+    (recorded / "data_agent_requests.json").write_text(json.dumps(scout), encoding="utf-8")
     monkeypatch.setenv("COGNOS_PROVIDER", "replay")
     cfg = service.load_config({**cfg.model_dump(mode="json"),
                                "agents": {"replay_dir": str(recorded)}})

@@ -123,10 +123,10 @@ class IntakeStage(Stage):
         res.payload = {"kind": kind, "documents": inventory, "brief": [], "questions": [],
                        "prior": prior}
         tool_runs = ctx.consult_tools(
-            "intake_analyst", {"kind": kind, "documents": inventory}, res=res,
+            "intake_agent", {"kind": kind, "documents": inventory}, res=res,
             inputs={"documents": [{k: d[k] for k in ("name", "role", "text")}
                                   for d in docs if d["readable"]]})
-        out = ctx.recommend("intake_analyst", {
+        out = ctx.recommend("intake_agent", {
             "tool_runs": tool_runs,
             "kind": kind,
             "fields": [{"field": f.id, "label": f.label, "asks": f.hint, "required": f.required,
@@ -213,7 +213,7 @@ class IntakeStage(Stage):
             "compliance_from_intent": compliance_from_intent,
             "update": update, "prior": prior, "documents": inventory,
         }
-        attach_recommendation(payload, ctx, "intake_analyst", out)
+        attach_recommendation(payload, ctx, "intake_agent", out)
         res.add_artifact(ctx.save_json("stages/intake/brief.json", payload))
         res.add_artifact(ctx.save_text("stages/intake/brief.md", self._brief_md(cfg, payload),
                                        kind="markdown"))

@@ -257,7 +257,7 @@ class ModelStage(Stage):
 
             explored = [f.name for f in library if f.transform == "level" and not f.lag]
             gr = guided_search(
-                lambda c: ctx.recommend("experiment", c).model_dump(),
+                lambda c: ctx.recommend("modeling_agent_search", c).model_dump(),
                 train_df[explored], y_train, columns=explored, champion=lead.candidate,
                 champion_cv=lead.cv, metric=rank_metric, direction=metric_direction(rank_metric),
                 is_classification=is_clf,
@@ -435,7 +435,7 @@ class ModelStage(Stage):
             "n_test": int(len(test_df)),
             "n_holdout": int(len(holdout_df)),
         }
-        attach_recommendation(payload, ctx, "modeler", rec)
+        attach_recommendation(payload, ctx, "modeling_agent", rec)
         if migration_info is not None:
             res.add_artifact(ctx.save_json("stages/model/migration.json", migration_info))
         res.add_artifact(ctx.save_json("stages/model/summary.json", payload))
@@ -759,7 +759,7 @@ class ModelStage(Stage):
     def _modeler_choice(ctx: RunContext, leaders: list[dict], plan: dict, n_tried: int,
                         fingerprint: str):
         """Ask the Modeling agent — or reuse its last answer when only the developer's pool changed."""
-        from ..agents.contracts import ModelerOutput
+        from ..agents.contracts import ModelingAgentOutput
 
         prev = ctx.get("model")
         prev_rec = (prev.payload.get("recommendation") or {}) if prev else {}
@@ -767,8 +767,8 @@ class ModelStage(Stage):
                 and prev.payload.get("search_fingerprint") == fingerprint
                 and prev_rec.get("output") and not ctx.challenges_for("model")):
             try:
-                out = ModelerOutput.model_validate(prev_rec["output"])
-                ctx.runner.last["modeler"] = {**{k: v for k, v in prev_rec.items() if k != "output"},
+                out = ModelingAgentOutput.model_validate(prev_rec["output"])
+                ctx.runner.last["modeling_agent"] = {**{k: v for k, v in prev_rec.items() if k != "output"},
                                               "reused": True}
                 return out
             except Exception:  # a recommendation recorded under an older contract: ask again
@@ -777,8 +777,8 @@ class ModelStage(Stage):
         brief = [{k: a[k] for k in ("id", "label", "family", "n_features", "score")}
                  for a in leaders]
         # Tools at this stage are given the development sample only.
-        tool_runs = ctx.consult_tools("modeler", {"rank_by": ev["rank_by"], "leaders": brief})
-        return ctx.recommend("modeler", {
+        tool_runs = ctx.consult_tools("modeling_agent", {"rank_by": ev["rank_by"], "leaders": brief})
+        return ctx.recommend("modeling_agent", {
             "tool_runs": tool_runs,
             "rank_by": ev["rank_by"],
             "pool_size": ev["pool_size"],

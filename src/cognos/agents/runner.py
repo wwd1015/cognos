@@ -21,43 +21,44 @@ from pydantic import ValidationError
 from ..engine import events
 from . import checks, heuristic, providers, slices
 from .contracts import AGENT_STAGE, CONTRACTS, FRIENDLY, Contract, ask_step_of, tool_step_of
+from .ids import legacy_names
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
 MIN_ATTEMPT_S = 20.0  # don't start a retry with less time than this left
 
 TASKS = {
-    "intake_analyst": "Read the business intent document (and, for a model update, the existing "
+    "intake_agent": "Read the business intent document (and, for a model update, the existing "
                       "model's artifacts and the update request). Fill the engagement brief, judge "
                       "whether the goal is clear enough to start, and write the interview "
                       "questions the sponsor must answer where it is not.",
-    "data_analyst": "Review the data profile and the analyses you requested, against the business "
+    "data_agent": "Review the data profile and the analyses you requested, against the business "
                     "intent. Confirm the dependent variable, name the features worth considering "
                     "and why, decide keep or exclude for every leakage suspect and any other "
                     "column that should not be a model input, note data-quality issues, and list "
                     "questions the model sponsor must answer.",
-    "data_scout": "Before you recommend anything, ask for the analyses you need. If no target is "
+    "data_agent_requests": "Before you recommend anything, ask for the analyses you need. If no target is "
                   "fixed, name the dependent variable the business intent describes. Request up "
                   "to context.max_requests analyses: a tool from context.tools, or Python when "
                   "no tool fits. Set done=true when you need no further round.",
-    "data_linker": "The run has several data sources. From context.tables and context.links "
+    "data_agent_joins": "The run has several data sources. From context.tables and context.links "
                    "(every link the engine measured), choose the base table whose rows are the "
                    "modelling observations and the links that join the other tables to it. Say "
                    "how to keep one row per observation where a key matches several rows, why "
                    "any table is left out, and what the developer should check.",
-    "design_lead": "Design the model: decide the role of every econometric framework, rank a slate of "
+    "design_agent": "Design the model: decide the role of every econometric framework, rank a slate of "
                    "engine-fittable specifications, optionally propose feature transforms, and list "
                    "design questions the sponsor must answer.",
-    "modeler": "Choose the champion from the admissible set and check its coefficient signs against "
+    "modeling_agent": "Choose the champion from the admissible set and check its coefficient signs against "
                "economic priors. You choose on cross-validation evidence only.",
-    "experiment": "Propose ONE next experiment that could beat the current champion on the frozen "
+    "modeling_agent_search": "Propose ONE next experiment that could beat the current champion on the frozen "
                   "metric, or set stop=true if none is worth running.",
-    "outcomes_analyst": "Interpret the outcomes analysis (discrimination, calibration, stability) of "
+    "backtest_agent": "Interpret the outcomes analysis (discrimination, calibration, stability) of "
                         "the champion on the evaluation sample and raise findings.",
-    "validator": "Independently challenge this model (SR 26-2 effective challenge). Raise findings the "
+    "validation_agent": "Independently challenge this model (SR 26-2 effective challenge). Raise findings the "
                  "decision-maker must see, each with evidence, the stage that must change, and a remedy.",
-    "risk_analyst": "Assess model-risk readiness from the evidence and list the priority actions "
+    "compliance_agent": "Assess model-risk readiness from the evidence and list the priority actions "
                     "humans must take before use.",
-    "writer": "Write the narrative sections of the white paper. Use {{fact:<id>}} placeholders for "
+    "writing_agent": "Write the narrative sections of the white paper. Use {{fact:<id>}} placeholders for "
               "every number.",
 }
 
@@ -95,8 +96,8 @@ def system_prompt(agent: str) -> str:
     # guided search is the modeler's role; requesting analyses is the Data agent's; a
     # tool-request step is its role agent's, with the shared guidance on using tools
     role = tool_step_of(agent) or ask_step_of(agent)
-    name = role or {"experiment": "modeler", "data_scout": "data_analyst",
-                    "data_linker": "data_analyst"}.get(agent, agent)
+    name = role or {"modeling_agent_search": "modeling_agent", "data_agent_requests": "data_agent",
+                    "data_agent_joins": "data_agent"}.get(agent, agent)
     body = (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
     if role:
         step = "_tools.md" if tool_step_of(agent) else "_ask.md"
@@ -264,6 +265,9 @@ class AgentRunner:
         if not self.replay_dir:
             raise AgentRunError("provider 'replay' needs agents.replay_dir")
         path = Path(self.replay_dir) / f"{agent}.json"
+        for old in legacy_names(agent):  # recorded before the ids matched the names
+            if not path.exists():
+                path = Path(self.replay_dir) / f"{old}.json"
         if not path.exists():
             return None
         data = json.loads(path.read_text(encoding="utf-8"))

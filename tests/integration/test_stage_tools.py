@@ -88,8 +88,8 @@ def test_example_plugin_runs_custom_tests_at_design_outcomes_and_validation(
     state = eng.run_until_idle()
     assert state.status == "completed"
     results = eng.results()
-    assert set(_tool_calls(eng)) == {"design_lead_tools", "outcomes_analyst_tools",
-                                     "validator_tools"}
+    assert set(_tool_calls(eng)) == {"design_agent_tools", "backtest_agent_tools",
+                                     "validation_agent_tools"}
     assert [r["tool"] for r in results["ideate"].payload["tool_runs"]] == ["events_per_feature"]
     run = results["validate"].payload["tool_runs"][0]
     assert (run["id"], run["tool"], run["status"], run["origin"], run["version"]) == (
@@ -98,7 +98,7 @@ def test_example_plugin_runs_custom_tests_at_design_outcomes_and_validation(
     kept = json.loads((eng.run_dir / run["artifact"]).read_text(encoding="utf-8"))
     assert kept["charts"][0]["kind"] == "bar" and kept["tables"][0]["columns"][0] == "band"
     # the validator was handed the result as facts it can cite
-    call = next(p for p in sorted((eng.run_dir / "agents").glob("*_validator_a1_*.input.json")))
+    call = next(p for p in sorted((eng.run_dir / "agents").glob("*_validation_agent_a1_*.input.json")))
     ctx = json.loads(call.read_text(encoding="utf-8"))["context"]
     assert ctx["tool_runs"][0]["tool"] == "score_band_monotonicity"
     assert "tools.validate.t1.reversals" in ctx["facts"]
@@ -130,7 +130,7 @@ def test_each_stage_tool_gets_only_what_it_declared(make_config, runs_dir, plugi
     assert "train" in env and not {"holdout", "score", "model_path"} & set(env)
     assert seen["train_only"]["results"] == ["explore", "ideate", "intake"]
     assert seen["train_only"]["prior"] is False
-    call = next(p for p in sorted((eng.run_dir / "agents").glob("*_modeler_a1_*.input.json")))
+    call = next(p for p in sorted((eng.run_dir / "agents").glob("*_modeling_agent_a1_*.input.json")))
     facts = json.loads(call.read_text(encoding="utf-8"))["context"]["facts"]
     assert "tools.model.t1.n_rows" in facts
     assert not [k for k in facts if k.startswith(("model.", "backtest.", "tools.validate."))]
@@ -163,11 +163,11 @@ def test_a_live_agents_requests_are_checked_retried_and_run_with_parameters(
 
     cfg = make_config("classification", plugins=[plugin], agents={
         "max_retries": 1, "replay_dir": replay_dir({
-            "validator_tools": [ask("score_everything"), ask("hard_test", done=False, limit="3"),
+            "validation_agent_tools": [ask("score_everything"), ask("hard_test", done=False, limit="3"),
                                 {"requests": [], "done": True, "notes": "enough"}]})})
     eng = Engine(cfg, runs_root=runs_dir)
     eng.run_until_idle()
-    audit = [a for a in service.audit(eng.run_id, runs_dir) if a["agent"] == "validator_tools"]
+    audit = [a for a in service.audit(eng.run_id, runs_dir) if a["agent"] == "validation_agent_tools"]
     assert [a["status"] for a in audit] == ["invalid", "ok", "ok"]
     assert "not a tool offered" in audit[0]["error"]
     runs = eng.results()["validate"].payload["tool_runs"]

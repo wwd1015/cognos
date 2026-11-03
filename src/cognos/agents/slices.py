@@ -4,12 +4,12 @@ A slice = project brief (with the accepted engagement brief) + the stage's evide
 agent's independence scope + the sponsor's answers to open questions + the open ``challenges``
 routed to its stage. Scope rules:
 
-- The **modeler** never sees model/backtest/validate facts: it chooses the champion blind to the
+- The **Modeling agent** never sees model/backtest/validate facts: it chooses the champion blind to the
   sealed holdout (frozen substrate) and to any stale result of a previous model run.
 - ``prior.`` facts (what an earlier COGNOS run recorded about the model being updated, its holdout
-  result included) reach only the agents that read results: Backtest agent, validator, model-risk
-  analyst and writer. The Design agent and the modeler learn the incumbent's family, not its scores.
-- The **validator** sees engine artifacts and metrics, never the modeler's rationale (SR 26-2
+  result included) reach only the agents that read results: Backtest agent, Validation agent,
+  Compliance agent and Writing agent. The Design agent and the Modeling agent learn the incumbent's family, not its scores.
+- The **Validation agent** sees engine artifacts and metrics, never the Modeling agent's rationale (SR 26-2
   independence): it re-derives risk from evidence, not from the developer's story.
 """
 
@@ -23,17 +23,17 @@ from .contracts import AGENT_STAGE, ask_step_of, role_of, tool_step_of
 UPSTREAM = ("intake.", "prior.", "explore.", "ideate.", "model.", "backtest.", "validate.",
             "comply.")
 FACT_SCOPE: dict[str, tuple[str, ...]] = {
-    "intake_analyst": ("intake.",),
-    "data_analyst": ("intake.", "explore."),
-    "data_scout": ("intake.", "explore."),
-    "data_linker": ("intake.",),
-    "design_lead": ("intake.", "explore.", "ideate."),
-    "modeler": ("intake.", "explore.", "ideate."),
-    "experiment": ("intake.", "explore.", "ideate."),
-    "outcomes_analyst": ("intake.", "prior.", "explore.", "ideate.", "model.", "backtest."),
-    "validator": ("intake.", "prior.", "explore.", "ideate.", "model.", "backtest.", "validate."),
-    "risk_analyst": UPSTREAM,
-    "writer": UPSTREAM,
+    "intake_agent": ("intake.",),
+    "data_agent": ("intake.", "explore."),
+    "data_agent_requests": ("intake.", "explore."),
+    "data_agent_joins": ("intake.",),
+    "design_agent": ("intake.", "explore.", "ideate."),
+    "modeling_agent": ("intake.", "explore.", "ideate."),
+    "modeling_agent_search": ("intake.", "explore.", "ideate."),
+    "backtest_agent": ("intake.", "prior.", "explore.", "ideate.", "model.", "backtest."),
+    "validation_agent": ("intake.", "prior.", "explore.", "ideate.", "model.", "backtest.", "validate."),
+    "compliance_agent": UPSTREAM,
+    "writing_agent": UPSTREAM,
 }
 
 
@@ -73,7 +73,7 @@ def project_brief(ctx) -> dict[str, Any]:
 def fact_scope(agent: str) -> tuple[str, ...]:
     """The fact prefixes ``agent`` may see. A tool-request step has its role agent's scope. Tool
     results (``tools.<stage>.``) follow the stage they came from, plus the agent's own stage:
-    the modeler sees what its own tools found, never ``model.`` results or the holdout. A
+    the Modeling agent sees what its own tools found, never ``model.`` results or the holdout. A
     question step (``<agent>_ask``) has its role agent's scope too: the page cannot widen it."""
     role = role_of(agent)
     scope = FACT_SCOPE[role]
@@ -84,14 +84,14 @@ def fact_scope(agent: str) -> tuple[str, ...]:
 
 def build(ctx, agent: str, data: dict[str, Any], fresh: dict | None = None) -> dict[str, Any]:
     stage = AGENT_STAGE[agent]
-    challenges = [] if agent in ("experiment", "data_scout", "data_linker") or tool_step_of(agent) \
+    challenges = [] if agent in ("modeling_agent_search", "data_agent_requests", "data_agent_joins") or tool_step_of(agent) \
         or ask_step_of(agent) else [
         {"id": c.id, "source": c.source, "severity": c.severity, "message": c.message,
          "evidence": c.evidence, "remedy": c.remedy}
         for c in ctx.challenges_for(stage)
     ]
     project = project_brief(ctx)
-    if role_of(agent) != "intake_analyst":  # the Intake agent writes the brief; it is not handed its own
+    if role_of(agent) != "intake_agent":  # the Intake agent writes the brief; it is not handed its own
         project["engagement"] = engagement_brief(ctx)
     return {
         "agent": agent,

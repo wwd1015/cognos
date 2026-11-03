@@ -182,7 +182,7 @@ gains a **model change record** with the existing model beside the update. The e
 scores reach only the agents that read results; the Modeling agent still chooses blind.
 
 Any decision can be revised later; the engine marks everything downstream stale and re-runs it.
-Send-backs and high-severity validator findings reach the stage's agent as **challenges** it must
+Send-backs and high-severity Validation agent findings reach the stage's agent as **challenges** it must
 answer. Unanswered design points (use case, horizon, default definition, segment) are **tracked
 questions**, never silent assumptions.
 
@@ -329,9 +329,9 @@ are chosen. Use a real network share, not a syncing folder
 - **Agent-written code is on the record.** The analyst's scripts run restricted, are kept with
   their hash, are read by a person at the data gate, and are re-run by validation.
 - **No LLM math.** Every recorded number comes from the engine; agents cite facts by id and the
-  writer's prose is rendered from placeholders.
+  Writing agent's prose is rendered from placeholders.
 - **Frozen substrate.** Metric definitions and the sealed holdout are not agent-editable; the
-  modeler chooses before the holdout is scored, and every holdout evaluation is counted.
+  Modeling agent chooses before the holdout is scored, and every holdout evaluation is counted.
 - **Alternatives are on the record.** A decision can be tried another way in a trial run. It
   cannot reach the holdout, its looks at the test sample count for the model, and its line
   survives deletion.

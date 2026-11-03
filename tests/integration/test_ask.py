@@ -31,11 +31,11 @@ def test_the_page_agent_answers_from_the_record_and_the_run_is_unchanged(at_data
     before = service.state(run_id, root).model_dump_json()
     turn = service.ask(run_id, "explore", "How many rows and columns does the dataset have?",
                        root=root, by="alan")
-    assert turn["agent"] == "data_analyst" and turn["by"] == "alan"
+    assert turn["agent"] == "data_agent" and turn["by"] == "alan"
     assert "{{fact:" not in turn["answer"] and turn["cites"]
     assert all(c["id"].startswith(("intake.", "explore.", "tools.")) for c in turn["cites"])
     assert service.state(run_id, root).model_dump_json() == before  # asking decides nothing
-    calls = [a for a in service.audit(run_id, root) if a["agent"] == "data_analyst_ask"]
+    calls = [a for a in service.audit(run_id, root) if a["agent"] == "data_agent_ask"]
     assert calls and calls[-1]["call_id"] == turn["call_id"] and calls[-1]["status"] == "ok"
     service.ask(run_id, "explore", "and the target?", root=root, by="sam")
     assert [t["by"] for t in service.ask_thread(run_id, "explore", root)] == ["alan", "sam"]
@@ -65,21 +65,21 @@ def test_a_question_step_keeps_its_agents_walls(agent):
 
 def test_the_page_never_hands_one_agent_anothers_recommendation():
     class Res:
-        payload = {"recommendation": {"agent": "modeler", "output": {"rationale": "mine"}}}
+        payload = {"recommendation": {"agent": "modeling_agent", "output": {"rationale": "mine"}}}
 
     class Ctx:
         def get(self, stage):
             return Res()
 
-    assert ask_mod._page(Ctx(), "model", "done", "modeler")["recommendation"] == {"rationale": "mine"}
-    assert ask_mod._page(Ctx(), "model", "done", "validator")["recommendation"] is None
+    assert ask_mod._page(Ctx(), "model", "done", "modeling_agent")["recommendation"] == {"rationale": "mine"}
+    assert ask_mod._page(Ctx(), "model", "done", "validation_agent")["recommendation"] is None
 
 
 def test_answers_type_no_numbers_and_cite_only_known_facts():
     sl = {"facts": {"explore.n_rows": 600}}
 
     def errs(**kw):
-        return checks.run_checks("data_analyst_ask", AskAnswer(**{"answer": "ok", **kw}), sl)
+        return checks.run_checks("data_agent_ask", AskAnswer(**{"answer": "ok", **kw}), sl)
 
     assert errs(answer="There are {{fact:explore.n_rows}} rows.", cites=["explore.n_rows"]) == []
     assert any("directly" in e for e in errs(answer="The AUC is 0.78."))
@@ -95,13 +95,13 @@ def test_the_window_shows_examples_then_the_thread_and_offers_a_send_back_only_a
     def text(parts):
         return str(parts)
 
-    empty = text(ask_ui.thread([], "data_analyst", "explore", gate_open=True))
+    empty = text(ask_ui.thread([], "data_agent", "explore", gate_open=True))
     assert "ask-example" in empty and "Why is a column excluded?" in empty
     turn = {"question": "Why is dpd out?", "answer": "It is recorded after default.", "by": "alan",
             "at": "2026-11-02T10:15:00Z", "cites": [{"id": "explore.n_rows", "value": 600}],
             "suggested_challenge": "Exclude days_past_due."}
-    open_ = text(ask_ui.thread([turn], "data_analyst", "explore", gate_open=True))
+    open_ = text(ask_ui.thread([turn], "data_agent", "explore", gate_open=True))
     assert "DATA AGENT" in open_ and "explore.n_rows = 600" in open_ and "ask-use" in open_
-    closed = text(ask_ui.thread([turn], "data_analyst", "explore", gate_open=False))
+    closed = text(ask_ui.thread([turn], "data_agent", "explore", gate_open=False))
     assert "ask-use" not in closed and "not open" in closed
-    assert ask_ui.heading("validator", "validate")[0] == "Validation agent"
+    assert ask_ui.heading("validation_agent", "validate")[0] == "Validation agent"

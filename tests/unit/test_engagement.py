@@ -140,13 +140,13 @@ def _slice(kind: str, values: dict, decided: dict | None = None, **extra) -> dic
 
 
 def _checked(sl: dict, **changes) -> list[str]:
-    raw = {**heuristic.intake_analyst(sl), **changes}
-    return checks.run_checks("intake_analyst", CONTRACTS["intake_analyst"].model_validate(raw), sl)
+    raw = {**heuristic.intake_agent(sl), **changes}
+    return checks.run_checks("intake_agent", CONTRACTS["intake_agent"].model_validate(raw), sl)
 
 
 def test_heuristic_intake_passes_the_checks_and_asks_only_what_is_open():
     sl = _slice("new", {"objective": FILLED["objective"], "use_case": FILLED["use_case"]})
-    out = heuristic.intake_analyst(sl)
+    out = heuristic.intake_agent(sl)
     assert _checked(sl) == []
     assert {q["field"] for q in out["interview"] if q["blocking"]} == {
         "segment", "default_definition", "horizon"}
@@ -154,7 +154,7 @@ def test_heuristic_intake_passes_the_checks_and_asks_only_what_is_open():
     # the profile (or an earlier answer) already decides a field: it is not asked again
     sl = _slice("new", {"objective": FILLED["objective"]},
                 decided={"use_case": "x", "segment": "x", "default_definition": "x", "horizon": "x"})
-    out = heuristic.intake_analyst(sl)
+    out = heuristic.intake_agent(sl)
     assert _checked(sl) == [] and out["clarity"] == "clear"
     assert [q["field"] for q in out["interview"]] == ["success_criteria"]
 
@@ -162,19 +162,19 @@ def test_heuristic_intake_passes_the_checks_and_asks_only_what_is_open():
 def test_heuristic_update_scopes_the_request_and_names_the_incumbent():
     sl = _slice("update", UPDATE, prior_model={"likely_family": "logit", "family_mentions": [],
                                                "documents": []})
-    out = heuristic.intake_analyst(sl)
+    out = heuristic.intake_agent(sl)
     assert _checked(sl) == []
     assert [c["type"] for c in out["change_items"]] == ["data_refresh", "recalibration"]
     assert out["update_scope"] == "re_estimate" and out["incumbent_family"] == "logit"
     deep = _slice("update", {**UPDATE, "requested_changes": "- Redevelop on a hazard framework"},
                   prior_model={"likely_family": "tobit", "documents": []})
-    out = heuristic.intake_analyst(deep)
+    out = heuristic.intake_agent(deep)
     assert out["update_scope"] == "redevelop" and out["incumbent_family"] == ""
 
 
 def test_engine_rejects_an_ungrounded_or_incomplete_brief():
     sl = _slice("new", FILLED)
-    good = heuristic.intake_analyst(sl)
+    good = heuristic.intake_agent(sl)
 
     def with_entry(field, **kw):
         return [{**e, **kw} if e["field"] == field else e for e in good["brief"]]

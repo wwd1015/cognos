@@ -179,10 +179,10 @@ def test_the_sealed_holdout_is_scored_once_after_the_choice_and_a_revised_choice
     assert backtest["sealed_holdout"] and backtest["scored_rows"] == 480
     assert eng.state.status_of("validate") == "pending"  # nothing has opened the holdout yet
     ctx = eng.context()
-    for agent in ("modeler", "outcomes_analyst"):  # nobody who chooses can cite it
+    for agent in ("modeling_agent", "backtest_agent"):  # nobody who chooses can cite it
         facts = slices.build(ctx, agent, {})["facts"]
         assert not [k for k in facts if k.startswith("validate.") or "holdout_metric" in k]
-    assert not [k for k in slices.build(ctx, "modeler", {})["facts"] if k.startswith("backtest.")]
+    assert not [k for k in slices.build(ctx, "modeling_agent", {})["facts"] if k.startswith("backtest.")]
 
     eng.submit_gate("gate_champion", "accept", reason="agreed")
     eng.run_until_idle()
@@ -263,12 +263,12 @@ def test_an_agents_plan_is_checked_against_what_the_data_allow(make_config, runs
     good = {"test": "random", "validation": "kfold", "sealed_holdout": False,
             "methods": ["best_subset"], "criterion": "bic", "rationale": "small, linear, explainable"}
     bad = {**good, "validation": "rolling_origin"}
-    cfg = make_config("regression", agents={"replay_dir": replay_dir({"design_lead": [lead(bad),
+    cfg = make_config("regression", agents={"replay_dir": replay_dir({"design_agent": [lead(bad),
                                                                                     lead(good)]})})
     orch = Orchestrator(cfg, runs_root=runs_dir)
     orch.run(["explore", "ideate", "model"])
     audit = [json.loads(x) for x in (orch.ctx.agents_dir / "audit.jsonl").read_text(
-        encoding="utf-8").splitlines() if '"design_lead"' in x]
+        encoding="utf-8").splitlines() if '"design_agent"' in x]
     assert [a["status"] for a in audit] == ["invalid", "ok"]
     assert "does not fit this data" in audit[0]["error"]
     plan = orch.ctx.require("ideate").payload["plan"]

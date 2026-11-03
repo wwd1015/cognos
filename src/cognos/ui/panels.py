@@ -203,7 +203,7 @@ def stage_challenges(stage: str, state: RunState) -> Any:
                    table(["Id", "From", "Sent to", "Status", "Challenge / response"],
                          challenge_rows(mine)),
                    description="Work sent back to this stage's agent, by a person at a gate or "
-                               "by the independent validator. The agent must answer each one.")
+                               "by the Validation agent. The agent must answer each one.")
 
 
 # --- gate block -----------------------------------------------------------------------------
@@ -1651,7 +1651,7 @@ def backtest_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
 # --- validate -----------------------------------------------------------------------------
 def validate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
     p = res.payload or {}
-    v = p.get("validator") or {}
+    v = p.get("validation_agent") or p.get("validator") or {}  # "validator": before ADR-0023
     verdict = res.verdict.value
     banner = dmc.Alert(
         "Confirmed target leakage: the model is invalid as built. Send the work back — a BLOCK "
@@ -1667,7 +1667,7 @@ def validate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
         dmc.List([dmc.ListItem(c) for c in v.get("conditions", [])], size="sm")
         if v.get("conditions") else None,
     ], gap="xs") if v else None
-    loops = state.loops.get("validator", 0)
+    loops = state.loops.get("validation_agent", 0)
     routed = p.get("routed_findings") or []
     gate = gate_block("gate_validation", state, res, seat=seat,
                       proposal=(f"Verdict {verdict}: the Validation agent recommends "

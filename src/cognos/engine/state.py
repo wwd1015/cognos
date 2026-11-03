@@ -1,6 +1,6 @@
 """Run state: the durable record of where a run is and what humans and agents decided.
 
-``runs/<id>/state.json`` holds step statuses, gate decisions, challenges (send-backs and validator
+``runs/<id>/state.json`` holds step statuses, gate decisions, challenges (send-backs and Validation agent
 findings routed to a stage's agent), information gaps (sponsor questions), the human overrides that
 shape the effective config, and loop counters. Every read-modify-write happens under the run's lock
 and re-loads from disk first, so background step threads and UI callbacks never clobber each other.
@@ -19,8 +19,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ..agents.ids import canonical
 from ..fsutil import atomic_write
 from .graph import DEPS, INVALIDATABLE, SATISFIED, STEPS, descendants
 
@@ -78,10 +79,15 @@ class PackageSeal(BaseModel):
 
 
 class Challenge(BaseModel):
-    """Pushback routed to a stage's agent: a human send-back or a validator finding."""
+    """Pushback routed to a stage's agent: a human send-back or a Validation agent finding."""
 
     id: str = Field(default_factory=lambda: short_id("ch"))
-    source: Literal["human", "validator"] = "human"
+    source: Literal["human", "validation_agent"] = "human"
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def _old_id(cls, v: Any) -> Any:
+        return canonical(v) if isinstance(v, str) else v  # recorded before ADR-0023
     target_stage: str
     severity: Literal["low", "medium", "high"] = "high"
     message: str
@@ -181,6 +187,16 @@ class RunState(BaseModel):
     lineage: Lineage | None = None  # set once the model has a trial run (trials.py)
     loops: dict[str, int] = Field(default_factory=dict)
     spend_usd: float = 0.0
+
+    @field_validator("loops", mode="before")
+    @classmethod
+    def _old_loop_ids(cls, v: Any) -> Any:
+        if not isinstance(v, dict):
+            return v
+        out: dict[str, int] = {}
+        for k, n in v.items():  # counts recorded under an old agent id (ADR-0023)
+            out[canonical(k)] = out.get(canonical(k), 0) + int(n)
+        return out
 
     @model_validator(mode="after")
     def _steps_added_later(self) -> RunState:

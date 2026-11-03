@@ -50,3 +50,6 @@ whether a person or an agent had done something.
 - A thread is advice a developer read, not a decision; the run record does not list it. A
   reviewer who wants to know what the developer was told reads the thread or the agent calls.
 - Recorded runs and older documents keep the old titles where they were written.
+
+*Later:* ADR-0023 renamed the ids to match the names; the point above about keeping them is
+superseded.

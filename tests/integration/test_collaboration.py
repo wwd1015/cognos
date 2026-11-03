@@ -85,6 +85,9 @@ def test_decisions_and_answers_carry_the_person(tmp_path, monkeypatch):
     record = [r["name"] for r in __import__("cognos.engine.process", fromlist=["journal"]).journal(
         st, service.results(run_id, root)) if r["who"] == "person"]
     assert record == ["maria (developer)"]
+    agents = [r["name"] for r in __import__("cognos.engine.process", fromlist=["journal"]).journal(
+        st, service.results(run_id, root)) if r["who"] == "agent"]
+    assert agents and all(n.endswith("agent") for n in agents)  # named for their work
 
 
 def test_a_stuck_step_is_taken_over_only_when_asked(tmp_path, monkeypatch):

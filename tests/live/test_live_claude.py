@@ -76,7 +76,7 @@ def test_interactive_run_with_live_claude_agents(tmp_path, monkeypatch):
     assert state.status == "approved", (state.status, state.halted_reason)
     audit = service.audit(run_id, root)
     assert {a["agent"] for a in audit if a["status"] == "ok"} >= {
-        "intake_analyst", "data_analyst", "design_lead", "modeler", "outcomes_analyst", "validator", "risk_analyst",
-        "writer"}
+        "intake_agent", "data_agent", "design_agent", "modeling_agent", "backtest_agent", "validation_agent", "compliance_agent",
+        "writing_agent"}
     narrative = (root / run_id / "docs" / "narrative.md").read_text(encoding="utf-8")
     assert "{{fact:" not in narrative

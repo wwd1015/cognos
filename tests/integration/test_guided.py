@@ -34,7 +34,7 @@ def test_guided_search_keeps_verified_transform(tmp_path, runs_dir, replay_dir):
                 "transforms": [{"name": "x1_sq", "expr": "np.square(x1)",
                                 "rationale": "quadratic signal"}],
                 "rationale": "quadratic signal"}
-    cfg = _quad_config(tmp_path, replay_dir({"experiment": [proposal, {"stop": True}]}))
+    cfg = _quad_config(tmp_path, replay_dir({"modeling_agent_search": [proposal, {"stop": True}]}))
     orch = Orchestrator(cfg, runs_root=runs_dir)
     orch.run()
     mp = orch.ctx.champion()  # no outcomes analysis in this run: the pool's first member
@@ -47,7 +47,7 @@ def test_guided_search_keeps_verified_transform(tmp_path, runs_dir, replay_dir):
     assert mp["pool"][0]["id"] == mp["champion_id"] and mp["pool"][0]["methods"] == ["guided"]
     # Every agent call is audited with its raw input/output (ADR-0003).
     audit = (orch.ctx.agents_dir / "audit.jsonl").read_text(encoding="utf-8")
-    assert '"agent": "experiment"' in audit
+    assert '"agent": "modeling_agent_search"' in audit
     # The deployed scorer re-applies the transform target-hidden on RAW base features.
     load_scorer.cache_clear()
     bundle = load_scorer(mp["scorer_path"])
@@ -75,7 +75,7 @@ def test_guided_rejects_unsafe_proposal(tmp_path, runs_dir, replay_dir):
         "metric": {"name": "rmse"},
         "search": {"max_candidates": 6, "cv_folds": 3, "guided": True, "guided_rounds": 2},
         "stages": {"enabled": ["explore", "ideate", "model"]},
-        "agents": {"replay_dir": replay_dir({"experiment": {
+        "agents": {"replay_dir": replay_dir({"modeling_agent_search": {
             "stop": False, "family": "ols",
             "transforms": [{"name": "leak", "expr": "target * 2", "rationale": "x"}]}})},
     })

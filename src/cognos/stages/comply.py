@@ -248,10 +248,10 @@ class ComplyStage(Stage):
         }
         # --- the Compliance agent's reading (non-gating, like the report) ----------
         res.payload = payload
-        tool_runs = ctx.consult_tools("risk_analyst", {
+        tool_runs = ctx.consult_tools("compliance_agent", {
             "regimes": list(comp.regimes), "risk_tier": comp.risk_tier,
             "outstanding_human_steps": outstanding_human_steps}, res=res)
-        out = ctx.recommend("risk_analyst", {
+        out = ctx.recommend("compliance_agent", {
             "tool_runs": tool_runs,
             "sr26_2": sr26_2,
             "nist_ai_rmf": {k: v["status"] for k, v in nist_ai_rmf.items()},
@@ -265,7 +265,7 @@ class ComplyStage(Stage):
         }, fresh={"comply": res})
         payload["readiness"] = {"level": out.readiness, "narrative": out.narrative,
                                 "priority_actions": [a.model_dump() for a in out.priority_actions]}
-        attach_recommendation(payload, ctx, "risk_analyst", out)
+        attach_recommendation(payload, ctx, "compliance_agent", out)
         ref = ctx.save_json("stages/comply/compliance.json", payload)
         res.add_artifact(ref)
         res.payload = payload
