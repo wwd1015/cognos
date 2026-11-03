@@ -1531,6 +1531,47 @@ def shape_caption(col: str, entry: dict) -> str:
     return " · ".join(parts)
 
 
+SHAPE_FORMS = {"none": "as it is", "cap": "capped", "knee1": "capped, up to 1 knee",
+               "knee2": "capped, up to 2 knees"}
+
+
+def form_of(spec: dict | None) -> str:
+    """A column's shape as one of ``SHAPE_FORMS``."""
+    if not spec:
+        return "none"
+    knees = int(spec.get("knees") or 0)
+    return f"knee{knees}" if knees else ("cap" if spec.get("cap", True) else "none")
+
+
+def survey_cards(survey: list[dict], scheme: str, *, choose: dict[str, str] | None = None,
+                 gate: str = "gate_data") -> list:
+    """Explore's shape survey (ADR-0024), one small chart per column: the observed outcome
+    per band on every row explore has, and the shape a fit would take. With ``choose``
+    ({column: form}), each card carries a form field for ``gate``; without, it is advice."""
+    cards = []
+    for s in survey:
+        col = s["column"]
+        way = "rises" if s["direction"] == "+" else "falls"
+        verdict = ("runs one way" if s["runs_one_way"] else "turns: not monotonic as it is")
+        suggested = f"knee{s['suggested_knees']}" if s["suggested_knees"] else "none"
+        cards.append(dmc.Stack([
+            dmc.Group([dmc.Text(col, size="sm", fw=650, ff="monospace"),
+                       dmc.Badge(verdict, size="xs", variant="light",
+                                 color="green" if s["runs_one_way"] else "yellow"),
+                       dmc.Badge(f"suggested: {SHAPE_FORMS[suggested]}", size="xs",
+                                 variant="outline", color="gray", tt="none")], gap=6),
+            graph(charts.shape({"observed": s["observed"], "curve": s["curve"]}, scheme,
+                               column=col, rate=_is_rate(s), height=200)),
+            dmc.Text(f"Risk {way} with {col} ({s['direction_from']}); {s['why']}.", size="xs",
+                     c="dimmed"),
+            dmc.Select(id=_field(gate, f"shape::{col}"), size="xs", allowDeselect=False,
+                       value=choose.get(col, suggested), w=220,
+                       data=[{"value": k, "label": v} for k, v in SHAPE_FORMS.items()])
+            if choose is not None else None,
+        ], gap=2))
+    return cards
+
+
 def shapes_section(run_id: str, p: dict, scheme: str, *, extra: Any = None,
                    description: str | None = None) -> Any:
     """The shaped columns (ADR-0024), as fitted on the development sample: the observed
