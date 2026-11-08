@@ -334,7 +334,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 9, "system_version": "1.0.0", "date": "2026-11-07"}</script>
+<script type="application/json" id="edition">{"edition": 10, "system_version": "1.0.0", "date": "2026-11-08"}</script>
 
 <div class="stage" id="stage">
 
@@ -717,6 +717,7 @@ body.moving .chrome { opacity: 1; }
         <tr><td class="mono">7</td><td class="mono">v1.0.0</td><td class="mono">2026-10-25</td><td>The engine comes first: the engine disposes, agents recommend, people decide. COGNOS is pictured as a restaurant kitchen (the scale weighs, cooks suggest, the chef decides, the ticket rail keeps the record), and every slide after it is drawn in that kitchen. The logo's two O's carry the creed.</td></tr>
         <tr><td class="mono">8</td><td class="mono">v1.0.0</td><td class="mono">2026-11-01</td><td>The agents are named for their work: Intake, Data, Design, Modeling, Backtest, Validation, Compliance and Writing agent. Job titles belong to the people (developer, reviewer, approver).</td></tr>
         <tr><td class="mono">9</td><td class="mono">v1.0.0</td><td class="mono">2026-11-07</td><td>Column transformations in two steps: whether and which at the data gate, one variable at a time with the curve previewed before it counts; the parameters at the design gate, fitted on the development sample only. A custom expression of the variable is allowed (ADR-0024).</td></tr>
+        <tr><td class="mono">10</td><td class="mono">v1.0.0</td><td class="mono">2026-11-08</td><td>The design stage in six confirmed steps: model form (each framework's role can be changed with a reason, and a form the engine cannot fit proposed), data treatment, variables, assessment plan, single-factor analysis, summary. The single-factor analysis is seen before the search, after the rules; every look is kept, revised rules are counted and exceptions carry a reason. Models are filtered by rules including variance inflation and ranked in order or by a weighted blend (ADR-0025).</td></tr>
       </tbody>
     </table>
     </div>
@@ -756,13 +757,13 @@ const FLOW = [
   { id: "gate_data", label: "Review data decisions", seat: "Model developer",
     person: "Accepts or changes the target, the join and the exclusions, reads any script the agent wrote, and decides for every variable whether it is transformed and how, after seeing the curve it gives." },
   { id: "ideate", label: "Design the model", short: "Design", agentName: "Design agent",
-    engine: "Assesses the data structure and which frameworks apply. Recommends a development plan from the shape of the data: how to split it, how to shorten the factor list, how models are built.",
+    engine: "Assesses the frameworks, recommends how to cut the data, the rules and the ranking, then fits every variable alone on the development sample.",
     agent: "Ranks the slate of specifications, may change the plan, and raises what only the sponsor can decide.",
     person: "" },
   { id: "gate_design", label: "Review the design", seat: "Model developer",
-    person: "Keeps, drops or reorders the slate, confirms or edits the plan, sets each transformation's parameters on the development sample, and answers the design questions." },
+    person: "Confirms six steps, from the model form to the single-factor analysis. An exception needs a reason; rules changed after a look are counted." },
   { id: "model", label: "Search & build the candidate pool", short: "Pool", agentName: "Modeling agent",
-    engine: "Fits every factor alone, cuts the list by the developer's rules, builds models one factor at a time, and ranks all of them. The holdout stays sealed.",
+    engine: "Runs the screen again as the record, builds models one factor at a time, sets aside any that break a rule and ranks the rest. The holdout stays sealed.",
     agent: "Recommends the pool of candidates that goes on, and checks coefficient signs. No champion is chosen here.",
     person: "" },
   { id: "gate_candidates", label: "Review the candidate pool", seat: "Model developer",

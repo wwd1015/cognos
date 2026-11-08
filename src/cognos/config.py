@@ -254,8 +254,9 @@ class SearchConfig(BaseModel):
 class RankRule(BaseModel):
     """One line of the ranking: a metric from the frozen registry and the sample it is read on."""
 
-    metric: str = "auto"  # auto => metric.name
+    metric: str = "auto"  # auto => metric.name; also n_factors, fold_spread (ADR-0025)
     sample: Literal["validation", "in_sample", "test"] = "validation"
+    weight: float | None = None  # rank_mode "weights": this line's share of the blend
 
 
 class EvaluationConfig(BaseModel):
@@ -280,6 +281,9 @@ class EvaluationConfig(BaseModel):
     # How candidates are ranked, most important first. Empty => the run's metric on the
     # validation sample (in sample when there is no validation).
     rank_by: list[RankRule] = Field(default_factory=list)
+    # "order": the first line decides, later lines break ties. "weights": each line turns
+    # into a rank and the ranks are blended by their weights (ADR-0025).
+    rank_mode: Literal["order", "weights"] = "order"
     pool_size: int = 6  # candidates the engine proposes; the developer may carry any number
 
 
@@ -351,6 +355,7 @@ class SelectionConfig(BaseModel):
     max_p_value: float | None = None  # every coefficient of an accepted model
     enforce_sign: bool = True
     max_correlation: float | None = 0.8  # between two factors of one model
+    max_vif: float | None = None  # variance inflation of every factor of an accepted model
     max_models: int = 400  # budget per method and family
 
 

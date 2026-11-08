@@ -24,6 +24,9 @@ from .metrics import MAXIMIZE
 
 SECTIONS = ("evaluation", "factors", "selection")
 SAMPLES = ("validation", "in_sample", "test")
+# Ranking lines that are not scores on a sample (ADR-0025): both are better when lower.
+RANK_EXTRAS = {"n_factors": "fewer factors", "fold_spread": "spread across validation folds"}
+RANK_MODES = ("order", "weights")
 METRICS = {
     True: ("roc_auc", "average_precision", "log_loss", "brier", "accuracy", "f1"),
     False: ("rmse", "mae", "r2", "direction_accuracy"),
@@ -145,7 +148,8 @@ def recommend(cfg, shape: dict[str, Any], *, families: list[str], columns: list[
                             "is not judged on one stretch of the cycle.")
 
     metric = cfg.metric.name
-    rank_by = [{"metric": metric if r.metric == "auto" else r.metric, "sample": r.sample}
+    rank_by = [{"metric": metric if r.metric == "auto" else r.metric, "sample": r.sample,
+                **({"weight": float(r.weight)} if r.weight is not None else {})}
                for r in ev_cfg.rank_by]
     if rank_by:
         sources["rank_by"], reasons["rank_by"] = "profile", "Stated in the profile."
@@ -167,7 +171,8 @@ def recommend(cfg, shape: dict[str, Any], *, families: list[str], columns: list[
         "One row per period: a driver may act with a delay or through its change, so every "
         "column is also tried lagged, as a change and as a year-on-year move."
         if kind == "series" else
-        "Amounts with a long right tail are also tried as logarithms.")
+        "A logarithm is tried only for a column with a long right tail (skew of 1 or "
+        "more), such as amounts and ratios with a few very large values.")
 
     factor_criterion = choose(
         "factors.criterion", fc.criterion, "validation" if validation != "none" else "in_sample",
@@ -201,6 +206,12 @@ def recommend(cfg, shape: dict[str, Any], *, families: list[str], columns: list[
         "A step is kept when the ranking metric improves on rows the model was not fitted on."
         if validation != "none" else
         "No validation sample: a step is kept when BIC falls, which charges for every factor.")
+    max_vif = choose(
+        "max_vif", sc.max_vif, 5.0 if steppable else None,
+        "A factor whose variance inflation passes 5 is mostly explained by the model's other "
+        "factors: its coefficient and sign are unstable, so the model is set aside."
+        if steppable else "No family with coefficients on the slate: there is nothing to "
+                          "inflate.")
     max_p = sc.max_p_value
     if max_p is None and kind == "series":
         max_p = 0.10
@@ -213,7 +224,8 @@ def recommend(cfg, shape: dict[str, Any], *, families: list[str], columns: list[
             "holdout_fraction": round(float(holdout_fraction), 4),
             "validation": validation, "folds": folds, "group_col": ev_cfg.group_col,
             "horizon": horizon, "window": ev_cfg.window,
-            "rank_by": rank_by, "pool_size": int(ev_cfg.pool_size),
+            "rank_by": rank_by, "rank_mode": ev_cfg.rank_mode,
+            "pool_size": int(ev_cfg.pool_size),
         },
         "factors": {
             "transforms": transforms, "lags": list(fc.lags), "windows": list(fc.windows),
@@ -231,7 +243,7 @@ def recommend(cfg, shape: dict[str, Any], *, families: list[str], columns: list[
             "max_factors": int(sc.max_factors), "must_include": list(sc.must_include),
             "max_p_value": max_p,
             "enforce_sign": sc.enforce_sign, "max_correlation": sc.max_correlation,
-            "max_models": int(sc.max_models),
+            "max_vif": max_vif, "max_models": int(sc.max_models),
         },
         "shape": shape, "options": opts, "reasons": reasons, "sources": sources,
     }
@@ -279,10 +291,24 @@ def problems(plan: dict) -> list[str]:
         out.append("the sealed holdout would have fewer than 5 rows")
     if not ev.get("rank_by"):
         out.append("the ranking needs at least one line")
-    known = set(METRICS[True]) | set(METRICS[False]) | MAXIMIZE
+    known = set(METRICS[True]) | set(METRICS[False]) | MAXIMIZE | set(RANK_EXTRAS)
+    if ev.get("rank_mode", "order") not in RANK_MODES:
+        out.append(f"unknown ranking mode {ev.get('rank_mode')!r}")
+    if (ev.get("rank_by") or [{}])[0].get("metric") in RANK_EXTRAS:
+        out.append("the first ranking line must be a score: single factors are ranked on it")
+    if ev.get("rank_mode") == "weights":
+        weights = [r.get("weight") for r in ev.get("rank_by") or []]
+        if any(w is None or float(w) < 0 for w in weights) or not sum(float(w or 0)
+                                                                      for w in weights):
+            out.append("blended ranking needs a weight of zero or more on every line, and "
+                       "some weight in all")
+    if sel.get("max_vif") is not None and float(sel["max_vif"]) < 1:
+        out.append("a variance inflation limit is 1 or more")
     for rule in ev.get("rank_by") or []:
         if rule.get("metric") not in known:
             out.append(f"unknown metric {rule.get('metric')!r}")
+        if rule.get("metric") in RANK_EXTRAS:
+            continue
         if rule.get("sample") not in SAMPLES:
             out.append(f"unknown sample {rule.get('sample')!r}")
         if rule.get("sample") == "validation" and ev["validation"] == "none":
@@ -341,7 +367,59 @@ def summary(plan: dict) -> str:
                  + (f" ×{ev['folds']}" if ev["validation"] != "none" else ""))
     parts.append(f"sealed holdout: {ev['holdout_fraction']:.0%}" if ev["holdout_fraction"]
                  else "no sealed holdout")
-    parts.append("rank by " + ", then ".join(
-        f"{r['metric']} ({r['sample'].replace('_', ' ')})" for r in ev["rank_by"]))
+    parts.append("rank by " + rank_words(ev))
     parts.append("selection: " + " + ".join(m.replace("_", " ") for m in sel["methods"]))
     return "; ".join(parts)
+
+
+def rank_line(rule: dict) -> str:
+    """One ranking line in words."""
+    if rule["metric"] in RANK_EXTRAS:
+        return RANK_EXTRAS[rule["metric"]]
+    return f"{rule['metric']} ({rule['sample'].replace('_', ' ')})"
+
+
+def rank_words(ev: dict) -> str:
+    """The ranking in words: an order of lines, or a blend with each line's share."""
+    rules = ev.get("rank_by") or []
+    if ev.get("rank_mode") == "weights":
+        total = sum(float(r.get("weight") or 0) for r in rules) or 1.0
+        return "a blend of " + ", ".join(
+            f"{rank_line(r)} {float(r.get('weight') or 0) / total:.0%}" for r in rules)
+    return ", then ".join(rank_line(r) for r in rules)
+
+
+def lay_exceptions(plan: dict, exceptions: dict[str, dict] | None) -> dict:
+    """The developer's exceptions to the screen (ADR-0025) laid over the plan: a factor kept
+    although a rule drops it (``force_in``) or left out although the rules keep it
+    (``force_out``), each with its reason. Changes ``plan`` in place and returns it."""
+    fc = plan["factors"]
+    exceptions = exceptions or {}
+    keep = [n for n, e in exceptions.items() if e.get("keep")]
+    drop = [n for n, e in exceptions.items() if not e.get("keep")]
+    fc["force_in"] = list(dict.fromkeys([*(fc.get("force_in") or []), *keep]))
+    fc["force_out"] = list(dict.fromkeys([*(fc.get("force_out") or []), *drop]))
+    fc["exception_reasons"] = {n: e.get("reason", "") for n, e in exceptions.items()}
+    return plan
+
+
+SCREEN_RULES = ("criterion", "max_missing", "max_p_value", "enforce_sign", "min_strength",
+                "best_per_source", "max_correlation", "top_n")
+
+
+def screen_rules(plan: dict) -> dict:
+    """The single-factor screen's settings: what a look at the screen was taken under."""
+    return {k: plan["factors"].get(k) for k in SCREEN_RULES}
+
+
+def screen_revisions(looks: list[dict]) -> list[dict]:
+    """Each time the screen's rules changed after its result had been seen (ADR-0025): the
+    look before, the look after and what changed. The first look is not a revision."""
+    out = []
+    for before, after in zip(looks, looks[1:], strict=False):
+        changed = {k: [before["rules"].get(k), v] for k, v in after["rules"].items()
+                   if before["rules"].get(k) != v}
+        if changed:
+            out.append({"at": after["at"], "by": after["by"], "changed": changed,
+                        "kept_before": before.get("kept"), "kept_after": after.get("kept")})
+    return out

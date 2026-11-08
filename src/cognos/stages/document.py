@@ -892,6 +892,7 @@ class DocumentStage(Stage):
             "tool_runs": tool_runs,
             "sections_required": SECTIONS,
             "framework_choices": ip.get("framework_choices") or [],
+            "proposed_forms": ip.get("proposed_forms") or [],
             "design": cfg.design.model_dump(),
             "excluded_columns": list(ctx.overrides.exclude_columns),
             "open_questions": [q["question"] for q in ip.get("open_questions", [])],

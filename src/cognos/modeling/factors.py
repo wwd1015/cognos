@@ -532,14 +532,19 @@ def screen(rows: list[dict], rules: dict[str, Any], *, corr: pd.DataFrame | None
 
     force_in = [n for n in dict.fromkeys([*(rules.get("force_in") or []), *protected])
                 if n in by_name]
+    said = rules.get("exception_reasons") or {}  # the developer's reason per exception
     alive = sorted(by_name, key=key)
     log: list[dict] = []
 
     def apply(rule: str, setting: Any, verdict: Callable[[dict], str | None]) -> None:
         nonlocal alive
-        before, dropped, keep = len(alive), [], []
+        before, dropped, keep, overruled = len(alive), [], [], []
         for name in alive:
-            why = None if name in force_in else verdict(by_name[name])
+            why = verdict(by_name[name])
+            if why and name in force_in:  # kept anyway: the rule's verdict stays on record
+                overruled.append({"factor": name, "reason": why})
+                by_name[name].setdefault("overruled", []).append(f"{rule}: {why}")
+                why = None
             if why:
                 dropped.append({"factor": name, "reason": why})
                 by_name[name].update(status="dropped", dropped_by=rule, reason=why)
@@ -547,14 +552,17 @@ def screen(rows: list[dict], rules: dict[str, Any], *, corr: pd.DataFrame | None
                 keep.append(name)
         alive = keep
         log.append({"rule": rule, "setting": setting, "before": before, "after": len(alive),
-                    "dropped": dropped})
+                    "dropped": dropped, "overruled": overruled})
 
     for r in rows:
-        r.update(status="kept", dropped_by=None, reason="")
+        r.update(status="kept", dropped_by=None, reason="", overruled=[], exception=None)
     out = set(rules.get("force_out") or [])
+    for name in out & set(by_name):
+        by_name[name]["exception"] = "drop"
     if out:
-        apply("force_out", sorted(out),
-              lambda r: "left out by the developer" if r["name"] in out else None)
+        apply("force_out", sorted(out), lambda r: (
+            "left out by the developer" + (f": {said[r['name']]}" if said.get(r["name"]) else "")
+            if r["name"] in out else None))
     apply("not_fitted", None, lambda r: r["note"] or None)
     if rules.get("max_missing") is not None:
         lim = float(rules["max_missing"])
@@ -603,8 +611,11 @@ def screen(rows: list[dict], rules: dict[str, Any], *, corr: pd.DataFrame | None
                                 f"stronger {other}")
             kept.append(name)
             return None
-        # forced factors are seen first, so nothing is dropped for resembling a weaker one
-        alive = [*[n for n in alive if n in force_in], *[n for n in alive if n not in force_in]]
+        # Factors kept by rule (an engineered factor) are seen first, so nothing is dropped
+        # for resembling a weaker one. A factor the developer keeps stays in its place: the
+        # rule's verdict on it is recorded as overruled, and it never pushes a stronger one out.
+        first = [n for n in alive if n in protected]
+        alive = [*first, *[n for n in alive if n not in first]]
         apply("max_correlation", lim, twin)
         alive = sorted(alive, key=key)
     if rules.get("top_n"):
@@ -613,5 +624,10 @@ def screen(rows: list[dict], rules: dict[str, Any], *, corr: pd.DataFrame | None
         apply("top_n", n, lambda r: (f"rank {rank[r['name']] + 1}, the shortlist keeps {n}"
                                      if rank[r["name"]] >= n else None))
     for name in force_in:
-        by_name[name]["reason"] = "kept by rule" if name in protected else "kept by the developer"
+        if name in protected:
+            by_name[name]["reason"] = "kept by rule"
+            continue
+        by_name[name]["exception"] = "keep"
+        by_name[name]["reason"] = ("kept by the developer"
+                                   + (f": {said[name]}" if said.get(name) else ""))
     return alive, log

@@ -35,7 +35,7 @@ from ..engine.graph import (
 )
 from ..engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, next_action, seat_label
 from . import ask as ask_ui
-from . import transform_review
+from . import design_steps, transform_review
 from .components import (
     empty,
     fmt,
@@ -915,6 +915,7 @@ def create_app(runs_dir: str | None = None) -> Dash:
 
 def register_callbacks(app: Dash) -> None:
     register_transform_callbacks(app)
+    design_steps.register_design_callbacks(app, plan_patch)
 
     @app.callback(Output("mantine", "forceColorScheme"), Output("theme-store", "data"),
                   Input("theme-switch", "checked"), prevent_initial_call=True)
@@ -1742,11 +1743,36 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
         if answers:
             payload["answers"] = answers
     if gate == "gate_design":
-        keep = fields.get("keep")
-        hyps = (service.results(run_id).get("ideate").payload or {}).get("hypotheses", [])
-        if action == "edit" and keep is not None and set(keep) != {h["id"] for h in hyps}:
-            payload["slate"] = [{k: h[k] for k in ("family", "feature_strategy", "role", "priority",
-                                                   "rationale")} for h in hyps if h["id"] in keep]
+        ideate = service.results(run_id).get("ideate").payload or {}
+        hyps = ideate.get("hypotheses", [])
+        families = fields.get("families")
+        if (action == "edit" and families is not None
+                and set(families) != set(design_steps.slate_families(ideate))):
+            payload["slate"] = [next(({k: h[k] for k in ("family", "feature_strategy", "role",
+                                                         "priority", "rationale")}
+                                      for h in hyps if h["family"] == fam),
+                                     {"family": fam, "feature_strategy": "all",
+                                      "role": "candidate", "priority": 0.5,
+                                      "rationale": "Added by the developer."})
+                                for fam in families]
+        roles = {k.split("::", 1)[1]: v for k, v in fields.items()
+                 if k.startswith("framework::") and v}
+        in_force = {k: f["decision"] for k, f in design_steps.frameworks_in_force(ideate).items()}
+        if action == "edit" and any(in_force.get(k) != v for k, v in roles.items()):
+            payload["framework_roles"] = roles
+            payload["model_form_reason"] = fields.get("model_form_reason") or ""
+        forms: dict[str, dict] = {}
+        for k, v in fields.items():
+            if k.startswith("proposed::"):
+                _, i, part = k.split("::")
+                forms.setdefault(i, {})[part] = " ".join(str(v or "").split())
+        forms_asked = [{"name": f.get("name", ""), "reason": f.get("reason", "")}
+                       for _, f in sorted(forms.items(), key=lambda kv: int(kv[0]))
+                       if f.get("name")]
+        forms_now = [{"name": f["name"], "reason": f["reason"]}
+                     for f in service.state(run_id).overrides.proposed_forms]
+        if action == "edit" and forms and forms_asked != forms_now:
+            payload["proposed_forms"] = forms_asked
         params = transform_review.decisions(fields.get("transform_params"))
         if action == "edit" and params:
             payload["transform_params"] = params
@@ -1755,6 +1781,12 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
             patch = plan_patch(plan, fields)
             if patch:
                 payload["plan"] = patch
+        if action == "edit" and "screen_exceptions" in fields:
+            asked = design_steps.exceptions_of(fields.get("screen_exceptions"))
+            in_force = {n: {"keep": e["keep"], "reason": e["reason"]}
+                        for n, e in service.state(run_id).overrides.screen_exceptions.items()}
+            if asked != in_force:
+                payload["screen_exceptions"] = asked
     if gate == "gate_candidates" and action == "edit":
         extra = fields.get("extra") or []
         if isinstance(extra, str):  # ids typed by hand, comma separated
@@ -1795,12 +1827,26 @@ def plan_patch(plan: dict, fields: dict) -> dict:
         if value != current and not (blank(value) and blank(current)):
             patch.setdefault(section_name, {})[name] = value
     rank = []
-    for i in (0, 1):
+    for i in range(3):  # the ranking lines on the page, each with its weight for a blend
         metric = fields.get(f"plan::rank.{i}.metric")
         if not blank(metric):
-            rank.append({"metric": metric,
-                         "sample": fields.get(f"plan::rank.{i}.sample") or "validation"})
-    if rank and rank != list(plan["evaluation"].get("rank_by") or []):
+            line = {"metric": metric,
+                    "sample": fields.get(f"plan::rank.{i}.sample") or "validation"}
+            weight = fields.get(f"plan::rank.{i}.weight")
+            if not blank(weight):
+                line["weight"] = float(weight)
+            rank.append(line)
+    current = [{k: (float(v) if k == "weight" else v) for k, v in r.items()}
+               for r in plan["evaluation"].get("rank_by") or []]
+    blended = (patch.get("evaluation") or {}).get(
+        "rank_mode", plan["evaluation"].get("rank_mode")) == "weights"
+
+    def same(a: list[dict], b: list[dict]) -> bool:  # weights count only in a blend
+        def strip(r: dict) -> dict:
+            return r if blended else {k: v for k, v in r.items() if k != "weight"}
+        return [strip(r) for r in a] == [strip(r) for r in b]
+
+    if rank and not same(rank, current):
         patch.setdefault("evaluation", {})["rank_by"] = rank
     return patch
 

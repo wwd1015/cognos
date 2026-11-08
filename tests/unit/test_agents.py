@@ -63,7 +63,7 @@ def test_modeler_pools_from_the_leaders_and_respects_interpretability():
                                              **more})
     assert "not in leaders" in checks.modeling_agent(pool("c9"), sl)[0]
     assert "at least one" in checks.modeling_agent(pool(), sl)[0]
-    assert "challenger" in checks.modeling_agent(pool("c2"), sl)[0]  # a pool of benchmarks only
+    assert "benchmark" in checks.modeling_agent(pool("c2"), sl)[0]  # a pool of benchmarks only
     assert "at most 2" in checks.modeling_agent(pool("c1", "c2", "c3"), sl)[0]
     assert "twice" in checks.modeling_agent(pool("c1", "c1"), sl)[0]
     signs = [{"feature": "z", "expected": "+", "observed": "+", "assessment": "consistent"}]
@@ -83,7 +83,7 @@ def test_outcomes_analyst_names_a_champion_from_the_pool():
             "summary": "s", "champion": cid, "champion_rationale": "r", "discrimination": "d",
             "calibration": "c", "stability": "s"})
     assert "not in candidates" in checks.backtest_agent(pick("c9"), sl)[0]
-    assert "challenger" in checks.backtest_agent(pick("c2"), sl)[0]
+    assert "benchmark" in checks.backtest_agent(pick("c2"), sl)[0]
     assert checks.backtest_agent(pick("c1"), sl) == []
 
 

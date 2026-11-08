@@ -1146,25 +1146,23 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
 
 # --- ideate -------------------------------------------------------------------------------
 def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
+    """The design page in six steps (ADR-0025, ``ui/design_steps.py``): the model form, how the
+    data are cut, the variables, the assessment plan, the single-factor analysis, then the
+    summary and the decision. Each step is confirmed before the next opens; the design gate
+    reads every field wherever it sits."""
+    from . import design_steps as dz
+
     p = res.payload or {}
     ds = p.get("data_structure") or {}
-    choices = {c["framework"]: c for c in p.get("framework_choices", [])}
-    decision_color = {"primary": "oxblood", "candidate": "blue", "challenger": "grape",
-                      "rejected": "gray"}
-    fw_rows = []
-    for f in p.get("framework_assessment", []):
-        ch = choices.get(f["framework"], {})
-        fw_rows.append([
-            dmc.Text(f["label"], size="sm", fw=500),
-            str(f["applicable"]),
-            dmc.Badge(ch.get("decision", f["role"]),
-                      color=decision_color.get(ch.get("decision", ""), "gray"), variant="light",
-                      size="sm"),
-            dmc.Text(ch.get("reason") or f["reason"], size="xs"),
-        ])
-    slate_rows = [[h["id"], dmc.Text(h["family"], ff="monospace", size="sm"), h["feature_strategy"],
-                   h["role"], fmt(h["priority"], 2), dmc.Text(h["rationale"], size="xs")]
-                  for h in p.get("hypotheses", [])]
+    plan = p.get("plan") or {}
+    editable = (state.status_of("gate_design") == "awaiting"
+                and seat == SEAT_OF_GATE.get("gate_design"))
+    screen = p.get("screen")
+    exceptions = {n: {"keep": e["keep"], "reason": e["reason"]}
+                  for n, e in state.overrides.screen_exceptions.items()}
+    names = [r["name"] for r in (screen or {}).get("rows") or []]
+    tx = design_transforms(p, state, seat)
+    n_tx = len(p.get("transforms") or {})
     open_gaps = [g for g in state.gaps if g.stage == "ideate" or g.reentry == "ideate"
                  or g.design_field]  # a design question still open from the intake interview
     q_inputs = [dmc.TextInput(id=_field("gate_design", f"answer::{g.id}"), label=g.question,
@@ -1172,46 +1170,114 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
                               description=f"fills design.{g.design_field}" if g.design_field else
                               ("answered" if g.status != "open" else None))
                 for g in open_gaps]
-    plan = p.get("plan") or {}
+    brief = service.read_artifact(state.run_id, "stages/ideate/design_brief.md", None) or ""
+    proposed = p.get("proposed_transforms") or []
+
+    steps = [dz.step(1, [
+        recommendation_card(_rec(res), title="The Design agent's recommendation"),
+        *dz.model_form(p, editable, reason=next(
+            (r["reason"] for r in state.overrides.framework_roles.values()), ""),
+            proposed=state.overrides.proposed_forms),
+        html.Details([html.Summary(f"Transforms the Design agent proposed ({len(proposed)})",
+                                   className="gate-fold"),
+                      table(["Name", "Expression", "Rationale"],
+                            [[t["name"], dmc.Code(t["expr"]), t.get("rationale", "")]
+                             for t in proposed])], className="gate-more") if proposed else None,
+    ], summary=dz.model_form_summary(p), editable=editable,
+        description="What kind of model this is, set against the alternatives.")]
+    if plan:
+        steps += [
+            dz.step(2, dz.data_treatment(plan, editable),
+                    summary=dz.treatment_summary(plan["evaluation"]), editable=editable,
+                    description="How the rows are cut: where models are fitted, compared and "
+                                "confirmed."),
+            dz.step(3, [*dz.variables(tx, plan, names, editable),
+                        dmc.MultiSelect(id=_field("gate_design", "plan::factors.transforms"),
+                                        label="Extra forms tried for the other columns",
+                                        description=(
+                                            "A column with its own transformation from the "
+                                            "data gate enters only in that form. Every other "
+                                            "column enters as it is and also in these forms; "
+                                            "each is screened like any variable and the "
+                                            "per-column rule keeps the stronger. "
+                                            + ((plan.get("reasons") or {}).get("transforms")
+                                               or "")),
+                                        size="xs",
+                                        value=list(plan["factors"].get("transforms") or []),
+                                        disabled=not editable, mt="sm", maw=640,
+                                        data=[{"value": t, "label": _words(t)}
+                                              for t in (plan.get("options") or {}).get(
+                                                  "transforms") or [] if t != "none"])],
+                    summary=dz.variables_summary(n_tx, plan["selection"].get("must_include")),
+                    editable=editable,
+                    description="What goes in: each transformation's parameters, the forms "
+                                "tried for the rest, and what every model must carry."),
+            dz.step(4, dz.assessment(plan, editable), summary=dz.assessment_summary(plan),
+                    editable=editable,
+                    description="The rules that set variables and models aside, and how what "
+                                "is left is ranked. Set before the single-factor analysis is "
+                                "seen."),
+            dz.step(5, [
+                dmc.TextInput(id=_field("gate_design", "screen_exceptions"),
+                              value=json.dumps(exceptions), style={"display": "none"}),
+                dcc.Store(id="sf-data", data=None if editable else
+                          {"screen": screen, "exceptions": exceptions}),
+                dcc.Store(id="sf-selected", data="all"),
+                dcc.Store(id="sf-chosen", data=None),
+                dcc.Store(id="sf-editable", data=editable),
+                dcc.Loading(html.Div(
+                    [dmc.Text("Drawn when the assessment plan is confirmed.", size="sm",
+                              c="dimmed")] if editable else
+                    dz.single_factor(screen, exceptions, False), id="sf-body"),
+                    type="dot", color="var(--mantine-color-oxblood-6)", delay_show=250),
+            ], summary=dz.single_factor_summary(screen, len(exceptions)), editable=editable,
+                description="Every variable fitted alone. The funnel shows each rule's toll; "
+                            "click a bar to see who it removed and why, a variable to make an "
+                            "exception."),
+        ]
+    revisions = service.screen_revisions(state.run_id)
+    summary = html.Div([
+        _summary_line("Model form", dz.model_form_summary(p)),
+        _summary_line("Data treatment", dz.treatment_summary(plan["evaluation"]))
+        if plan else None,
+        _summary_line("Assessment plan", dz.assessment_summary(plan)) if plan else None,
+        _summary_line("Single-factor analysis",
+                         dz.single_factor_summary(screen, len(exceptions))),
+        _summary_line("Rules revised after a look", f"{len(revisions)} time(s), on record "
+                         "for validation") if revisions else None,
+    ], className="sum-block")
     gate = gate_block("gate_design", state, res, seat=seat, body=[
-        dmc.CheckboxGroup(dmc.Stack([dmc.Checkbox(label=f"{h['id']} · {h['family']} / "
-                                                        f"{h['feature_strategy']} ({h['role']})",
-                                                  value=h["id"])
-                                     for h in p.get("hypotheses", [])], gap=4),
-                          id=_field("gate_design", "keep"), label="Specifications to search",
-                          description="Untick to drop a specification from the slate.",
-                          value=[h["id"] for h in p.get("hypotheses", [])]),
+        summary,
+        html.Details([html.Summary("The design brief: this design written up for the record",
+                                   className="gate-fold"),
+                      dmc.Text("The file the documentation and the export keep "
+                               "(stages/ideate/design_brief.md). It restates the steps above; "
+                               "nothing in it is a separate choice.", size="xs", c="dimmed"),
+                      markdown(brief)], className="gate-more") if brief else None,
+        dmc.Text("The steps above as they stand are what “Apply my design” sends; “Accept "
+                 "design” keeps the engine's recommendation for every step.", size="xs",
+                 c="dimmed", mt="xs") if editable else None,
         dmc.Stack(q_inputs, gap="xs", mt="sm") if q_inputs else None,
-        plan_form(plan) if plan else None,
     ], primary=[
         dmc.Button("Accept design", id=_act("gate_design", "accept"),
                    leftSection=icon("tabler:check")),
-        dmc.Button("Apply edits / answers", id=_act("gate_design", "edit"), variant="light",
+        dmc.Button("Apply my design", id=_act("gate_design", "edit"), variant="light",
                    leftSection=icon("tabler:edit")),
     ])
-    brief = service.read_artifact(state.run_id, "stages/ideate/design_brief.md",
-                                  None) or ""
+    steps.append(dz.step(6, [gate], summary="", editable=editable,
+                         description="Confirm steps 1 to 5 first. Nothing above is recorded "
+                                     "until the design is decided."))
     return [
+        html.Div(f"{state.run_id}|{res.payload.get('plan_summary', '')}|"
+                 f"{state.status_of('gate_design')}|{len(state.decisions)}", id="dz-key",
+                 style={"display": "none"}),
+        html.Div(str(n_tx), id="dz-tx-count", style={"display": "none"}),
+        dcc.Store(id="dz-done", data=None),
         kpis([("Sample shape", str(ds.get("shape", "—")).replace("_", " "), None),
               ("Events", fmt(ds.get("n_events")), "rare-class count"),
               ("Events / variable", fmt(ds.get("events_per_variable"), 1), "≥ 10 rule of thumb"),
               ("Open questions", fmt(len([g for g in state.gaps if g.status == "open"])), None)]),
-        recommendation_card(_rec(res)),
-        design_transforms(p, state, seat),
-        gate,
-        plan_section(plan) if plan else None,
-        section("Framework assessment — alternatives considered",
-                table(["Framework", "Applicable", "Decision", "Reason"], fw_rows)),
-        section("Ranked specification slate",
-                table(["#", "Family", "Features", "Role", "Priority", "Rationale"], slate_rows,
-                      max_height=360)),
-        section("Proposed transforms", table(["Name", "Expression", "Rationale"],
-                                             [[t["name"], dmc.Code(t["expr"]), t.get("rationale", "")]
-                                              for t in p.get("proposed_transforms", [])])
-                if p.get("proposed_transforms") else empty("None proposed.")),
-        dmc.Accordion([dmc.AccordionItem([dmc.AccordionControl("Design brief (markdown)"),
-                                          dmc.AccordionPanel(markdown(brief))], value="brief")],
-                      variant="separated"),
+        *steps,
     ]
 
 
@@ -1245,172 +1311,8 @@ def design_transforms(p: dict, state: RunState, seat: str) -> Any:
                     "gate, then fitted again by the model stage on its own development sample.")
 
 
-# --- the development plan (shown at design, restated at model) ------------------------------
-_SOURCE_COLOR = {"human": "oxblood", "profile": "blue", "agent": "grape", "engine": "gray"}
-_SOURCE_LABEL = {"human": "developer", "profile": "profile", "agent": "Design agent",
-                 "engine": "engine"}
-
-
 def _words(v: Any) -> str:
     return str(v).replace("_", " ")
-
-
-def _plan_rows(plan: dict) -> list[list[Any]]:
-    ev, sel, fc = plan["evaluation"], plan["selection"], plan["factors"]
-    reasons, sources = plan.get("reasons") or {}, plan.get("sources") or {}
-
-    def row(label: str, value: str, field: str) -> list[Any]:
-        src = sources.get(field)
-        return [dmc.Text(label, size="sm", fw=500), dmc.Text(value, size="sm"),
-                dmc.Badge(_SOURCE_LABEL.get(src, src), color=_SOURCE_COLOR.get(src, "gray"),
-                          variant="light", size="xs") if src else "",
-                dmc.Text(reasons.get(field, ""), size="xs")]
-
-    rank = ", then ".join(f"{r['metric']} ({_words(r['sample'])})" for r in ev.get("rank_by") or [])
-    screen = [f"missing ≤ {pct(fc['max_missing'], 0)}" if fc.get("max_missing") is not None else None,
-              f"p ≤ {fmt(fc['max_p_value'], 2)}" if fc.get("max_p_value") is not None else None,
-              "expected sign" if fc.get("enforce_sign") else None,
-              f"best {fc['best_per_source']} per column" if fc.get("best_per_source") else None,
-              f"|corr| ≤ {fmt(fc['max_correlation'], 2)}" if fc.get("max_correlation") is not None
-              else None,
-              f"top {fc['top_n']}" if fc.get("top_n") else None]
-    limits = [f"at most {sel['max_factors']} factors",
-              f"every p ≤ {fmt(sel['max_p_value'], 2)}" if sel.get("max_p_value") is not None else None,
-              "expected signs" if sel.get("enforce_sign") else None,
-              f"|corr| ≤ {fmt(sel['max_correlation'], 2)} between factors"
-              if sel.get("max_correlation") is not None else None,
-              f"always {', '.join(sel['must_include'])}" if sel.get("must_include") else None]
-    return [
-        row("Test sample", _words(ev["test"]) + (f", {pct(ev['test_fraction'], 0)} of the rows"
-                                                  if ev["test"] != "none" else ""), "test"),
-        row("Validation", _words(ev["validation"])
-            + (f", {ev['folds']} block(s)" if ev["validation"] != "none" else "")
-            + (f" of {ev['horizon']} period(s)" if ev.get("horizon") else ""), "validation"),
-        row("Sealed holdout", f"{pct(ev['holdout_fraction'], 0)} of the rows"
-            if ev.get("holdout_fraction") else "none", "holdout_fraction"),
-        row("Ranking", rank, "rank_by"),
-        row("Factor library", ", ".join(_words(t) for t in fc.get("transforms") or []) or "as explored",
-            "factors.transforms" if "factors.transforms" in sources else "transforms"),
-        row("A single factor is ranked on",
-            f"{(ev.get('rank_by') or [{}])[0].get('metric', 'the metric')} "
-            f"({_words(fc.get('criterion') or 'validation')})", "factors.criterion"),
-        row("Single-factor screen", "; ".join(x for x in screen if x) or "no rule",
-            next((k for k in sources if k.startswith("factors.")
-                  and k not in ("factors.transforms", "factors.criterion")), "factors")),
-        row("Selection methods", " + ".join(_words(m) for m in sel.get("methods") or []), "methods"),
-        row("A step is kept when", f"{_words(sel['criterion'])} improves", "criterion"),
-        row("A model is accepted when", "; ".join(x for x in limits if x), "max_factors"),
-        row("Pool", f"{ev['pool_size']} candidate(s) go to outcomes analysis", "pool_size"),
-    ]
-
-
-def plan_section(plan: dict) -> Any:
-    """The development plan in force: every choice, who set it and why."""
-    return section("Development plan",
-                   table(["Choice", "In force", "Set by", "Reason"], _plan_rows(plan)),
-                   *[dmc.Alert(note, color="yellow", variant="light", mt="xs")
-                     for note in plan.get("ignored") or []],
-                   description="How the data are split, how the factor library is shortened and "
-                               "how single factors become models. Recommended from the shape of "
-                               "the data and the intended use; edit it in the review below.")
-
-
-def plan_form(plan: dict) -> Any:
-    """The modelling criteria as a form: every choice shows what is in force and who set it,
-    and can be overridden. A field left as it is changes nothing; ``gate_payload`` sends only
-    what differs from the plan on the page, and the override becomes part of the run's
-    effective configuration (``overrides.plan``), which is what the engine then follows."""
-    ev, sel, fc = plan["evaluation"], plan["selection"], plan["factors"]
-    opts, sources = plan.get("options") or {}, plan.get("sources") or {}
-
-    def by(field: str) -> str:
-        src = sources.get(field)
-        return {"engine": "recommended by the engine", "agent": "recommended by the Design agent",
-                "profile": "set in the profile", "human": "set by the developer"}.get(src, "")
-
-    def pick(field: str, label: str, value: Any, choices: list[str], source: str = "", **kw) -> Any:
-        return dmc.Select(id=_field("gate_design", f"plan::{field}"), label=label, value=value,
-                          data=[{"value": c, "label": _words(c)} for c in choices],
-                          description=by(source) or None, allowDeselect=False, size="xs", **kw)
-
-    def num(field: str, label: str, value: Any, **kw) -> Any:
-        return dmc.NumberInput(id=_field("gate_design", f"plan::{field}"), label=label,
-                               value=value if value is not None else "", size="xs", **kw)
-
-    def head(title: str, note: str) -> Any:
-        return dmc.Stack([dmc.Text(title, size="sm", fw=650),
-                          dmc.Text(note, size="xs", c="dimmed")], gap=0, mt="sm")
-
-    rank = list(ev.get("rank_by") or []) + [{}]
-    metrics, samples = opts.get("metric") or [], opts.get("sample") or []
-    return dmc.Stack([
-        dmc.Divider(mt="sm"),
-        dmc.Text("Your modelling criteria", fw=650),
-        dmc.Text("Each choice below is the recommendation for this data and this use. Change "
-                 "any of them and press “Apply edits / answers”: the override is recorded on "
-                 "the run and the engine builds to it.", size="xs", c="dimmed"),
-        head("1 · Primary metric", "How candidate models are ranked, and on which sample."),
-        dmc.SimpleGrid([
-            pick("rank.0.metric", "Rank models by", rank[0].get("metric"), metrics, "rank_by"),
-            pick("rank.0.sample", "measured on", rank[0].get("sample"), samples),
-            dmc.Select(id=_field("gate_design", "plan::rank.1.metric"), label="then by (optional)",
-                       value=rank[1].get("metric"), size="xs", clearable=True,
-                       data=[{"value": m, "label": m} for m in metrics]),
-            pick("rank.1.sample", "measured on", rank[1].get("sample") or "in_sample", samples),
-            num("evaluation.pool_size", "Candidates the engine proposes", ev["pool_size"],
-                min=1, max=20),
-        ], cols={"base": 2, "md": 5}),
-        head("2 · How the data are split", "Where models are fitted, compared and confirmed."),
-        dmc.SimpleGrid([
-            pick("evaluation.test", "Test sample", ev["test"], opts.get("test") or [], "test"),
-            num("evaluation.test_fraction", "Test share of rows", ev["test_fraction"],
-                min=0, max=0.6, step=0.05, decimalScale=2),
-            num("evaluation.holdout_fraction", "Sealed holdout share (0 = none)",
-                ev["holdout_fraction"], min=0, max=0.4, step=0.05, decimalScale=2),
-            pick("evaluation.validation", "Validation", ev["validation"],
-                 opts.get("validation") or [], "validation"),
-            num("evaluation.folds", "Validation blocks", ev["folds"], min=2, max=20),
-            num("evaluation.horizon", "Periods per block (rolling)", ev.get("horizon"), min=1),
-        ], cols={"base": 2, "md": 3}),
-        head("3 · Single-factor selection",
-             "Each factor is fitted alone, then these rules run in this order. Empty = off."),
-        dmc.SimpleGrid([
-            pick("factors.criterion", "Rank a factor on", fc.get("criterion") or "validation",
-                 opts.get("factor_criterion") or ["validation", "in_sample"], "factors.criterion"),
-            num("factors.max_p_value", "p-value at most", fc.get("max_p_value"), min=0, max=1,
-                step=0.01, decimalScale=3),
-            dmc.Select(id=_field("gate_design", "plan::factors.enforce_sign"),
-                       label="Drop a wrong sign", size="xs", allowDeselect=False,
-                       value="yes" if fc.get("enforce_sign") else "no",
-                       data=[{"value": "yes", "label": "yes"}, {"value": "no", "label": "no"}]),
-            num("factors.best_per_source", "Best per column", fc.get("best_per_source"), min=1),
-            num("factors.max_correlation", "Correlation at most", fc.get("max_correlation"),
-                min=0, max=1, step=0.05, decimalScale=2),
-            num("factors.top_n", "Shortlist size", fc.get("top_n"), min=1),
-            num("factors.max_missing", "Missing at most", fc.get("max_missing"), min=0, max=1,
-                step=0.05, decimalScale=2),
-        ], cols={"base": 2, "md": 4}),
-        dmc.MultiSelect(id=_field("gate_design", "plan::factors.transforms"),
-                        label="Transformations tried for each column", size="xs",
-                        value=list(fc.get("transforms") or []),
-                        data=[{"value": t, "label": _words(t)}
-                              for t in (opts.get("transforms") or []) if t != "none"]),
-        head("4 · Multi-factor selection",
-             "Pick the method that builds models from the shortlist. One is enough; if you "
-             "pick several, every model they evaluate is ranked in one list."),
-        dmc.SimpleGrid([
-            dmc.MultiSelect(id=_field("gate_design", "plan::selection.methods"),
-                            label="Method", size="xs", description=by("methods") or None,
-                            value=list(sel.get("methods") or []),
-                            data=[{"value": m, "label": _words(m)}
-                                  for m in opts.get("methods") or []]),
-            pick("selection.criterion", "A step is kept when this improves", sel["criterion"],
-                 opts.get("criterion") or [], "criterion"),
-            num("selection.max_factors", "Factors at most", sel["max_factors"], min=1, max=12),
-            num("selection.max_p_value", "Every p-value at most", sel.get("max_p_value"),
-                min=0, max=1, step=0.01, decimalScale=3),
-        ], cols={"base": 2, "md": 4}),
-    ], gap=6)
 
 
 def _who(c: dict) -> Any:
@@ -1590,12 +1492,19 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
         transforms_section(state.run_id, p, scheme),
         section("Single-factor screen",
                 table(["Rule", "Setting", "Factors in", "Factors out", "Dropped"], screen_rows),
+                table(["Exception", "Factor", "The developer's reason", "Rule overruled"],
+                      [[_words("kept anyway" if e["exception"] == "keep" else "left out"),
+                        dmc.Text(e["factor"], ff="monospace", size="sm"),
+                        dmc.Text(e["reason"], size="xs"),
+                        dmc.Text("; ".join(e.get("overruled") or []) or "—", size="xs")]
+                       for e in p.get("exceptions") or []]) if p.get("exceptions") else None,
                 dmc.Text("Shortlist", size="xs", fw=650, c="dimmed", mt="sm"),
                 table(["Factor", "Transformation", "Sign", "p-value", "In sample", "Validation", ""],
                       factor_rows, max_height=360),
                 description="Every factor fitted alone on the development sample. The rule and "
                             "the reason for each dropped factor are in "
                             "stages/model/single_factor.json."),
+        model_funnel_section(state.run_id, p),
         section("Multi-factor selection", *path_blocks, description=how) if path_blocks else None,
         section("Leaders", table(["#", "Model", "Family", "Factors", score_label, "Found by", ""],
                                  leader_rows, max_height=520),
@@ -1614,6 +1523,42 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
         if bench else None,
         section("Findings", findings_table(_findings(res))),
     ]
+
+
+def model_funnel_section(run_id: str, p: dict) -> Any:
+    """Every distinct model through the plan's rules, best ranked first (ADR-0025): the funnel,
+    then who each rule set aside and why. None for a run recorded before the funnel."""
+    from ..modeling import plan as plan_mod
+    from . import design_steps as dz
+
+    mf = p.get("model_funnel")
+    if not mf:
+        return None
+    try:
+        full = json.loads(service.read_artifact(run_id, "stages/model/model_funnel.json", None)
+                          or "{}")
+    except ValueError:
+        full = {}
+    lines = full.get("lines") or mf["lines"]
+    total = lines[0]["before"] if lines else 0
+    kept = len(full.get("kept") or mf.get("kept") or [])
+    blocks = [html.Details([
+        html.Summary(f"{line['label'].capitalize()} — {line['before'] - line['after']} set "
+                     "aside", className="gate-fold"),
+        table(["Model", "Why"], [[d["name"], dmc.Text(d["reason"], size="xs")]
+                                 for d in line.get("dropped") or []], max_height=240),
+    ], className="gate-more") for line in lines[1:] if line["before"] - line["after"]]
+    ev = (p.get("plan") or {}).get("evaluation") or {}
+    return section(
+        "Models through the plan's rules",
+        dz.funnel([{**line, "rule": line["rule"]} for line in lines[1:]], total=total,
+                  selected="kept", prefix="mf", extra=[("kept", "kept", kept)]),
+        *blocks,
+        dmc.Text(f"What is left is ranked by {plan_mod.rank_words(ev)}." if ev.get("rank_by")
+                 else "", size="sm", mt="xs"),
+        description=f"The best {mf.get('n_models', total)} of {mf.get('n_ranked', total)} "
+                    "ranked models, one per distinct specification. Each leaves at the first "
+                    "rule it breaks; the full list is stages/model/model_funnel.json.")
 
 
 # --- backtest -----------------------------------------------------------------------------

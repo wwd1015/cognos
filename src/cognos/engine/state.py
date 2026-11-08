@@ -143,6 +143,14 @@ class Overrides(BaseModel):
     # How each column enters the model (ADR-0024): the kind decided at the data gate, the
     # parameters set at the design gate ({"kind", "knees", "knots", ...}). Wins over the plan.
     transforms: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # Exceptions to the single-factor screen set at the design gate (ADR-0025): factor ->
+    # {"keep": bool, "reason", "by"}. A kept factor passes every rule; a left-out one none.
+    screen_exceptions: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # The model form as the developer set it at the design gate: framework -> {"decision",
+    # "reason", "by"} where it departs from the Design agent's, and forms the engine cannot
+    # fit, proposed with a reason ({"name", "reason", "by"}), recorded for validation.
+    framework_roles: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    proposed_forms: list[dict[str, Any]] = Field(default_factory=list)
     champion: str | None = None  # the pool member chosen at gate_champion
 
 
@@ -189,6 +197,10 @@ class RunState(BaseModel):
     package: PackageSeal | None = None  # set only by an approver's approve
     lineage: Lineage | None = None  # set once the model has a trial run (trials.py)
     loops: dict[str, int] = Field(default_factory=dict)
+    # Each time a person looked at the design gate's single-factor screen (ADR-0025): when,
+    # who, the screen's rules and how many factors they kept. A change of rules between two
+    # looks is a revision after the result was seen (plan.screen_revisions).
+    screen_looks: list[dict[str, Any]] = Field(default_factory=list)
     spend_usd: float = 0.0
 
     @field_validator("loops", mode="before")

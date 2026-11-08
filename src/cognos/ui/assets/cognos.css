@@ -576,3 +576,56 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .sum-row { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--hair); font-size: 13px; }
 .sum-k { color: var(--ink-2); }
 .sum-v { color: var(--ink); }
+
+/* The design page in steps (ADR-0025): a confirmed step folds to one line. */
+.dz-sum { font-size: 13px; color: var(--ink); }
+
+/* Data treatment: the rows as one bar, development, test, holdout. */
+.dz-bar { display: flex; height: 30px; border: 1px solid var(--line); margin: 4px 0 8px; }
+.dz-seg { display: flex; align-items: center; padding: 0 8px; min-width: 0; overflow: hidden;
+          font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
+.dz-seg + .dz-seg { border-left: 1px solid var(--ink); }
+.dz-seg.dev { background: var(--bg-sunken); color: var(--ink); }
+.dz-seg.test { background: var(--accent-tint); color: var(--accent); }
+.dz-seg.hold { background: repeating-linear-gradient(135deg, var(--hair) 0 6px, transparent 6px 12px); color: var(--ink-2); }
+.dz-legend { display: grid; gap: 2px; margin-bottom: 4px; font-size: 12px; color: var(--ink-2); }
+.dz-legend-row b { color: var(--ink); font-weight: 600; }
+
+/* The model form: a proposed form is a name and a reason on one line. */
+.dz-proposed { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.dz-dim { color: var(--ink-3); }
+.dz-warn { color: var(--accent); }
+.mono { font-family: var(--font-mono); font-weight: 500; }
+
+/* The funnel: one bar per rule, its height the share still in; a bar filters the table. */
+.dz-funnel { display: flex; gap: 6px; align-items: flex-end; margin: 10px 0 12px; overflow-x: auto; padding-bottom: 2px; }
+.dz-barbtn { all: unset; cursor: pointer; display: grid; gap: 3px; justify-items: center; min-width: 58px; padding: 4px 4px 2px; border-bottom: 2px solid transparent; }
+.dz-barbtn:hover { background: var(--bg-sunken); }
+.dz-barbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dz-barbtn.sel { border-bottom-color: var(--ink); background: var(--accent-tint); }
+.dz-col { width: 34px; height: 64px; display: flex; align-items: flex-end; background: var(--hair); }
+.dz-fill { width: 100%; background: var(--accent); }
+.dz-fill.kept { background: var(--mantine-color-green-7); }
+.dz-fill.exc { background: repeating-linear-gradient(135deg, var(--accent) 0 4px, transparent 4px 8px); border: 1px solid var(--accent); }
+.dz-lab { font-size: 11px; color: var(--ink-2); white-space: nowrap; }
+.dz-num { font-family: var(--font-mono); font-size: 11px; color: var(--ink); }
+
+/* The single-factor table: kept rows in ink, dropped rows greyed with their reason. */
+.dz-table { max-height: 380px; overflow-y: auto; border-top: 1px solid var(--rule); }
+.dz-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 64px 40px 64px minmax(0, 2.4fr); gap: 10px;
+          align-items: center; padding: 5px 6px; border-bottom: 1px solid var(--hair); font-size: 12.5px; cursor: pointer; }
+.dz-row:hover { background: var(--bg-sunken); }
+.dz-row.sel { background: var(--accent-tint); box-shadow: inset 2px 0 0 var(--accent); }
+.dz-row.gone { color: var(--ink-3); }
+.dz-head { cursor: default; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2);
+           position: sticky; top: 0; background: var(--bg-base); }
+.dz-head:hover { background: var(--bg-base); }
+.dz-n { font-family: var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.dz-fate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-st { font-size: 11px; font-weight: 600; }
+.dz-st.kept { color: var(--mantine-color-green-7); }
+.dz-st.dropped { color: var(--ink-3); }
+.dz-exc { font-size: 11px; color: var(--accent); font-weight: 600; }
+.dz-why { font-size: 12px; }
+.dz-exc-edit { border-top: 1px solid var(--line); padding-top: 10px; }
+@media (max-width: 48em) { .dz-row { grid-template-columns: minmax(0, 1fr) 56px 56px; } .dz-row > :nth-child(3), .dz-row > :nth-child(5) { display: none; } }

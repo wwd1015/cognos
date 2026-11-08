@@ -240,6 +240,11 @@ class ValidateStage(Stage):
         from .. import trials
 
         tried = trials.summary(trials.record_for(ctx.run_dir), ctx.run_id)
+        screen_record = self._screen_record(ctx, model)
+        for f in screen_record.pop("findings"):
+            res.add_finding(f)
+        for f in self._model_form_findings(ctx):
+            res.add_finding(f)
         if tried["n_other_runs"]:
             n_other, n_gone = tried["n_other_runs"], tried["n_deleted"]
             res.add_finding(Finding(
@@ -422,6 +427,9 @@ class ValidateStage(Stage):
             "holdout_scored": holdout_scored, "holdout_evaluations": n_eval,
             # The runs of this model as they stood when it was validated: one line each.
             "trials": tried,
+            # The single-factor screen: its rules revised after its result was seen, and the
+            # developer's exceptions to it (ADR-0025).
+            "screen": screen_record,
         }
         payload["routed_findings"] = routed
         payload["analysis_code"] = [{k: c[k] for k in ("id", "sha256", "ran", "reproduced", "note")}
@@ -446,6 +454,71 @@ class ValidateStage(Stage):
             f"{len(res.findings)} finding(s), {len(blockers)} blocker(s)."
         )
         return res
+
+    @staticmethod
+    def _model_form_findings(ctx: RunContext) -> list[Finding]:
+        """Where the developer set the model form against the Design agent's recommendation,
+        and the forms proposed that the engine did not fit (ADR-0025): read, not faults."""
+        ideate = ctx.get("ideate")
+        ip = (ideate.payload if ideate is not None else None) or {}
+        labels = {f["framework"]: f["label"] for f in ip.get("framework_assessment") or []}
+        mine = [c for c in ip.get("framework_choices") or [] if c.get("source") == "developer"]
+        out = []
+        if mine:
+            out.append(Finding(
+                id="model-form-set", severity=Severity.LOW, category="design/model-form",
+                message="The developer set the model form against the recommendation: "
+                        + "; ".join(f"{labels.get(c['framework'], c['framework'])} as "
+                                    f"{c['decision']} ({c['reason']})" for c in mine) + ".",
+                confidence=0.9))
+        forms = ip.get("proposed_forms") or []
+        if forms:
+            out.append(Finding(
+                id="model-form-proposed", severity=Severity.LOW, category="design/model-form",
+                message=f"{len(forms)} form(s) proposed by the developer were not fitted by the "
+                        "engine: " + "; ".join(f"{f['name']} ({f['reason']})" for f in forms)
+                        + ".",
+                confidence=0.9,
+                suggestion="Say in the documentation how the proposed form was assessed, or "
+                           "why the fitted forms answer the same question."))
+        return out
+
+    @staticmethod
+    def _screen_record(ctx: RunContext, model: dict) -> dict:
+        """How the single-factor screen came to be (ADR-0025): each time its rules were
+        changed after its result was seen at the design gate, and each factor the developer
+        kept or left out against the rules. Both are findings a reviewer reads, not faults."""
+        from ..engine.state import RunState
+        from ..modeling import plan as plan_mod
+
+        try:
+            looks = RunState.load(ctx.run_dir).screen_looks
+        except (FileNotFoundError, ValueError):
+            looks = []
+        revised = plan_mod.screen_revisions(looks)
+        exceptions = list(model.get("exceptions") or [])
+        findings = []
+        if revised:
+            what = sorted({k for r in revised for k in r["changed"]})
+            findings.append(Finding(
+                id="screen-revised", severity=Severity.LOW, category="design/screen",
+                message=f"The single-factor screen's rules were revised {len(revised)} time(s) "
+                        f"after its result was seen at the design gate ({', '.join(what)}).",
+                confidence=0.9,
+                suggestion="Read the revisions on the design page: a rule loosened to save "
+                           "one factor is better stated as an exception with its reason."))
+        if exceptions:
+            kept = [e["factor"] for e in exceptions if e["exception"] == "keep"]
+            gone = [e["factor"] for e in exceptions if e["exception"] == "drop"]
+            parts = ([f"kept against the rules: {', '.join(kept)}"] if kept else []) + (
+                [f"left out although the rules kept them: {', '.join(gone)}"] if gone else [])
+            findings.append(Finding(
+                id="screen-exceptions", severity=Severity.LOW, category="design/screen",
+                message=f"{len(exceptions)} exception(s) to the single-factor screen, each with "
+                        f"the developer's reason: {'; '.join(parts)}.",
+                confidence=0.9))
+        return {"looks": len(looks), "revisions": revised, "exceptions": exceptions,
+                "findings": findings}
 
     @staticmethod
     def _score_holdout(ctx: RunContext, model: dict) -> tuple[float | None, list[str]]:

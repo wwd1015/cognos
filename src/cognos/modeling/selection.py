@@ -246,6 +246,10 @@ def violations(ev: Evaluation, evaluator: Evaluator, rules: dict[str, Any],
         for a, b in itertools.combinations([f for f in feats if f in corr.index], 2):
             if abs(float(corr.at[a, b])) > float(lim):
                 out.append(f"{a} and {b} are correlated {float(corr.at[a, b]):+.2f}")
+    if rules.get("max_vif") is not None:
+        for name, v in vif(evaluator.dev, feats).items():
+            if v > float(rules["max_vif"]):
+                out.append(f"{name} has variance inflation {v:.1f}")
     if ev.error:
         return [*out, ev.error]
     if rules.get("max_p_value") is None and not (rules.get("enforce_sign") and expected):
@@ -263,6 +267,62 @@ def violations(ev: Evaluation, evaluator: Evaluator, rules: dict[str, Any],
             if exp and abs(coef) > 1e-12 and (coef > 0) != (exp == "+"):
                 out.append(f"{name} has sign {'+' if coef > 0 else '-'}, expected {exp}")
     return out
+
+
+_VIF_CACHE: dict[tuple[int, frozenset], dict[str, float]] = {}
+
+
+def vif(dev: pd.DataFrame, feats: list[str]) -> dict[str, float]:
+    """The variance inflation of each numeric factor among the others of one model, on the
+    development sample: how much of a factor the rest explain (1 = none, 5 = four fifths)."""
+    cols = [f for f in feats if f in dev.columns and pd.api.types.is_numeric_dtype(dev[f])]
+    if len(cols) < 2:
+        return {}
+    key = (id(dev), frozenset(cols))
+    if key not in _VIF_CACHE:
+        corr = dev[cols].astype(float).corr().to_numpy()
+        if not np.isfinite(corr).all():
+            return {}
+        _VIF_CACHE[key] = {c: float(v) for c, v in zip(cols, np.diag(np.linalg.pinv(corr)),
+                                                       strict=True)}
+        if len(_VIF_CACHE) > 20000:
+            _VIF_CACHE.clear()
+    return _VIF_CACHE[key]
+
+
+# The rules a model can break, in the order the model funnel shows them (ADR-0025).
+MODEL_RULES = (
+    ("crashed", "could not be fitted", lambda b: not re.search(
+        r"correlated|variance inflation|p-value|sign|does not carry", b)),
+    ("max_correlation", "two factors correlated", lambda b: "correlated" in b),
+    ("max_vif", "variance inflation", lambda b: "variance inflation" in b),
+    ("max_p_value", "a coefficient not significant", lambda b: "p-value" in b),
+    ("enforce_sign", "a sign against expectation", lambda b: "sign" in b),
+    ("must_include", "a required factor missing", lambda b: "does not carry" in b),
+)
+
+
+def model_funnel(models: list[dict], rules: dict[str, Any]) -> dict[str, Any]:
+    """Every distinct model, best ranked first, through the plan's rules in a fixed order:
+    each model leaves at the first rule it breaks, with the reason. ``models`` are dicts with
+    ``id``, ``name`` and ``violations``. The models left keep their ranking order."""
+    alive = list(models)
+    lines = [{"rule": "all", "label": "evaluated", "setting": None, "before": len(alive),
+              "after": len(alive), "dropped": []}]
+    for rule, label, hit in MODEL_RULES:
+        setting = rules.get(rule) if rule in rules else None
+        before, keep, dropped = len(alive), [], []
+        for m in alive:
+            why = next((b for b in m["violations"] if hit(b)), None)
+            if why:
+                dropped.append({"id": m["id"], "name": m.get("name", m["id"]), "reason": why})
+            else:
+                keep.append(m)
+        if dropped or (setting not in (None, False, [])):
+            lines.append({"rule": rule, "label": label, "setting": setting, "before": before,
+                          "after": len(keep), "dropped": dropped})
+        alive = keep
+    return {"lines": lines, "kept": [m["id"] for m in alive]}
 
 
 # --- the methods ----------------------------------------------------------------------------
@@ -556,24 +616,72 @@ def run_methods(evaluator: Evaluator, *, families: list[str], factors: list[str]
 
 
 # --- ranking and the ledger -----------------------------------------------------------------
+def rank_value(ev: Evaluation, rule: dict[str, Any]) -> tuple[float | None, bool]:
+    """A model's value on one ranking line and whether higher is better. Besides the scores,
+    a line can be the number of factors or the spread of the score across validation folds
+    (both better when lower, ADR-0025)."""
+    if rule["metric"] == "n_factors":
+        return float(len(ev.candidate.features)), False
+    if rule["metric"] == "fold_spread":
+        return (float(ev.cv.std) if ev.cv is not None else None), False
+    return ev.value(rule["metric"], rule["sample"]), metric_direction(rule["metric"]) == "maximize"
+
+
+def blend(evaluations: list[Evaluation], rank_by: list[dict[str, Any]]) -> dict[str, dict]:
+    """The blended ranking (rank_mode "weights"): on each line every model gets the share of
+    models it beats (1 = the best, 0 = the worst or no value), and the shares are averaged by
+    the lines' weights. Returns, per model id, the score and each line's share."""
+    total = sum(float(r.get("weight") or 0) for r in rank_by) or 1.0
+    out: dict[str, dict] = {e.id: {"score": 0.0, "parts": []} for e in evaluations}
+    for rule in rank_by:
+        w = float(rule.get("weight") or 0) / total
+        vals = []
+        for e in evaluations:
+            v, maximize = rank_value(e, rule)
+            vals.append(None if v is None or not np.isfinite(v) else (v if maximize else -v))
+        have = sorted(v for v in vals if v is not None)
+        for e, v in zip(evaluations, vals, strict=True):
+            if v is None or len(have) < 2:
+                share = 1.0 if v is not None else 0.0
+            else:  # ties share the middle of their places
+                lo = int(np.searchsorted(have, v, side="left"))
+                hi = int(np.searchsorted(have, v, side="right")) - 1
+                share = ((lo + hi) / 2) / (len(have) - 1)
+            out[e.id]["parts"].append(round(share, 4))
+            out[e.id]["score"] += w * share
+    for v in out.values():
+        v["score"] = round(v["score"], 6)
+    return out
+
+
 def rank(evaluations: list[Evaluation], rank_by: list[dict[str, str]], *,
-         complexity_penalty: float = 0.0, n_total: int = 1) -> list[Evaluation]:
-    """Order the evaluated models by the plan's ranking, most important line first. A model
-    with no score on a line ranks after every model that has one."""
+         complexity_penalty: float = 0.0, n_total: int = 1,
+         mode: str = "order") -> list[Evaluation]:
+    """Order the evaluated models by the plan's ranking. In ``order`` the first line decides
+    and later lines break ties; a model with no score on a line ranks after every model that
+    has one. In ``weights`` the lines are blended (``blend``) and the score is kept on each
+    model as ``info["blend"]``."""
+    usable = [e for e in evaluations if not e.error]
+    if mode == "weights":
+        scores = blend(usable, rank_by)
+        for e in usable:
+            e.info["blend"] = scores[e.id]
+        return sorted(usable, key=lambda e: (-scores[e.id]["score"],
+                                             len(e.candidate.features)))
+
     def key(ev: Evaluation):
         out = []
         for i, rule in enumerate(rank_by):
-            v = ev.value(rule["metric"], rule["sample"])
+            v, maximize = rank_value(ev, rule)
             if v is None or not np.isfinite(v):
                 out.append((1, 0.0))
                 continue
-            maximize = metric_direction(rule["metric"]) == "maximize"
             if i == 0 and complexity_penalty:
                 pen = complexity_penalty * (len(ev.candidate.features) / max(1, n_total))
                 v = v - pen if maximize else v + pen
             out.append((0, -v if maximize else v))
         return (*out, len(ev.candidate.features))
-    return sorted([e for e in evaluations if not e.error], key=key)
+    return sorted(usable, key=key)
 
 
 def ledger(evaluator: Evaluator, ranked: list[Evaluation], rank_by: list[dict[str, str]]

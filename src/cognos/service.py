@@ -1076,6 +1076,55 @@ def preview_transform(run_id: str, column: str, spec: dict[str, Any],
     return entry
 
 
+def preview_screen(run_id: str, plan: dict[str, Any] | None = None,
+                   exceptions: dict[str, dict] | None = None, root: str | Path | None = None,
+                   by: str | None = None) -> dict[str, Any]:
+    """The single-factor analysis under the plan as the design page states it (``plan``: the
+    edits not yet decided; ``exceptions``: factor -> {"keep", "reason"}), on the development
+    sample, as the model stage will run it (ADR-0025). Every call is a look and is kept on the
+    run with ``by``: rules changed between two looks are counted as revised after the result
+    was seen. Raises ``ValueError`` when the plan cannot be run on this data."""
+    from .engine.state import utcnow
+    from .modeling import plan as plan_mod
+    from .stages.model import ModelStage
+
+    eng = engine(run_id, root)
+    ctx = eng.context()
+    ideate = results(run_id, root).get("ideate")
+    stored = ((ideate.payload or {}) if ideate is not None else {}).get("screen")
+    in_force = {n: {"keep": e["keep"], "reason": e["reason"]}
+                for n, e in eng.state.overrides.screen_exceptions.items()}
+    asked = {n: {"keep": bool(e.get("keep")), "reason": " ".join(str(e.get("reason") or "").split())}
+             for n, e in (exceptions if exceptions is not None else in_force).items()}
+    if not plan and asked == in_force and stored and not stored.get("error"):
+        screen = stored  # what the design stage computed under the plan in force
+    else:
+        df = ctx.load_dataset()
+        current = ModelStage.plan_in_force(ctx, df, list(ctx.profile()["features"]),
+                                           ModelStage.families(ctx), exceptions=asked)
+        patch = {s: dict(plan.get(s) or {}) for s in plan_mod.SECTIONS if (plan or {}).get(s)}
+        unknown = [f"{s}.{f}" for s, fields in patch.items() for f in fields
+                   if f not in current[s]]
+        if unknown:
+            raise ValueError(f"unknown plan field(s) {unknown}")
+        trial = plan_mod.merge(current, patch, "human")
+        bad = plan_mod.problems(trial)
+        if bad:
+            raise ValueError("the plan cannot be run: " + "; ".join(bad))
+        screen = ModelStage.screen_preview(ctx, trial)
+    eng.note_screen_look({"at": utcnow(), "by": by or whoami(), "rules": screen["rules"],
+                          "kept": len(screen["shortlist"]),
+                          "exceptions": sorted(asked)})
+    return screen
+
+
+def screen_revisions(run_id: str, root: str | Path | None = None) -> list[dict[str, Any]]:
+    """Each time the single-factor screen's rules were changed after its result was seen."""
+    from .modeling import plan as plan_mod
+
+    return plan_mod.screen_revisions(state(run_id, root).screen_looks)
+
+
 def catalog_line(table: dict[str, Any]) -> str:
     """One line on what a catalog table (as :func:`catalog_listing` gives it) holds."""
     from . import catalog
