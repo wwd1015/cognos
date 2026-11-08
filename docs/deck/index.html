@@ -297,10 +297,12 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 /* ===========================================
    16. EDITION LOG
    =========================================== */
+.log-wrap { max-height: 600px; overflow-y: auto; scrollbar-width: thin; }
 table.log { width: 100%; border-collapse: collapse; }
 .log th { text-align: left; font-family: var(--font-mono); font-weight: 500; font-size: 17px; letter-spacing: 0.12em; text-transform: uppercase;
-          color: var(--ink-2); padding: 0 24px 16px 0; border-bottom: 2px solid var(--ink); }
-.log td { padding: 11px 24px 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 20px; line-height: 1.35; }
+          color: var(--ink-2); padding: 0 24px 16px 0; border-bottom: 2px solid var(--ink);
+          position: sticky; top: 0; background: var(--paper); }
+.log td { padding: 10px 24px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 19px; line-height: 1.35; }
 .log td.mono { font-size: 19px; white-space: nowrap; }
 .repo { display: inline-block; font-family: var(--font-mono); font-size: 22px; padding: 4px 12px; background: var(--sunken); color: var(--ink); }
 
@@ -332,7 +334,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 8, "system_version": "1.0.0", "date": "2026-11-01"}</script>
+<script type="application/json" id="edition">{"edition": 9, "system_version": "1.0.0", "date": "2026-11-07"}</script>
 
 <div class="stage" id="stage">
 
@@ -702,7 +704,8 @@ body.moving .chrome { opacity: 1; }
       <h2 class="reveal d1">This deck changes when the system does.</h2>
       <p class="note reveal d2">It lives at <span class="repo">docs/deck/index.html</span>, and a test holds its workflow, figures and version to the code.</p>
     </div>
-    <table class="log reveal d3" id="edition-log">
+    <div class="log-wrap reveal d3" id="edition-scroll">
+    <table class="log" id="edition-log">
       <thead><tr><th style="width: 120px">Edition</th><th style="width: 130px">System</th><th style="width: 180px">Date</th><th>What changed</th></tr></thead>
       <tbody>
         <tr><td class="mono">1</td><td class="mono">v1.0.0</td><td class="mono">2026-10-11</td><td>First edition. The three roles, the animated workflow, eight principles. Covers intake, linked sources, stage tools, the standard exploration tools, run-wide views, and limitations beside assumptions.</td></tr>
@@ -713,8 +716,10 @@ body.moving .chrome { opacity: 1; }
         <tr><td class="mono">6</td><td class="mono">v1.0.0</td><td class="mono">2026-10-24</td><td>The data catalog: the developer chooses the team's tables (the template's are checked) and adds any other data; documented links are offered and measured, never imposed (ADR-0020).</td></tr>
         <tr><td class="mono">7</td><td class="mono">v1.0.0</td><td class="mono">2026-10-25</td><td>The engine comes first: the engine disposes, agents recommend, people decide. COGNOS is pictured as a restaurant kitchen (the scale weighs, cooks suggest, the chef decides, the ticket rail keeps the record), and every slide after it is drawn in that kitchen. The logo's two O's carry the creed.</td></tr>
         <tr><td class="mono">8</td><td class="mono">v1.0.0</td><td class="mono">2026-11-01</td><td>The agents are named for their work: Intake, Data, Design, Modeling, Backtest, Validation, Compliance and Writing agent. Job titles belong to the people (developer, reviewer, approver).</td></tr>
+        <tr><td class="mono">9</td><td class="mono">v1.0.0</td><td class="mono">2026-11-07</td><td>Column transformations in two steps: whether and which at the data gate, one variable at a time with the curve previewed before it counts; the parameters at the design gate, fitted on the development sample only. A custom expression of the variable is allowed (ADR-0024).</td></tr>
       </tbody>
     </table>
+    </div>
   </div>
   <div class="foot"><span>The engine disposes. Agents recommend. People decide.</span><span class="pg"></span></div>
 </section>
@@ -746,16 +751,16 @@ const FLOW = [
     person: "Gives the data once the intent stands: tables from the team's data catalog (the template's are checked), plus any file, Snowflake table or query to add." },
   { id: "explore", label: "Explore data", short: "Data", agentName: "Data agent",
     engine: "Fetches the data once and keeps a snapshot. Measures how several sources connect. Runs every analysis that is asked for.",
-    agent: "Proposes the join and the target, asks for analyses or writes a script, names candidate features and columns to exclude.",
+    agent: "Proposes the join and the target, asks for analyses or writes a script, names candidate features and columns to exclude. The engine looks at each variable against the outcome and suggests whether to transform it, by what the model is for.",
     person: "" },
   { id: "gate_data", label: "Review data decisions", seat: "Model developer",
-    person: "Accepts or changes the target, the join and the exclusions, and reads any script the agent wrote." },
+    person: "Accepts or changes the target, the join and the exclusions, reads any script the agent wrote, and decides for every variable whether it is transformed and how, after seeing the curve it gives." },
   { id: "ideate", label: "Design the model", short: "Design", agentName: "Design agent",
     engine: "Assesses the data structure and which frameworks apply. Recommends a development plan from the shape of the data: how to split it, how to shorten the factor list, how models are built.",
     agent: "Ranks the slate of specifications, may change the plan, and raises what only the sponsor can decide.",
     person: "" },
   { id: "gate_design", label: "Review the design", seat: "Model developer",
-    person: "Keeps, drops or reorders the slate, confirms or edits the plan, and answers the design questions." },
+    person: "Keeps, drops or reorders the slate, confirms or edits the plan, sets each transformation's parameters on the development sample, and answers the design questions." },
   { id: "model", label: "Search & build the candidate pool", short: "Pool", agentName: "Modeling agent",
     engine: "Fits every factor alone, cuts the list by the developer's rules, builds models one factor at a time, and ranks all of them. The holdout stays sealed.",
     agent: "Recommends the pool of candidates that goes on, and checks coefficient signs. No champion is chosen here.",
@@ -824,6 +829,7 @@ function go(i) {
   const s = slides[i];
   s.classList.add("active");
   const a = anims[s.dataset.anim]; if (a) a.start();
+  const log = $("#edition-scroll", s); if (log) log.scrollTop = log.scrollHeight;  // newest in view
   $("#progress").style.width = `${((i + 1) / slides.length) * 100}%`;
   history.replaceState(null, "", `#${i + 1}`);
   document.title = `${s.dataset.title} · COGNOS`;
