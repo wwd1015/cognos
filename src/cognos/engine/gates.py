@@ -69,6 +69,10 @@ def why(gate: str, action: str, payload: dict[str, Any] | None, reason: str = ""
         if payload.get("plan"):
             fields = sorted(f for section in payload["plan"].values() for f in section)
             parts.append(f"development plan changed ({_clip(', '.join(fields), 80)})")
+        if payload.get("framework_roles"):
+            parts.append("model form changed")
+        if payload.get("proposed_forms"):
+            parts.append(f"{len(payload['proposed_forms'])} form(s) proposed")
         if payload.get("answers"):
             parts.append(f"{len(payload['answers'])} design question(s) answered")
         return f"{label}: " + (" and ".join(parts) if parts else action.replace("_", " "))
@@ -127,13 +131,249 @@ def send_back(state: RunState, gate: str, payload: dict[str, Any], reason: str) 
     return [target]
 
 
+def _apply_kinds(state: RunState, action: str, asked: dict[str, Any] | None, profile: dict
+                 ) -> bool:
+    """Step one of each column's transformation (ADR-0024): the forms decided for every column
+    explore reviewed, each a variable of its own in the single-factor screen. Accepting takes
+    the recommended forms; an edit must decide every column that is still in the model. A
+    decision is ``{"forms": [...]}`` (a single kind or spec reads as one form). True when the
+    decisions changed."""
+    from ..modeling import column_transforms as ct
+
+    review = profile.get("transform_review") or {}
+    reviewed = {c["column"]: c for c in review.get("columns") or []}
+    if not reviewed:
+        return False
+    if action == "accept":
+        asked = {c: {"forms": e["recommended"].get("forms") or [e["recommended"]["kind"]]}
+                 for c, e in reviewed.items()}
+    elif asked is None:
+        return False  # this decision says nothing about the transformations: keep them
+    unknown = [c for c in asked if c not in reviewed]
+    if unknown:
+        raise GateError(f"{unknown} were not reviewed by the exploration")
+    grid = review.get("grid") or {}
+    bases = set(grid.get("bases") or ("as_is", "log"))
+    lags = set(grid.get("lags") or (0,))
+    allowed = bases | set(grid.get("shapes") or ()) | {"custom"}
+    left = sorted(c for c in reviewed if c not in asked
+                  and c not in state.overrides.exclude_columns)
+    if left:
+        raise GateError(f"decide every variable first: {len(left)} still open "
+                        f"({', '.join(left[:6])}{', ...' if len(left) > 6 else ''})")
+    current = state.overrides.transforms
+    new = {}
+    for col, asked_one in asked.items():
+        if col in state.overrides.exclude_columns:
+            continue
+        try:
+            forms = ct.forms_of(asked_one)
+        except ValueError as exc:
+            raise GateError(f"{col}: {exc}") from exc
+        if not forms:
+            raise GateError(f"{col}: choose at least one form (as it is, if nothing else)")
+        bad = [ct.form_label(f) for f in forms
+               if (f.get("op") if f["kind"] == "change" else f["kind"]) not in allowed
+               or f.get("lag", 0) not in lags]
+        if bad:
+            raise GateError(f"{col}: not a form this model offers: {', '.join(bad)}")
+        old = {ct.form_key(f): f for f in ct.forms_of(current.get(col))}
+        kept = []
+        for f in forms:
+            if f["kind"] == "custom":
+                try:
+                    f["expr"] = ct.check_expr(f["expr"], col)
+                except ValueError as exc:
+                    raise GateError(f"{col}: {exc}") from exc
+            prior = old.get(ct.form_key(f))
+            # a form kept (a custom one with the same expression) keeps the design gate's settings
+            kept.append(prior if prior and prior.get("expr", "") == f.get("expr", "") else f)
+        new[col] = {"forms": kept}
+    changed = new != current
+    state.overrides.transforms = new
+    return changed
+
+
+def _apply_params(state: RunState, asked: dict[str, dict], ideate: dict) -> bool:
+    """Step two (ADR-0024): the parameters set at the design gate for each form that needs
+    them (a fitted shape, a custom expression), keyed by ``column_transforms.item_key``.
+    Every other form is used as the data gate decided it. True when they changed."""
+    from ..modeling import column_transforms as ct
+
+    current = dict(state.overrides.transforms)
+    open_ = ct.decided(current)
+    left = sorted(k for k in open_ if k in (ideate.get("transforms") or {}) and k not in asked)
+    if left:
+        raise GateError(f"set every transformed variable first: "
+                        f"{', '.join(k.replace('::', ' ') for k in left)} still open "
+                        "(“Accept design” keeps the engine's settings for all)")
+    changed = False
+    for key, spec in (asked or {}).items():
+        col, kind = ct.split_item(key)
+        if key not in open_:
+            raise GateError(f"{key.replace('::', ' ')!r} is not a form to set here: decide the "
+                            "forms at the data gate")
+        if spec.get("kind") not in (None, kind):
+            raise GateError(f"{col}: the forms ({kind}) were decided at the data gate; reopen "
+                            "it there to use another one")
+        base = {k: v for k, v in open_[key].items() if k != "column"}
+        try:
+            new = ct.normalize({**base, **spec, "kind": kind})
+        except ValueError as exc:
+            raise GateError(f"{col}: {exc}") from exc
+        if new["kind"] == "custom":
+            try:
+                new["expr"] = ct.check_expr(new["expr"], col)
+            except ValueError as exc:
+                raise GateError(f"{col}: {exc}") from exc
+        knots = new["knots"]
+        if knots != sorted(set(knots)) or len(knots) > 2:
+            raise GateError(f"{col}: at most two knots, in increasing order")
+        cap = ((ideate.get("transforms") or {}).get(key) or {}).get("cap")
+        if knots and cap and not all(cap[0] < k < cap[1] for k in knots):
+            raise GateError(f"{col}: a knot must lie inside the capped range "
+                            f"[{cap[0]:.4g}, {cap[1]:.4g}]")
+        if new["kind"] == "knee" and knots:
+            new["knees"] = max(new["knees"], len(knots))
+        if new != base:
+            current = ct.with_form(current, col, new)
+            changed = True
+    state.overrides.transforms = current
+    return changed
+
+
+DECISIONS = ("primary", "candidate", "challenger", "rejected")
+
+
+def _apply_model_form(state: RunState, payload: dict, ideate: dict, by: str) -> bool:
+    """The model form as the developer sets it (ADR-0025): the role of each framework the engine
+    can fit here, against the Design agent's, and forms proposed that the engine cannot fit.
+    Exactly one framework is the main form; a role that departs from the agent's needs a reason.
+    The families on the slate follow the roles: a framework set to not used takes its families
+    off, one switched on brings its families. True when anything changed."""
+    frameworks = {f["framework"]: f for f in ideate.get("framework_assessment") or []}
+    proposed = {c["framework"]: c for c in ideate.get("framework_choices_proposed")
+                or ideate.get("framework_choices") or []}
+    old = state.overrides.framework_roles
+    changed = False
+    if payload.get("framework_roles") is not None:
+        asked = payload["framework_roles"]
+        why = " ".join(str(payload.get("model_form_reason") or "").split())
+        roles = {k: (old[k]["decision"] if k in old else c["decision"])
+                 for k, c in proposed.items()}
+        for name, decision in asked.items():
+            f = frameworks.get(name)
+            if f is None:
+                raise GateError(f"{name!r} is not a framework the engine assessed")
+            if decision not in DECISIONS:
+                raise GateError(f"{name}: the role must be one of {', '.join(DECISIONS)}")
+            if decision != roles.get(name) and not f.get("editable"):
+                raise GateError(f"{f['label']} cannot be set here: {f['reason']}")
+            roles[name] = decision
+        main = [k for k, d in roles.items() if d == "primary"]
+        if len(main) != 1:
+            raise GateError("exactly one framework is the main form")
+        required = (ideate.get("design") or {}).get("interpretability") == "required"
+        for k, d in roles.items():
+            if required and k == "ml_challenger" and d in ("primary", "candidate"):
+                raise GateError("interpretability is required, so machine learning can only be a "
+                                "benchmark; change interpretability in the brief first")
+        new: dict[str, dict] = {}
+        for k, d in roles.items():
+            if k not in proposed or d == proposed[k]["decision"]:
+                continue
+            kept = old.get(k) or {}
+            if kept.get("decision") == d and (not why or why == kept.get("reason")):
+                new[k] = kept
+                continue
+            if not why:
+                raise GateError(f"{frameworks[k]['label']}: a role that departs from the "
+                                "recommendation needs a reason")
+            new[k] = {"decision": d, "reason": why, "by": by}
+        if new != old:
+            before = {k: (old[k]["decision"] if k in old else c["decision"])
+                      for k, c in proposed.items()}
+            _follow_roles(state, ideate, frameworks, before, roles)
+            state.overrides.framework_roles = new
+            changed = True
+    if payload.get("proposed_forms") is not None:
+        forms = []
+        earlier = {f["name"]: f for f in state.overrides.proposed_forms}
+        for f in payload["proposed_forms"]:
+            name = " ".join(str(f.get("name") or "").split())
+            reason = " ".join(str(f.get("reason") or "").split())
+            if not name:
+                continue
+            if not reason:
+                raise GateError(f"{name}: a proposed form needs a reason")
+            prior = earlier.get(name) or {}
+            forms.append({"name": name, "reason": reason,
+                          "by": prior.get("by") if prior.get("reason") == reason else by})
+        if forms != state.overrides.proposed_forms:
+            state.overrides.proposed_forms = forms
+            changed = True
+    return changed
+
+
+def _follow_roles(state: RunState, ideate: dict, frameworks: dict, before: dict,
+                  after: dict) -> None:
+    """The slate follows a change of roles: families of a framework set to not used leave it,
+    and a framework given a role with none of its families searched brings them all."""
+    slate = state.overrides.slate
+    if slate is None:
+        slate = [{k: h[k] for k in ("family", "feature_strategy", "role", "priority", "rationale")}
+                 for h in ideate.get("hypotheses") or []]
+    off = {fam for k, d in after.items() if d == "rejected"
+           for fam in (frameworks.get(k) or {}).get("families", [])}
+    slate = [h for h in slate if h["family"] not in off]
+    have = {h["family"] for h in slate}
+    for k, d in after.items():
+        own = (frameworks.get(k) or {}).get("families", [])
+        if d != "rejected" and d != before.get(k) and not have & set(own):
+            for fam in own:
+                if fam not in have:
+                    slate.append({"family": fam, "feature_strategy": "all",
+                                  "role": "challenger" if d == "challenger" else "candidate",
+                                  "priority": 0.5, "rationale": "Brought in with its framework "
+                                  "by the developer."})
+                    have.add(fam)
+    if not slate:
+        raise GateError("no model family is left to search: switch a framework on")
+    state.overrides.slate = slate
+
+
+def _apply_exceptions(state: RunState, asked: dict[str, dict], ideate: dict, by: str) -> bool:
+    """The developer's exceptions to the single-factor screen (ADR-0025): every factor the
+    screen saw may be kept although a rule drops it, or left out although the rules keep it,
+    and each needs a reason. The whole set as the page states it replaces the one in force.
+    True when it changed."""
+    rows = {r["name"]: r for r in ((ideate.get("screen") or {}).get("rows") or [])}
+    new: dict[str, dict] = {}
+    for name, e in (asked or {}).items():
+        if name not in rows:
+            raise GateError(f"{name!r} is not a factor of the single-factor analysis")
+        if not isinstance(e, dict) or "keep" not in e:
+            raise GateError(f"{name}: say whether it is kept or left out")
+        why = " ".join(str(e.get("reason") or "").split())
+        if not why:
+            raise GateError(f"{name}: an exception to the screen needs a reason")
+        old = state.overrides.screen_exceptions.get(name) or {}
+        same = old.get("keep") == bool(e["keep"]) and old.get("reason") == why
+        new[name] = {"keep": bool(e["keep"]), "reason": why,
+                     "by": old.get("by") if same else by}
+    if new == state.overrides.screen_exceptions:
+        return False
+    state.overrides.screen_exceptions = new
+    return True
+
+
 def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], reason: str,
            results: dict[str, Any], *, config: Any = None,
-           drawn: list[dict[str, Any]] = ()) -> tuple[list[str], bool]:
+           drawn: list[dict[str, Any]] = (), by: str = "") -> tuple[list[str], bool]:
     """Apply a decision. Returns (steps to invalidate, whether the gate itself is now done).
     ``config`` is the run's profile (gate_source reads whether it already gives the data).
     ``drawn`` are the links drawn at the data gate with this decision, already measured by
-    the engine (``linking.measure_drawn``) and given their ids."""
+    the engine (``linking.measure_drawn``) and given their ids. ``by`` is who decided."""
     if action not in ACTIONS[gate]:
         raise GateError(f"{gate} does not accept {action!r}; allowed: {sorted(ACTIONS[gate])}")
     stage = STAGE_OF_GATE.get(gate)
@@ -227,6 +467,9 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
         if payload.get("join_changed"):
             if pick and pick != analysed and profile.get("target_source") != "profile":
                 state.overrides.target, state.overrides.task = pick, None
+            state.overrides.transforms = {}  # the columns are reviewed again on the new table
+            state.overrides.screen_exceptions = {}
+            state.overrides.framework_roles = {}
             return ["explore"], False  # explore rebuilds the dataset from the new join
         if pick and pick != analysed:
             if profile.get("target_source") == "profile":
@@ -235,6 +478,9 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
             if pick not in (profile.get("dtypes") or {}):
                 raise GateError(f"unknown column {pick!r}")
             state.overrides.target, state.overrides.task = pick, None
+            state.overrides.transforms = {}  # reviewed against another outcome
+            state.overrides.screen_exceptions = {}
+            state.overrides.framework_roles = {}
             return ["explore"], False  # explore re-reads the data against the new target
         if profile.get("target_source") != "profile" and analysed:
             state.overrides.target, state.overrides.task = analysed, profile.get("task")
@@ -253,6 +499,8 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
                 raise GateError("the target column cannot be excluded")
         changed = sorted(new) != sorted(state.overrides.exclude_columns)
         state.overrides.exclude_columns = sorted(set(new))
+        # Step one of each column's transformation (ADR-0024): whether, and by which kind.
+        changed = _apply_kinds(state, action, payload.get("transforms"), profile) or changed
         return (_changed_downstream(gate) if changed else []), True
 
     if gate == "gate_design":
@@ -272,8 +520,21 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
             invalidate += _changed_downstream(gate)
         elif action == "accept" and state.overrides.slate is not None:
             pass  # accepting keeps whatever slate is in force
+        if action == "edit" and payload.get("transform_params"):
+            # Step two (ADR-0024): how each transformed column is fitted.
+            if _apply_params(state, payload["transform_params"],
+                             (res.payload if res is not None else None) or {}):
+                invalidate = sorted(set(invalidate) | set(_changed_downstream(gate)))
+        if action == "edit" and "screen_exceptions" in payload:
+            if _apply_exceptions(state, payload["screen_exceptions"],
+                                 (res.payload if res is not None else None) or {}, by):
+                invalidate = sorted(set(invalidate) | set(_changed_downstream(gate)))
         patch = payload.get("plan") if action == "edit" else None
         replan = apply_plan(state, res, patch) if patch else []
+        if action == "edit" and _apply_model_form(state, payload,
+                                                  (res.payload if res is not None else None)
+                                                  or {}, by):
+            replan = ["ideate"]  # the page restates the form and the families in force
         rerun = apply_answers(state, answers) + replan
         if rerun:  # the design stage restates the plan in force, and the gate re-opens on it
             return sorted(set(invalidate) | set(rerun)), False
@@ -374,10 +635,14 @@ def _source(state: RunState, payload: dict[str, Any], config: Any) -> list[str]:
         state.overrides.data = given
         state.overrides.target, state.overrides.task = target, None
         state.overrides.join, state.overrides.exclude_columns = None, []
-        state.overrides.drawn_links = []
+        state.overrides.drawn_links, state.overrides.transforms = [], {}
+        state.overrides.screen_exceptions, state.overrides.framework_roles = {}, {}
         return _changed_downstream("gate_source")
     if target and target != state.overrides.target:
         state.overrides.target, state.overrides.task = target, None
+        state.overrides.transforms = {}  # reviewed against another outcome
+        state.overrides.screen_exceptions = {}
+        state.overrides.framework_roles = {}
         return _changed_downstream("gate_source")
     return []
 

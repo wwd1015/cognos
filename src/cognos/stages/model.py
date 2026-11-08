@@ -19,6 +19,8 @@ cached by a fingerprint of its inputs, so a changed pool re-finalizes without se
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -26,8 +28,8 @@ from ..analysis import consult
 from ..artifacts import ArtifactRef, Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..datautil import coerce_target
+from ..modeling import column_transforms, fit_full, greedy_ensemble, score, selection, splits
 from ..modeling import factors as factors_mod
-from ..modeling import fit_full, greedy_ensemble, score, selection, splits
 from ..modeling import plan as plan_mod
 from ..modeling.fit import HAZARD_FAMILIES, Candidate
 from ..modeling.metrics import metric_direction
@@ -37,6 +39,9 @@ from .base import Stage, attach_recommendation, register_stage
 
 _TREES = {"random_forest", "gradient_boosting"}
 MAX_LEADERS = 20
+
+
+FUNNEL_MODELS = 300  # distinct models the funnel follows, best ranked first
 
 
 @register_stage
@@ -74,10 +79,7 @@ class ModelStage(Stage):
             structural_info = {"spec": structural_spec.to_dict(), **s_info}
 
         # --- the plan in force ------------------------------------------------------
-        families = ctx.get("ideate").payload.get("families") if ctx.has("ideate") else None
-        if ctx.overrides.slate:  # the human's slate edit at gate_design wins
-            families = list(dict.fromkeys(h["family"] for h in ctx.overrides.slate))
-        families = families or (cfg.search.model_families or None)
+        families = self.families(ctx)
         plan = self.plan_in_force(ctx, df, features, families)
         ev = plan["evaluation"]
         shape = plan["shape"]["shape"]
@@ -151,6 +153,24 @@ class ModelStage(Stage):
             }
             migration_findings = self._check_migration(migration_model)
 
+        # --- each column's own transformation, fitted on the development sample -----------
+        # (ADR-0024) A cap, a knee or a smooth curve is placed with the outcome in view, so it
+        # is fitted here, after the split, on train_df alone; test and holdout get the same
+        # frozen points. The library already left out a column not decided to enter as it is.
+        expected = self._expected_signs(profile, plan)
+        shaped, shape_report, shape_notes = column_transforms.library(
+            train_df, coerce_target(train_df, cfg), features, plan["factors"].get("columns") or {},
+            expected=expected, classification=is_clf, period=plan["factors"].get("period"))
+        if shaped:
+            train_df = factors_mod.apply_library(train_df, shaped)
+            test_df = factors_mod.apply_library(test_df, shaped) if len(test_df) else test_df
+            holdout_df = (factors_mod.apply_library(holdout_df, shaped) if len(holdout_df)
+                          else holdout_df)
+            library = [*library, *shaped]
+        if shape_report:
+            res.add_artifact(ctx.save_json("stages/model/transforms.json", shape_report))
+        lib_notes = [*lib_notes, *shape_notes]
+
         ctx.save_df("data/train.parquet", train_df)
         for name, part in (("test", test_df), ("holdout", holdout_df)):
             if len(part):
@@ -175,7 +195,6 @@ class ModelStage(Stage):
         # --- the search: single factors, the screen, the methods ----------------------
         rank_by = ev["rank_by"]
         rank_metric = rank_by[0]["metric"]
-        expected = self._expected_signs(profile, plan)
         factor_names = [f.name for f in library]
         fingerprint = self._fingerprint(cfg, train_df, y_train, factor_names, families,
                                         hazard_meta, plan, expected)
@@ -203,7 +222,7 @@ class ModelStage(Stage):
         rows, shortlist, paths = found["single_factor"], found["shortlist"], found["paths"]
         ranked = selection.rank(found["evaluations"], rank_by,
                                 complexity_penalty=cfg.search.complexity_penalty,
-                                n_total=len(shortlist))
+                                n_total=len(shortlist), mode=ev.get("rank_mode", "order"))
         if not ranked:
             raise RuntimeError("Search produced no viable candidate (all crashed). Check data/config.")
         ledger = selection.ledger(evaluator, ranked, rank_by)
@@ -255,7 +274,9 @@ class ModelStage(Stage):
             from ..modeling.guided import guided_search
             from .ideate import _engine_families
 
-            explored = [f.name for f in library if f.transform == "level" and not f.lag]
+            # every explored column, a transformed one too: the search builds on raw columns
+            explored = list(dict.fromkeys(f.source for f in library
+                                          if f.source in train_df.columns))
             gr = guided_search(
                 lambda c: ctx.recommend("modeling_agent_search", c).model_dump(),
                 train_df[explored], y_train, columns=explored, champion=lead.candidate,
@@ -287,8 +308,14 @@ class ModelStage(Stage):
 
         # --- the leaders and the pool (no champion is chosen here) ---------------------
         must = list(dict.fromkeys([*(plan["selection"].get("must_include") or []), *protected]))
+        funnel = self._model_funnel(evaluator, ranked, plan, expected, found["corr"], must,
+                                    names)
+        res.add_artifact(ctx.save_json("stages/model/model_funnel.json", funnel))
+        benchmark = set((ctx.get("ideate").payload or {}).get("benchmark_families") or []
+                        if ctx.has("ideate") else [])
         leaders, lookup = self._leaders(evaluator, ranked, cfg, plan, expected, found["corr"],
-                                        guided_entry, train_df, y_train, is_clf, must)
+                                        guided_entry, train_df, y_train, is_clf, must,
+                                        benchmark)
         for entry in leaders:
             entry["name"] = names[entry["id"]]
         rec = self._modeler_choice(ctx, leaders, plan, len(ledger), fingerprint)
@@ -398,9 +425,21 @@ class ModelStage(Stage):
                 "n_factors": len(library), "n_sources": len({f.source for f in library}),
                 "transforms": plan["factors"]["transforms"], "notes": lib_notes,
             },
+            "transforms": {col: {"kind": r["kind"], "factor": r["factor"]["name"],
+                                 "caption": r["caption"], "spec": r["spec"]}
+                           for col, r in shape_report.items()},
             "single_factor": [r for r in rows if r["status"] == "kept"][:40],
             "screen": [{k: line[k] for k in ("rule", "setting", "before", "after")}
                        for line in found["screen"]],
+            "exceptions": [{"factor": r["name"], "exception": r["exception"],
+                            "reason": r["reason"], "overruled": r.get("overruled") or []}
+                           for r in rows if r.get("exception")],
+            "model_funnel": {"lines": [{k: v for k, v in line.items() if k != "dropped"}
+                                       for line in funnel["lines"]],
+                             "kept": funnel["kept"][:40], "n_models": funnel["n_models"],
+                             "n_ranked": funnel["n_ranked"]},
+            "rank_mode": plan["evaluation"].get("rank_mode", "order"),
+            "blend": {e.id: e.info["blend"] for e in ranked[:40] if "blend" in e.info},
             "shortlist": shortlist,
             "expected_signs": expected,
             "paths": paths,
@@ -465,18 +504,105 @@ class ModelStage(Stage):
     # --- the plan ------------------------------------------------------------------------
     @staticmethod
     def plan_in_force(ctx: RunContext, df: pd.DataFrame, features: list[str],
-                      families: list[str] | None) -> dict:
+                      families: list[str] | None, *,
+                      exceptions: dict[str, dict] | None = None) -> dict:
         """The plan this run works to: the developer's edit, the profile, the Design agent's
-        proposal (recorded by ideate), the engine's recommendation, in that order."""
+        proposal (recorded by ideate), the engine's recommendation, in that order.
+        ``exceptions`` stands in for the screen exceptions in force (a preview's)."""
         from ..modeling.fit import DEFAULT_FAMILIES
 
         cfg = ctx.config
         families = families or DEFAULT_FAMILIES.get(cfg.task.value, DEFAULT_FAMILIES["regression"])
         ideate = ctx.get("ideate")
         proposed = ((ideate.payload or {}).get("plan_proposed") if ideate is not None else None)
-        return plan_mod.resolve(cfg, plan_mod.shape_of(df, cfg), families=list(families),
+        plan = plan_mod.resolve(cfg, plan_mod.shape_of(df, cfg), families=list(families),
                                 columns=list(df.columns), proposed=proposed,
                                 human=ctx.overrides.plan)
+        # each column's transformation, as decided at the gates, wins (ADR-0024), and so do
+        # the developer's exceptions to the screen (ADR-0025)
+        column_transforms.lay_over(plan, ctx.overrides.transforms)
+        return plan_mod.lay_exceptions(
+            plan, ctx.overrides.screen_exceptions if exceptions is None else exceptions)
+
+    @staticmethod
+    def families(ctx: RunContext) -> list[str] | None:
+        """The model families in force: the developer's slate, else ideate's, else the profile's."""
+        families = ctx.get("ideate").payload.get("families") if ctx.has("ideate") else None
+        if ctx.overrides.slate:  # the human's slate edit at gate_design wins
+            families = list(dict.fromkeys(h["family"] for h in ctx.overrides.slate))
+        return families or (ctx.config.search.model_families or None)
+
+    @staticmethod
+    def development(ctx: RunContext, plan: dict) -> tuple[pd.DataFrame, Any, dict[str, str]]:
+        """The development sample exactly as this stage cuts it under ``plan`` (the library
+        computed, then the split), its outcome and the expected signs. The test sample and the
+        holdout are cut and dropped unread: the design gate fits its previews on this (ADR-0024)."""
+        cfg = ctx.config
+        df = ctx.load_dataset()
+        profile = ctx.profile()
+        features = list(profile["features"])
+        frame, _, _ = factors_mod.build_library(
+            df, features, plan["factors"], shape=plan["shape"]["shape"],
+            datetime_col=cfg.data.datetime_col)
+        dev, _, _ = splits.split_samples(frame, plan["evaluation"],
+                                         datetime_col=cfg.data.datetime_col,
+                                         random_state=cfg.search.random_state)
+        return dev, coerce_target(dev, cfg), ModelStage._expected_signs(profile, plan)
+
+    @staticmethod
+    def development_library(ctx: RunContext, plan: dict
+                            ) -> tuple[pd.DataFrame, Any, dict[str, str], list]:
+        """The development sample with every factor the model stage would screen on it: the
+        library, then the split, then each column's own transformation fitted on this sample
+        alone. The engineered factors of the structural and migration frameworks join at the
+        model stage itself."""
+        cfg = ctx.config
+        df = ctx.load_dataset()
+        profile = ctx.profile()
+        features = list(profile["features"])
+        frame, library, _ = factors_mod.build_library(
+            df, features, plan["factors"], shape=plan["shape"]["shape"],
+            datetime_col=cfg.data.datetime_col)
+        dev, _, _ = splits.split_samples(frame, plan["evaluation"],
+                                         datetime_col=cfg.data.datetime_col,
+                                         random_state=cfg.search.random_state)
+        expected = ModelStage._expected_signs(profile, plan)
+        y = coerce_target(dev, cfg)
+        shaped, _, _ = column_transforms.library(
+            dev, y, features, plan["factors"].get("columns") or {}, expected=expected,
+            classification=cfg.task.is_classification, period=plan["factors"].get("period"))
+        if shaped:
+            dev = factors_mod.apply_library(dev, shaped)
+            library = [*library, *shaped]
+        return dev, y, expected, library
+
+    @staticmethod
+    def screen_preview(ctx: RunContext, plan: dict) -> dict:
+        """The single-factor analysis the model stage will run under ``plan``, on the same
+        development sample, for the design gate (ADR-0025). The test sample and the holdout are
+        cut and dropped unread. The model stage runs it again and its result is the record."""
+        cfg = ctx.config
+        dev, y, expected, library = ModelStage.development_library(ctx, plan)
+        ev = plan["evaluation"]
+        splitter, _ = splits.make_splitter(ev, n=len(dev), random_state=cfg.search.random_state)
+        groups = (dev[ev["group_col"]].to_numpy()
+                  if ev["validation"] == "group_kfold" and ev.get("group_col") in dev.columns
+                  else None)
+        evaluator = selection.Evaluator(
+            dev, y, task=cfg.task.value, metric=ev["rank_by"][0]["metric"],
+            is_classification=cfg.task.is_classification, splitter=splitter, groups=groups,
+            random_state=cfg.search.random_state)
+        found = ModelStage.screen_factors(
+            evaluator, cfg, plan, library, expected, [], cfg.task.is_classification,
+            plan["shape"]["shape"])
+        keep = ("name", "source", "transform", "lag", "status", "dropped_by", "reason",
+                "overruled", "exception", "sign", "p_value", "missing", "in_sample",
+                "validation", "ranked_on", "note")
+        return {"rows": [{k: r.get(k) for k in keep} for r in found["rows"]],
+                "screen": found["screen"], "shortlist": found["shortlist"],
+                "fallback": found["fallback"], "metric": evaluator.metric,
+                "n_rows": int(len(dev)), "rules": plan_mod.screen_rules(plan),
+                "engineered": bool(cfg.structural.enabled or cfg.migration.enabled)}
 
     @staticmethod
     def _names(ctx: RunContext, ranked: list) -> dict[str, str]:
@@ -509,6 +635,35 @@ class ModelStage(Stage):
                 protected: list[str], is_clf: bool, shape: str) -> dict:
         from ..modeling.fit import DEFAULT_FAMILIES
 
+        rs = cfg.search.random_state
+        screened = self.screen_factors(evaluator, cfg, plan, library, expected, protected,
+                                       is_clf, shape)
+        rows, log, shortlist = screened["rows"], screened["screen"], screened["shortlist"]
+        fallback, corr, by_factor = (screened["fallback"], screened["corr"],
+                                     screened["factor_signs"])
+        # Hybrid mode: an engineered factor (Merton DD, the migration PD) is in every model.
+        rules = {**plan["selection"], "must_include": list(dict.fromkeys(
+            [*(plan["selection"].get("must_include") or []), *protected]))}
+        families = families or DEFAULT_FAMILIES.get(cfg.task.value, DEFAULT_FAMILIES["regression"])
+        paths = selection.run_methods(
+            evaluator, families=list(families), factors=shortlist, rules=rules,
+            expected={k: v for k, v in by_factor.items() if v}, corr=corr,
+            all_columns=shortlist, max_candidates=cfg.search.max_candidates,
+            max_features=cfg.search.max_features_per_candidate, hazard_meta=hazard_meta,
+            random_state=rs)
+        return {"evaluations": [evaluator.cache[i] for i in evaluator.order],
+                "single_factor": rows, "screen": log, "shortlist": shortlist,
+                "screen_fallback": fallback, "paths": [p.to_dict() for p in paths],
+                "corr": corr, "factor_signs": {k: v for k, v in by_factor.items() if v},
+                "test_evaluations": evaluator.test_evaluations}
+
+    @staticmethod
+    def screen_factors(evaluator: selection.Evaluator, cfg, plan: dict, library: list,
+                       expected: dict[str, str], protected: list[str], is_clf: bool,
+                       shape: str) -> dict:
+        """Every factor fitted alone on the development sample, then the screen. One function
+        for the model stage and the design gate's preview, so the two cannot disagree
+        (ADR-0025)."""
         dev, y = evaluator.dev, evaluator.y
         rank_metric = evaluator.metric
         base_family = "logit" if is_clf else "ols"
@@ -546,21 +701,8 @@ class ModelStage(Stage):
                 r.update(status="kept", reason="kept so a model could be built")
             fallback = True
         by_factor = {r["name"]: factors_mod.expected_sign(r, expected) for r in rows}
-        # Hybrid mode: an engineered factor (Merton DD, the migration PD) is in every model.
-        rules = {**plan["selection"], "must_include": list(dict.fromkeys(
-            [*(plan["selection"].get("must_include") or []), *protected]))}
-        families = families or DEFAULT_FAMILIES.get(cfg.task.value, DEFAULT_FAMILIES["regression"])
-        paths = selection.run_methods(
-            evaluator, families=list(families), factors=shortlist, rules=rules,
-            expected={k: v for k, v in by_factor.items() if v}, corr=corr,
-            all_columns=shortlist, max_candidates=cfg.search.max_candidates,
-            max_features=cfg.search.max_features_per_candidate, hazard_meta=hazard_meta,
-            random_state=rs)
-        return {"evaluations": [evaluator.cache[i] for i in evaluator.order],
-                "single_factor": rows, "screen": log, "shortlist": shortlist,
-                "screen_fallback": fallback, "paths": [p.to_dict() for p in paths],
-                "corr": corr, "factor_signs": {k: v for k, v in by_factor.items() if v},
-                "test_evaluations": evaluator.test_evaluations}
+        return {"rows": rows, "screen": log, "shortlist": shortlist, "fallback": fallback,
+                "corr": corr, "factor_signs": by_factor}
 
     @staticmethod
     def _fingerprint(cfg, train_df, y_train, factor_names, families, hazard_meta, plan,
@@ -610,9 +752,12 @@ class ModelStage(Stage):
     # --- leaders, the Modeling agent's pool, and finalizing a member ---------------------------
     def _leaders(self, evaluator, ranked, cfg, plan: dict, expected: dict, corr,
                  guided_entry, train_df, y_train, is_clf: bool,
-                 must: list[str] | None = None) -> tuple[list[dict], dict]:
+                 must: list[str] | None = None,
+                 benchmark: set[str] | None = None) -> tuple[list[dict], dict]:
         """The top of the ranking, one entry per distinct specification, with what the Modeling agent
-        and the developer need to pick a pool: scores, signs, and any constraint it breaks."""
+        and the developer need to pick a pool: scores, signs, and any constraint it breaks. A
+        family whose framework is a benchmark only is fitted and ranked, never a champion."""
+        benchmark = benchmark or set()
         ev = plan["evaluation"]
         rank_by = ev["rank_by"]
         first = rank_by[0]
@@ -631,8 +776,11 @@ class ModelStage(Stage):
             chosen.append(e)
             if len(chosen) >= want:
                 break
-        if required and all(e.candidate.family in _TREES for e in chosen):
-            interp = next((e for e in ranked if e.candidate.family not in _TREES), None)
+        def bench(family: str) -> bool:
+            return (family in _TREES and required) or family in benchmark
+
+        if all(bench(e.candidate.family) for e in chosen):
+            interp = next((e for e in ranked if not bench(e.candidate.family)), None)
             if interp is not None:
                 chosen.append(interp)
         if guided_entry is not None:
@@ -674,7 +822,7 @@ class ModelStage(Stage):
             within = None
             if best_sd is not None and v is not None and best_v is not None:
                 within = bool(v >= best_v - best_sd if maximize else v <= best_v + best_sd)
-            role = "challenger" if (cand.family in _TREES and required) else "candidate"
+            role = "challenger" if bench(cand.family) else "candidate"
             leaders.append({
                 "id": e.id, "rank": place, "label": cand.label(), "family": cand.family,
                 "n_features": len(cand.features), "features": list(cand.features),
@@ -692,6 +840,37 @@ class ModelStage(Stage):
         self._engine_pool(leaders, pool_size, required)
         return leaders, lookup
 
+    def _model_funnel(self, evaluator, ranked, plan: dict, expected: dict, corr,
+                      must: list[str], names: dict[str, str]) -> dict:
+        """The models through the plan's rules, best ranked first (ADR-0025): one entry per
+        distinct specification, at most ``FUNNEL_MODELS`` of them. A family without
+        coefficient tests is checked on correlation, inflation and required factors only."""
+        seen, models = set(), []
+        for e in ranked:
+            key = (e.candidate.family, frozenset(e.candidate.features))
+            if key in seen:
+                continue
+            seen.add(key)
+            cand = e.candidate
+            if e.info.get("transforms"):
+                bad = []
+            elif cand.family in selection.STEP_FAMILIES:
+                bad = selection.violations(e, evaluator, plan["selection"],
+                                           self._factor_signs(expected, cand), corr)
+            else:
+                bad = selection.violations(e, evaluator, {
+                    k: plan["selection"].get(k) for k in ("max_correlation", "max_vif")},
+                    {}, corr)
+            missing = [f for f in must if f not in cand.features and not e.info.get("transforms")]
+            if missing:
+                bad = [*bad, f"does not carry {', '.join(missing)}, which every model must"]
+            models.append({"id": e.id, "name": names.get(e.id, e.id), "violations": bad})
+            if len(models) >= FUNNEL_MODELS:
+                break
+        out = selection.model_funnel(models, {**plan["selection"],
+                                              "must_include": must or None})
+        return {**out, "n_models": len(models), "n_ranked": len(ranked)}
+
     @staticmethod
     def _engine_pool(leaders: list[dict], pool_size: int, required: bool) -> None:
         """The engine's default pool. Models that rank together but differ are what the
@@ -699,7 +878,7 @@ class ModelStage(Stage):
         one standard error of the best and break no constraint; then their near-copies; and
         only to reach two members, the next best outside that band."""
         def eligible(a: dict) -> bool:
-            return not (required and a["role"] == "challenger")
+            return a["role"] != "challenger"
 
         def close(a: dict) -> bool:
             return a["within_one_se"] is not False
@@ -751,6 +930,8 @@ class ModelStage(Stage):
             source, _, rest = name.partition("__")
             if name in expected:
                 out[name] = expected[name]
+            elif rest.startswith(("knee", "smooth")):
+                out[name] = "+"  # turned to rise with the outcome (modeling/transforms.py)
             elif source in expected and not rest.startswith("square"):
                 out[name] = expected[source]
         return out
@@ -863,8 +1044,11 @@ class ModelStage(Stage):
                 s["expected"] = expected.get(self._source_of(s["feature"]), "none")
             entry = {"rank": None, "methods": list(e.methods), "coefficient_signs": signs,
                      "violations": [], "within_one_se": None, "engine_pick": False,
-                     "role": ("challenger" if cand.family in _TREES
-                              and cfg.design.interpretability == "required" else "candidate"),
+                     "role": ("challenger" if (cand.family in _TREES
+                                               and cfg.design.interpretability == "required")
+                              or cand.family in ((ctx.get("ideate").payload or {}).get(
+                                  "benchmark_families") or [] if ctx.has("ideate") else [])
+                              else "candidate"),
                      "interpretable": cand.family not in _TREES}
         first = rank_by[0]
         return {

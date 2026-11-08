@@ -473,9 +473,17 @@ class IdeateStage(Stage):
                     + [f for f in slate_families if f not in families])
         plan = plan_mod.resolve(cfg, shape, families=families, columns=columns,
                                 proposed=plan_proposed, human=ctx.overrides.plan)
+        transforms = self._transforms(ctx, plan)
+        plan_mod.lay_exceptions(plan, ctx.overrides.screen_exceptions)
+        screen = self._screen(ctx, plan)
         proposed_transforms = [{"name": t.name, "expr": t.expr, "rationale": t.rationale}
                                for t in out.transforms]
-        framework_choices = [f.model_dump() for f in out.frameworks]
+        framework_choices_proposed = [f.model_dump() for f in out.frameworks]
+        framework_choices = self._model_form(ctx, frameworks, framework_choices_proposed, cfg,
+                                             structure)
+        benchmark = {c["framework"] for c in framework_choices if c["decision"] == "challenger"}
+        benchmark_families = [f for f in _engine_families(cfg)
+                              if self._family_framework(f, cfg, structure) in benchmark]
         for q in out.sponsor_questions:
             questions.append({"id": f"agent-{_qhash(q.question)}", "question": q.question,
                               "source": "agent", "category": q.category,
@@ -503,6 +511,9 @@ class IdeateStage(Stage):
             "clean_top_features": top_feats,  # strongest predictors net of leakage suspects
             "framework_assessment": frameworks,
             "framework_choices": framework_choices,
+            "framework_choices_proposed": framework_choices_proposed,
+            "proposed_forms": [dict(f) for f in ctx.overrides.proposed_forms],
+            "benchmark_families": benchmark_families,  # fitted, never the champion
             "fittable_families": _engine_families(cfg),
             "open_questions": questions,
             "questions": [_gap_spec(q) for q in questions],
@@ -514,12 +525,18 @@ class IdeateStage(Stage):
             "plan_summary": plan_mod.summary(plan),
             "notes": notes,
         }
+        if transforms:
+            payload["transforms"] = transforms
+        if screen:
+            payload["screen"] = screen
         if incumbent:
             payload["incumbent"] = incumbent
         attach_recommendation(payload, ctx, "design_agent", out)
         res.add_artifact(ctx.save_json("stages/ideate/hypotheses.json", payload))
         brief = self._design_brief_md(cfg, structure, frameworks, questions, hypotheses, notes,
-                                      framework_choices)
+                                      framework_choices, ctx.overrides.proposed_forms,
+                                      benchmark_families,
+                                      any(m != "grid" for m in plan["selection"]["methods"]))
         res.add_artifact(ctx.save_text("stages/ideate/design_brief.md", brief, kind="markdown"))
 
         for note in plan.get("ignored") or []:
@@ -598,6 +615,26 @@ class IdeateStage(Stage):
         return sorted(out, key=lambda h: (h["priority"], h["family"] == incumbent["family"]),
                       reverse=True)
 
+    @classmethod
+    def _model_form(cls, ctx: RunContext, frameworks: list[dict], proposed: list[dict],
+                    cfg: CognosConfig, structure: dict) -> list[dict]:
+        """The decision on each framework in force: the developer's where they set one, else the
+        Design agent's. Each framework is told which fittable families are its own, and whether
+        the developer may change its role here (applicable, with a family the engine fits)."""
+        fittable = _engine_families(cfg)
+        for f in frameworks:
+            f["families"] = [fam for fam in fittable
+                             if cls._family_framework(fam, cfg, structure) == f["framework"]]
+            f["editable"] = bool(f["applicable"]) and bool(f["families"])
+        own = ctx.overrides.framework_roles
+        out = []
+        for c in proposed:
+            mine = own.get(c["framework"])
+            out.append({**c, "decision": mine["decision"], "reason": mine["reason"],
+                        "by": mine.get("by"), "source": "developer"} if mine else
+                       {**c, "source": "agent" if ctx.runner.kind != "heuristic" else "engine"})
+        return out
+
     @staticmethod
     def _family_framework(family: str, cfg: CognosConfig, structure: dict) -> str:
         if family in _TREE_FAMILIES:
@@ -636,9 +673,50 @@ class IdeateStage(Stage):
         return f"Flexible {family} {feat_txt} to capture nonlinearity; weigh against interpretability."
 
     @staticmethod
+    def _transforms(ctx: RunContext, plan: dict) -> dict[str, dict]:
+        """Step two of each column's transformation (ADR-0024): the parameters the engine
+        proposes for every form that needs them (a fitted shape, a custom expression), keyed
+        by ``item_key`` and fitted on the development sample as the model stage will cut it
+        under this plan. Every other form is used as decided. Lays the decisions over
+        ``plan``."""
+        from ..modeling import column_transforms
+        from .model import ModelStage
+
+        own = column_transforms.decided(ctx.overrides.transforms)
+        column_transforms.lay_over(plan, ctx.overrides.transforms)
+        if not own:
+            return {}
+        dev, y, expected = ModelStage.development(ctx, plan)
+        out = {}
+        for key, spec in own.items():
+            col = spec["column"]
+            entry = column_transforms.fit(dev, y, col, spec, direction=expected.get(col),
+                                          classification=ctx.config.task.is_classification,
+                                          period=plan["factors"].get("period"))
+            out[key] = ({**entry, "column": col} if entry else
+                        {"kind": spec["kind"], "spec": spec, "column": col, "failed": True,
+                         "caption": "could not be fitted on the development sample; this form "
+                                    "would be left out"})
+        return out
+
+    @staticmethod
+    def _screen(ctx: RunContext, plan: dict) -> dict | None:
+        """The single-factor analysis under this plan, on the development sample (ADR-0025):
+        what the design gate shows once the variable rules are confirmed. A failure is said,
+        never fatal: the model stage runs the screen again in any case."""
+        from .model import ModelStage
+
+        try:
+            return ModelStage.screen_preview(ctx, plan)
+        except Exception as exc:  # the preview is advice; the model stage is the record
+            return {"error": f"{type(exc).__name__}: {exc}"[:200]}
+
+    @staticmethod
     def _design_brief_md(cfg: CognosConfig, structure: dict, frameworks: list[dict],
                          questions: list[dict], hypotheses: list[dict], notes: str,
-                         choices: list[dict] | None = None) -> str:
+                         choices: list[dict] | None = None,
+                         proposed: list[dict] | None = None,
+                         benchmark: list[str] | None = None, stepped: bool = True) -> str:
         d = cfg.design
         answered = {
             "Use case": d.use_case, "Horizon": d.horizon,
@@ -659,21 +737,37 @@ class IdeateStage(Stage):
             lines.append(f"| {f['label']} | {f['applicable']} | {f['role']} | {f['reason']} "
                          f"| {f['reference']} |")
         if choices:
-            lines += ["", "## Design agent decisions", "", "| Framework | Decision | Reason |",
-                      "|---|---|---|"]
+            lines += ["", "## Model form decisions", "", "| Framework | Decision | Set by | Reason |",
+                      "|---|---|---|---|"]
             for c in choices:
-                lines.append(f"| {c['framework']} | {c['decision']} | {c['reason']} |")
+                who = (c.get("by") or "developer") if c.get("source") == "developer" else "Design agent"
+                lines.append(f"| {c['framework']} | {c['decision']} | {who} | {c['reason']} |")
+        if proposed:
+            lines += ["", "## Forms proposed by the developer (not fitted by the engine)", ""]
+            lines += [f"- **{f['name']}** ({f.get('by') or 'developer'}): {f['reason']}"
+                      for f in proposed]
         lines += ["", "## Open questions for the sponsor", ""]
         if questions:
             for q in questions:
                 lines.append(f"- **[{q['id']}]** {q['question']}")
         else:
             lines.append("- none — the design brief is fully specified.")
-        lines += ["", "## Ranked hypothesis slate (top 10)", "",
-                  "| # | Family | Features | Framework | Role | Priority | Rationale |",
-                  "|---|---|---|---|---|---|---|"]
-        for h in hypotheses[:10]:
-            lines.append(f"| {h['id']} | {h['family']} | {h['feature_strategy']} | {h['framework']} "
-                         f"| {h['role']} | {h['priority']} | {h['rationale']} |")
+        from ..modeling import selection
+
+        families = list(dict.fromkeys(h["family"] for h in hypotheses))
+        frame = {h["family"]: h["framework"] for h in hypotheses}
+        walker = next((f for f in families if selection.steppable(f)), None) if stepped else None
+        bench = set(benchmark or [])
+        lines += ["", "## Model families searched", "",
+                  "Every family is searched with the variables the single-factor screen keeps. "
+                  + (f"{walker} walks the stepwise path; the other families with coefficient "
+                     "tests are refitted on the variable sets it tried." if walker else ""), "",
+                  "| Family | Framework | Can win | In the search |", "|---|---|---|---|"]
+        for f in families:
+            part = ("walks the stepwise path" if f == walker else
+                    "refitted on the path's variable sets" if selection.steppable(f) else
+                    "fitted on the screened variables")
+            lines.append(f"| {f} | {frame[f]} | {'benchmark only' if f in bench else 'yes'} "
+                         f"| {part} |")
         lines += ["", f"_Notes: {notes}_", ""]
         return "\n".join(lines)

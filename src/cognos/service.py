@@ -1012,6 +1012,122 @@ def measure_link(run_id: str, a: str, a_on: list[str], b: str, b_on: list[str],
                                           "b_on": list(b_on)}, target)
 
 
+_SKETCHES: dict[tuple, Any] = {}
+
+
+def sketch_transform(run_id: str, column: str, kind: str, root: str | Path | None = None,
+                     expr: str = "", op: str = "diff", lag: int = 0) -> dict[str, Any] | None:
+    """What one form would do to a column (``kind``, with a change ``op`` and a ``lag``), for
+    the Explore page's preview (ADR-0024): on the rows explore has, default parameters,
+    nothing recorded. None when the column cannot take it; ``ValueError`` for a custom
+    ``expr`` the rules refuse."""
+    from .datautil import coerce_target
+    from .modeling import column_transforms as ct
+
+    eng = engine(run_id, root)
+    key = (str(eng.run_dir), state(run_id, root).version, column, kind, expr, op, lag)
+    if key in _SKETCHES:
+        return _SKETCHES[key]
+    ctx = eng.context()
+    cfg = ctx.config
+    df = ctx.load_dataset()
+    profile = ctx.profile()
+    signs = {c["column"]: c["relationship"] for c in profile.get("feature_candidates") or []
+             if c.get("relationship") in ("+", "-")}
+    signs.update(cfg.factors.expected_signs)
+    dt = cfg.data.datetime_col
+    if cfg.task.value == "timeseries" and dt and dt in df.columns:
+        df = df.sort_values(dt, kind="stable")
+    out = ct.sketch(df, coerce_target(df, cfg), column, kind, direction=signs.get(column),
+                    classification=cfg.task.is_classification, period=cfg.factors.period,
+                    expr=expr, op=op, lag=int(lag or 0))
+    if len(_SKETCHES) > 256:
+        _SKETCHES.clear()
+    _SKETCHES[key] = out
+    return out
+
+
+def preview_transform(run_id: str, item: str, spec: dict[str, Any],
+                      root: str | Path | None = None) -> dict[str, Any]:
+    """One reviewed form of a column (``item``: ``column_transforms.item_key``, or a bare
+    column) fitted on the development sample, for the design gate (ADR-0024): cut as the
+    model stage will cut it under the plan in force, the test sample and the holdout dropped
+    unread. Nothing is recorded: the decision carries the parameters. Raises ``ValueError``
+    when the column cannot be transformed this way."""
+    from .modeling import column_transforms as ct
+    from .stages.model import ModelStage
+
+    column = ct.split_item(item)[0]
+    ctx = engine(run_id, root).context()
+    try:
+        spec = ct.normalize(spec)
+        if spec["kind"] == "custom":
+            spec["expr"] = ct.check_expr(spec["expr"], column)
+    except ValueError as exc:
+        raise ValueError(f"{column}: {exc}") from exc
+    df = ctx.load_dataset()
+    plan = ModelStage.plan_in_force(ctx, df, list(ctx.profile()["features"]),
+                                    ModelStage.families(ctx))
+    ct.lay_over(plan, {column: ct.with_form(ctx.overrides.transforms, column, spec)[column]})
+    dev, y, expected = ModelStage.development(ctx, plan)
+    entry = ct.fit(dev, y, column, spec, direction=expected.get(column),
+                   classification=ctx.config.task.is_classification,
+                   period=plan["factors"].get("period"))
+    if entry is None:
+        raise ValueError(f"{column} cannot be {ct.KINDS[spec['kind']]['label']} on the "
+                         "development sample")
+    return entry
+
+
+def preview_screen(run_id: str, plan: dict[str, Any] | None = None,
+                   exceptions: dict[str, dict] | None = None, root: str | Path | None = None,
+                   by: str | None = None) -> dict[str, Any]:
+    """The single-factor analysis under the plan as the design page states it (``plan``: the
+    edits not yet decided; ``exceptions``: factor -> {"keep", "reason"}), on the development
+    sample, as the model stage will run it (ADR-0025). Every call is a look and is kept on the
+    run with ``by``: rules changed between two looks are counted as revised after the result
+    was seen. Raises ``ValueError`` when the plan cannot be run on this data."""
+    from .engine.state import utcnow
+    from .modeling import plan as plan_mod
+    from .stages.model import ModelStage
+
+    eng = engine(run_id, root)
+    ctx = eng.context()
+    ideate = results(run_id, root).get("ideate")
+    stored = ((ideate.payload or {}) if ideate is not None else {}).get("screen")
+    in_force = {n: {"keep": e["keep"], "reason": e["reason"]}
+                for n, e in eng.state.overrides.screen_exceptions.items()}
+    asked = {n: {"keep": bool(e.get("keep")), "reason": " ".join(str(e.get("reason") or "").split())}
+             for n, e in (exceptions if exceptions is not None else in_force).items()}
+    if not plan and asked == in_force and stored and not stored.get("error"):
+        screen = stored  # what the design stage computed under the plan in force
+    else:
+        df = ctx.load_dataset()
+        current = ModelStage.plan_in_force(ctx, df, list(ctx.profile()["features"]),
+                                           ModelStage.families(ctx), exceptions=asked)
+        patch = {s: dict(plan.get(s) or {}) for s in plan_mod.SECTIONS if (plan or {}).get(s)}
+        unknown = [f"{s}.{f}" for s, fields in patch.items() for f in fields
+                   if f not in current[s]]
+        if unknown:
+            raise ValueError(f"unknown plan field(s) {unknown}")
+        trial = plan_mod.merge(current, patch, "human")
+        bad = plan_mod.problems(trial)
+        if bad:
+            raise ValueError("the plan cannot be run: " + "; ".join(bad))
+        screen = ModelStage.screen_preview(ctx, trial)
+    eng.note_screen_look({"at": utcnow(), "by": by or whoami(), "rules": screen["rules"],
+                          "kept": len(screen["shortlist"]),
+                          "exceptions": sorted(asked)})
+    return screen
+
+
+def screen_revisions(run_id: str, root: str | Path | None = None) -> list[dict[str, Any]]:
+    """Each time the single-factor screen's rules were changed after its result was seen."""
+    from .modeling import plan as plan_mod
+
+    return plan_mod.screen_revisions(state(run_id, root).screen_looks)
+
+
 def catalog_line(table: dict[str, Any]) -> str:
     """One line on what a catalog table (as :func:`catalog_listing` gives it) holds."""
     from . import catalog

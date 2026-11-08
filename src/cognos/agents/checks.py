@@ -314,10 +314,8 @@ def modeling_agent(out: ModelingAgentOutput, sl: dict[str, Any]) -> list[str]:
     if len(out.pool) > size:
         errs.append(f"pool has {len(out.pool)} candidates; the plan carries at most {size}")
     picks = [leaders[i] for i in out.pool]
-    if sl.get("interpretability") == "required" and all(p.get("role") == "challenger"
-                                                        for p in picks):
-        errs.append("interpretability is required: the pool needs at least one candidate that "
-                    "is not a challenger benchmark")
+    if picks and all(p.get("role") == "challenger" for p in picks):
+        errs.append("the pool needs at least one candidate that is not a benchmark only")
     feats = {f for p in picks for f in p.get("features", [])}
     for s in out.sign_checks:
         if s.feature not in feats:
@@ -339,9 +337,9 @@ def backtest_agent(out, sl: dict[str, Any]) -> list[str]:
     pick = pool.get(out.champion)
     if pick is None:
         return [f"champion {out.champion!r} is not in candidates; choose one of {sorted(pool)}"]
-    if sl.get("interpretability") == "required" and pick.get("role") == "challenger":
-        return [f"interpretability is required: {out.champion} ({pick.get('family')}) is a "
-                "challenger benchmark and cannot be the champion"]
+    if pick.get("role") == "challenger":
+        return [f"{out.champion} ({pick.get('family')}) is a benchmark only and cannot be the "
+                "champion"]
     return []
 
 

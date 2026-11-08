@@ -133,6 +133,32 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
 - **Target-hidden factors.** A library transformation (`modeling/factors.py`) is a function of
   one feature column and the rows before it, never of the target. That is why the library is
   built before the split and can be recomputed on any sample.
+- **Column transformations, in two steps** (ADR-0024, `modeling/column_transforms.py`).
+  *Which forms* at the data gate (ADR-0026): `review` reads every row explore has and
+  recommends a set of forms by the model's intent, never a parameter; every reviewed column
+  must be decided, and each form is a variable of its own in the screen (`forms_of`). *How*
+  at the design gate, only for fitted shapes and custom expressions (`decided`, keyed
+  `column::kind`): parameters fitted on the development sample (`ModelStage.development`), a
+  refit previews without recording (`service.preview_transform`); the forms are locked there
+  (changing them means reopening the data gate). A `cap`, `knee` or `smooth`
+  is the one factor that depends on the target: the model stage fits it after the split on
+  the development sample only and freezes it as points. Do not let explore place a parameter.
+- **The design stage in seven steps; the screen before the search** (ADR-0025,
+  `ui/design_steps.py`). Model form → data treatment → variables → variable rules →
+  single-factor analysis → model rules and ranking → summary, each confirmed on the page
+  before the next opens. What decides the screen (its rules and the first ranking line's
+  metric, `plan.screen_rules`) is set before it; what acts on combinations (model rules,
+  methods, the rest of the ranking) after it. The single-factor analysis is drawn only after
+  the variable rules, from
+  `ModelStage.screen_preview`, which shares `screen_factors` with the model stage (keep it one
+  function). Every draw is a look kept in `state.screen_looks` with `by`; rules changed between
+  looks are counted (`plan.screen_revisions`) and validation reports them. Exceptions are per
+  factor with a reason (`overrides.screen_exceptions`); a kept factor records the rule it
+  overruled and never pushes a stronger one out. The model stage's screen is the record.
+- **Model rules and ranking** (ADR-0025). Models go through `selection.MODEL_RULES` (including
+  `max_vif`) as a funnel on the candidate pool page. Ranking is `order` or `weights`
+  (`selection.blend`: each line's share of models beaten, averaged by weight); extra lines are
+  `plan.RANK_EXTRAS`. The first line must be a score.
 - **One evaluator.** Every selection method goes through `selection.Evaluator`, so a
   specification is fitted once and all models share one ledger. Candidate ids come from
   `selection.candidate_id` (a hash of the specification): never a position in a list.
@@ -316,9 +342,17 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   `config.EvaluationConfig` and `contracts.PlanChoice`, `plan.options` (when the data allow
   it), `plan.recommend` (when to prefer it, with the reason) and `plan.problems`.
 - **New factor transformation** → `factors._base` (target-hidden, and `apply_library` must be
-  able to recompute it), `ALL_OPS`, `SAME_DIRECTION` if it keeps the column's sign.
+  able to recompute it), `ALL_OPS`, `SAME_DIRECTION` if it keeps the column's sign; as a
+  column's own form, `column_transforms.KINDS` / `BASES`, the intent's `GRIDS` and
+  `factors.own_factor`.
 - **New screen rule** → `factors.screen` (one `apply` call: it logs counts and reasons),
-  `config.FactorConfig`, the plan dict in `plan.recommend`, the form in `ui/panels.py::plan_form`.
+  `config.FactorConfig`, the plan dict in `plan.recommend`, `plan.SCREEN_RULES` (so a change of
+  it counts as a revision), the form in `ui/design_steps.py::assessment` and a label in
+  `design_steps.RULE_LABELS` / `SHORT`.
+- **New model rule** → `selection.violations` (a reason text), an entry in
+  `selection.MODEL_RULES` that matches it, `config.SelectionConfig`, `plan.recommend`, the form
+  in `ui/design_steps.py::assessment`.
+- **New ranking line** → `plan.RANK_EXTRAS` and `selection.rank_value` (with its direction).
 - **New selection method** → a runner in `selection._RUNNERS` that walks through `_Run.try_`
   and records `_Run.step`, `METHODS`, the literals in `config.SelectionConfig` and
   `contracts.PlanChoice`.

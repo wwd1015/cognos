@@ -105,13 +105,15 @@ def test_interactive_gate_forms_round_trip(root):
     st = service.run_until_idle(run_id)
     assert ui.auto_step(st) == "ideate"
 
-    # the design gate: dropping a spec becomes a slate edit; an answer becomes a gap answer
+    # the design gate: dropping a family becomes a slate edit; an answer becomes a gap answer
     hyps = service.results(run_id)["ideate"].payload["hypotheses"]
+    fams = list(dict.fromkeys(h["family"] for h in hyps))
     open_gap = next(g for g in st.gaps if g.status == "open")
-    fields = {"keep": [h["id"] for h in hyps[:-1]], f"answer::{open_gap.id}": "origination"}
+    fields = {"families": fams[:-1], f"answer::{open_gap.id}": "origination"}
     payload, _ = ui.gate_payload("gate_design", "edit", fields, run_id)
-    assert len(payload["slate"]) == len(hyps) - 1
+    assert [h["family"] for h in payload["slate"]] == fams[:-1]
     assert payload["answers"] == {open_gap.id: "origination"}
+    assert "framework_roles" not in payload and "proposed_forms" not in payload
 
     # send-back carries the message; the validation gate also carries its target
     payload, reason = ui.gate_payload("gate_validation", "send_back",
@@ -313,7 +315,7 @@ def test_linked_sources_show_the_join_and_let_the_developer_change_it(root):
     service.run_until_idle(run_id)
     st = service.state(run_id)
     page = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light"))
-    assert "Sources and join" in page and "loans.obligor_id = financials.obligor_id" in page
+    assert "The join" in page and "loans.obligor_id = financials.obligor_id" in page
     assert "join_spec" in page and "dropped" in page
     # the join is drawn as a canvas: a tile per table, a chip per measured link; the canvas
     # keeps the join (base, links, each link's rules, links drawn) in join_spec
@@ -366,11 +368,16 @@ def test_the_plan_the_pool_and_the_champion_are_decided_on_forms(root):
     ideate = service.results(run_id)["ideate"]
     plan = ideate.payload["plan"]
     panel = _serialize(stage_panel("ideate", ideate, st, "light"))
-    assert "Development plan" in panel and "rolling origin" in panel and "cannot be shuffled" in panel
+    for n, title in enumerate(("Model form", "Data treatment", "Variables", "Variable rules",
+                               "Single-factor analysis", "Model rules and ranking",
+                               "Summary and decision"), 1):
+        assert f"{n} \\u00b7 {title}" in panel, title  # the design page in seven steps (ADR-0025)
+    assert "rolling origin" in panel and "cannot be shuffled" in panel
     assert "plan::evaluation.validation" in panel and "plan::selection.methods" in panel
     assert "plan::factors.max_p_value" in panel and "plan::rank.0.metric" in panel
-    assert "Your modelling criteria" in panel and "recommended by the engine" in panel
-    assert "Primary metric" in panel and "plan::factors.criterion" in panel
+    assert "plan::selection.max_vif" in panel and "plan::evaluation.rank_mode" in panel
+    assert "recommended by the engine" in panel and "plan::factors.criterion" in panel
+    assert "Drawn when the variable rules are confirmed." in panel  # not before the rules
     assert '"c": null' not in panel
     untouched = {"plan::evaluation.test": plan["evaluation"]["test"],
                  "plan::evaluation.folds": float(plan["evaluation"]["folds"]),
@@ -401,7 +408,7 @@ def test_the_plan_the_pool_and_the_champion_are_decided_on_forms(root):
     plan = ideate.payload["plan"]
     assert plan["sources"]["pool_size"] == plan["sources"]["factors.criterion"] == "human"
     panel = _serialize(stage_panel("ideate", ideate, st, "light"))
-    assert '"developer"' in panel and "set by the developer" in panel  # who set what
+    assert "set by the developer" in panel  # who set what
     service.submit_gate(run_id, "gate_design", "accept", reason="ok", background=False)
     st = service.run_until_idle(run_id)
 

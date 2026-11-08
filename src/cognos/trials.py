@@ -138,7 +138,10 @@ CHANGE_LABELS = {"data": "the data", "exclude_columns": "excluded columns", "tar
                  "task": "task", "join": "join of the sources",
                  "drawn_links": "links drawn between the sources", "design": "design answers",
                  "compliance": "intended use", "slate": "model families", "plan": "the plan",
-                 "pool": "candidate pool", "names": "model names", "champion": "champion"}
+                 "pool": "candidate pool", "names": "model names", "champion": "champion",
+                 "transforms": "transformations of columns",
+                 "screen_exceptions": "exceptions to the single-factor screen",
+                 "framework_roles": "the model form", "proposed_forms": "forms proposed"}
 
 
 def stands(state: RunState) -> str:

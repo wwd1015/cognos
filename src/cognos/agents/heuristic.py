@@ -445,8 +445,7 @@ def modeling_agent_search(sl: dict[str, Any]) -> dict[str, Any]:
 # --- backtest ----------------------------------------------------------------------------
 def backtest_agent(sl: dict[str, Any]) -> dict[str, Any]:
     candidates = sl.get("candidates", [])
-    required = sl.get("interpretability") == "required"
-    eligible = [c for c in candidates if not (required and c.get("role") == "challenger")]
+    eligible = [c for c in candidates if c.get("role") != "challenger"]
     # The engine orders the pool on the comparison sample, best first. Members within 2% of the
     # best are within noise of each other: among those the deterministic agent takes the one
     # that breaks no constraint and has the fewest factors.
@@ -559,6 +558,10 @@ def writing_agent(sl: dict[str, Any]) -> dict[str, Any]:
     rejected = [fw for fw in frameworks if fw.get("decision") == "rejected"]
     alt = ("\n".join(f"- **{fw['framework']}** — {fw.get('reason', '')}" for fw in rejected)
            or "No alternative framework was rejected.")
+    proposed = sl.get("proposed_forms") or []
+    if proposed:
+        alt += ("\n\nProposed by the developer and not fitted by the engine:\n"
+                + "\n".join(f"- **{f['name']}** — {f['reason']}" for f in proposed))
     decisions = sl.get("decisions", [])
     return {
         "summary": "Drafted the narrative sections from recorded facts and decisions.",

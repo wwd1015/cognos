@@ -118,6 +118,13 @@ class Engine:
         self._refresh_status(state)
         state.save(self.run_dir)
 
+    def note_screen_look(self, look: dict[str, Any]) -> None:
+        """Keep a look at the design gate's single-factor screen on the run (ADR-0025)."""
+        with self.lock:
+            state = self.state
+            state.screen_looks.append(look)
+            self._save(state)
+
     def context(self) -> RunContext:
         return RunContext(self.config, run_id=self.run_id, runs_root=self.runs_root,
                           runner=self.runner())
@@ -456,7 +463,8 @@ class Engine:
                         "Answer use, horizon, default definition and segment before anyone can sign.")
             data_before = state.overrides.data
             invalidate, done = gates.handle(state, gate, action, payload, reason,
-                                            self.results(), config=self.config, drawn=drawn)
+                                            self.results(), config=self.config, drawn=drawn,
+                                            by=by)
             if state.overrides.data != data_before:
                 self._drop_snapshot()
             self._sign_answers(state, answered, by)

@@ -254,8 +254,9 @@ class SearchConfig(BaseModel):
 class RankRule(BaseModel):
     """One line of the ranking: a metric from the frozen registry and the sample it is read on."""
 
-    metric: str = "auto"  # auto => metric.name
+    metric: str = "auto"  # auto => metric.name; also n_factors, fold_spread (ADR-0025)
     sample: Literal["validation", "in_sample", "test"] = "validation"
+    weight: float | None = None  # rank_mode "weights": this line's share of the blend
 
 
 class EvaluationConfig(BaseModel):
@@ -280,7 +281,33 @@ class EvaluationConfig(BaseModel):
     # How candidates are ranked, most important first. Empty => the run's metric on the
     # validation sample (in sample when there is no validation).
     rank_by: list[RankRule] = Field(default_factory=list)
+    # "order": the first line decides, later lines break ties. "weights": each line turns
+    # into a rank and the ranks are blended by their weights (ADR-0025).
+    rank_mode: Literal["order", "weights"] = "order"
     pool_size: int = 6  # candidates the engine proposes; the developer may carry any number
+
+
+class ColumnTransform(BaseModel):
+    """How one column enters the model (ADR-0024, ``modeling/transforms.py``).
+
+    Decided in two steps: at the data gate *whether* the column is transformed and by which
+    ``kind`` (``as_is`` keeps it as it is); at the design gate *how*, by the parameters below.
+    A kind reads only the parameters it needs. ``cap``, ``knee`` and ``smooth`` are fitted on
+    the development sample after the split; ``log``, ``change`` and ``lag`` are functions of
+    the column alone, and so is ``custom``, an expression a person writes in ``x`` (the column)
+    under the safe expression rules of ``modeling/transforms.py``; ``library`` leaves the column to the plan's ``transforms``. ``knots``
+    given by a person are kept, not fitted."""
+
+    kind: Literal["as_is", "cap", "knee", "smooth", "log", "change", "lag", "library",
+                  "custom"] = "as_is"
+    knees: int = Field(2, ge=1, le=2)  # knee: at most this many bends
+    knots: list[float] = Field(default_factory=list)  # knee: where it bends, when given
+    span: float = Field(0.5, ge=0.1, le=0.9)  # smooth: the share of rows each local fit reads
+    lower: float = Field(1.0, ge=0.0, le=20.0)  # cap: percentiles the column is held inside
+    upper: float = Field(99.0, ge=80.0, le=100.0)
+    op: Literal["diff", "pct", "yoy_diff", "yoy_pct"] = "diff"  # change: which change
+    lag: int = Field(0, ge=0, le=8)  # change, lag: periods behind
+    expr: str = Field("", max_length=200)  # custom: an expression of x, the column itself
 
 
 class FactorConfig(BaseModel):
@@ -294,6 +321,8 @@ class FactorConfig(BaseModel):
 
     transforms: list[str] = Field(default_factory=lambda: ["auto"])
     # auto | none | lag | diff | pct | yoy_diff | yoy_pct | ma | log | sqrt | square
+    # A column's own transformation (ADR-0024) wins over ``transforms`` for that column.
+    columns: dict[str, ColumnTransform] = Field(default_factory=dict)
     lags: list[int] = Field(default_factory=lambda: [1, 2, 3, 4])
     windows: list[int] = Field(default_factory=lambda: [4])  # moving-average lengths
     period: int | None = None  # periods per year (yoy); None => read from the date spacing
@@ -326,6 +355,7 @@ class SelectionConfig(BaseModel):
     max_p_value: float | None = None  # every coefficient of an accepted model
     enforce_sign: bool = True
     max_correlation: float | None = 0.8  # between two factors of one model
+    max_vif: float | None = None  # variance inflation of every factor of an accepted model
     max_models: int = 400  # budget per method and family
 
 

@@ -31,6 +31,7 @@ from ..analysis import run as analysis
 from ..artifacts import Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..datautil import coerce_target, select_features
+from ..modeling import column_transforms
 from .base import Stage, attach_recommendation, questions_from, register_stage
 
 LEAKAGE_CORR = 0.98
@@ -438,6 +439,22 @@ class ExploreStage(Stage):
         }, fresh={"explore": res})
         profile["target_rationale"] = out.target_rationale or target_rationale
         profile["feature_candidates"] = [c.model_dump() for c in out.feature_candidates]
+        intent = column_transforms.intent_of(task, "series" if task == "timeseries" else None)
+        if intent:
+            # Step one of a column's transformation (ADR-0024): whether it has the property the
+            # model's intent needs, and the kind recommended. Read on every row explore has, so
+            # a kind only; the parameters are placed later, on the development sample alone.
+            signs = {c["column"]: c["relationship"] for c in profile["feature_candidates"]
+                     if c.get("relationship") in ("+", "-")}
+            signs.update(cfg.factors.expected_signs)
+            frame, yv = df, np.asarray(y, dtype=float)
+            dt = cfg.data.datetime_col
+            if intent == "stationary" and dt and dt in df.columns:  # changes read time order
+                order = np.argsort(df[dt].to_numpy(), kind="stable")
+                frame, yv = df.iloc[order], yv[order]
+            profile["transform_review"] = column_transforms.review(
+                frame, yv, numeric_cols, intent=intent, expected=signs,
+                suspects=tuple(leakage))
         profile["recommended_exclusions"] = [d.column for d in out.column_decisions
                                              if d.decision == "exclude"]
         profile["column_decisions"] = [d.model_dump() for d in out.column_decisions]
