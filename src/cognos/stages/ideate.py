@@ -675,8 +675,10 @@ class IdeateStage(Stage):
     @staticmethod
     def _transforms(ctx: RunContext, plan: dict) -> dict[str, dict]:
         """Step two of each column's transformation (ADR-0024): the parameters the engine
-        proposes for every column decided at the data gate, fitted on the development sample
-        as the model stage will cut it under this plan. Lays the decisions over ``plan``."""
+        proposes for every form that needs them (a fitted shape, a custom expression), keyed
+        by ``item_key`` and fitted on the development sample as the model stage will cut it
+        under this plan. Every other form is used as decided. Lays the decisions over
+        ``plan``."""
         from ..modeling import column_transforms
         from .model import ModelStage
 
@@ -686,19 +688,21 @@ class IdeateStage(Stage):
             return {}
         dev, y, expected = ModelStage.development(ctx, plan)
         out = {}
-        for col, spec in own.items():
+        for key, spec in own.items():
+            col = spec["column"]
             entry = column_transforms.fit(dev, y, col, spec, direction=expected.get(col),
                                           classification=ctx.config.task.is_classification,
                                           period=plan["factors"].get("period"))
-            out[col] = entry or {"kind": spec["kind"], "spec": spec, "failed": True,
-                                 "caption": "could not be fitted on the development sample; "
-                                            "it would enter as it is"}
+            out[key] = ({**entry, "column": col} if entry else
+                        {"kind": spec["kind"], "spec": spec, "column": col, "failed": True,
+                         "caption": "could not be fitted on the development sample; this form "
+                                    "would be left out"})
         return out
 
     @staticmethod
     def _screen(ctx: RunContext, plan: dict) -> dict | None:
         """The single-factor analysis under this plan, on the development sample (ADR-0025):
-        what the design gate shows once the assessment plan is confirmed. A failure is said,
+        what the design gate shows once the variable rules are confirmed. A failure is said,
         never fatal: the model stage runs the screen again in any case."""
         from .model import ModelStage
 

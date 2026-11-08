@@ -1,4 +1,4 @@
-# The design stage in six steps, and the single-factor analysis before the search
+# The design stage in seven steps, and the single-factor analysis before the search
 
 The design page used to open on a conclusion ("reduced-form PD") and put every choice in one
 long form: the slate, the split, the screen, the selection, the ranking. A modeller works in an
@@ -72,6 +72,17 @@ only as thresholds set beforehand and a ledger read afterwards.
    shows one line per family (what it is, which rules can judge it, whether it can win): the
    slate's "top"/"all" feature strategies were never read by the model stage, whose variables
    come from the screen.
+
+8. **Seven steps: the assessment plan is split around the single-factor analysis** (amended
+   2026-11-08). What decides the screen comes before it: step 4, the variable rules, with what a
+   variable's strength is (the first ranking line's metric, read on validation or in sample).
+   What acts on combinations comes after it: step 6, when a model is kept, how models are built
+   and the rest of the ranking (lines 2 and 3, the blend). The guard holds where it matters: a
+   change to the screen's rules or its metric after a look is a revision (`plan.screen_rules`
+   now includes the metric). Model rules were never counted, and seeing single variables says
+   little about which model wins under a VIF limit or a blend weight; seeing how many variables
+   survive is a fair reason to set the model size. "Accept design" and "Apply my design" open
+   once steps 1 to 6 are confirmed.
 
 ## Why the single-factor analysis moved, and what keeps it honest
 

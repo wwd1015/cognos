@@ -34,6 +34,7 @@ from ..engine.graph import (
     STAGES,
 )
 from ..engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, next_action, seat_label
+from ..modeling import column_transforms as ct
 from . import ask as ask_ui
 from . import design_steps, transform_review
 from .components import (
@@ -1518,17 +1519,7 @@ def register_transform_callbacks(app: Dash) -> None:
                 return out
             if not editable:
                 return (*out, no_update)
-            order = tr.wanted(data, excluded)
-            left = [c for c in order if c not in decided]
-            kinds_of = {c: tr.kind_of(decided.get(c)) for c in order}
-            shaped = [f"{c} ({data['kinds'].get(kinds_of[c], kinds_of[c])})"
-                      for c in order if kinds_of[c] not in (None, "as_is")]
-            line = (f"{len(shaped)} transformed" + (": " + ", ".join(shaped) if shaped else "")
-                    + f"; {len(order) - len(left) - len(shaped)} as they are")
-            if left:
-                line += (f"; {len(left)} still open. “Apply my decisions” needs every variable "
-                         "decided; “Accept recommendation” takes the engine's kind for all.")
-            return (*out, line)
+            return (*out, tr.summary(data, decided, excluded))
 
         @app.callback(Output(f"{prefix}-sel", "data", allow_duplicate=True),
                       Input({"type": f"{prefix}-row", "col": ALL}, "n_clicks"),
@@ -1539,62 +1530,110 @@ def register_transform_callbacks(app: Dash) -> None:
                 return no_update
             return trig["col"]
 
+    def _sketch(run_id, col, key, expr):
+        """One form previewed on the rows explore has: (sketch, error)."""
+        spec = ct.spec_of_key(key, expr)
+        if spec["kind"] == "custom" and not (expr or "").strip():
+            return None, None
+        try:
+            return service.sketch_transform(run_id, col, spec["kind"], expr=expr or "",
+                                            op=spec["op"], lag=spec["lag"]), None
+        except ValueError as exc:
+            return None, str(exc)
+        except (KeyError, FileNotFoundError):
+            return None, None
+
+    def _shown(run_id, col, keys, expr):
+        """Each form in ``keys`` with its preview sketch."""
+        return [(k, _sketch(run_id, col, k, expr)[0]) for k in keys]
+
     @app.callback(Output("txd-detail", "children"), Input("txd-sel", "data"),
-                  Input({"type": "txd-try", "kind": ALL}, "n_clicks"),
-                  Input({"type": "txd-expr-go", "i": ALL}, "n_clicks"),
-                  Input(tr.field_id("txd"), "value"),
-                  State({"type": "txd-expr", "i": ALL}, "value"), State("txd-data", "data"),
+                  Input(tr.field_id("txd"), "value"), State("txd-data", "data"),
                   State("txd-editable", "data"), State("ws-run", "data"),
                   State("theme-store", "data"))
-    def draw_explore(sel, _tries, go, value, exprs, data, editable, run_id, theme):
-        # Trying a kind redraws this pane alone with its preview; nothing is recorded.
+    def draw_explore(sel, value, data, editable, run_id, theme):
+        # The pane for the selected variable, its ticked forms drawn. Ticking and previewing
+        # change only the count and the chart, so the ticks stay as they are.
         if not data:
             return no_update
-        trig = ctx.triggered_id
-        kind_of_trig = trig.get("type") if isinstance(trig, dict) else trig
-        tried = kind_of_trig == "txd-try"
-        went = kind_of_trig == "txd-expr-go"
-        if (tried and not any(c for c in (_tries or []) if c)) or (
-                went and not any(c for c in (go or []) if c)):
-            return no_update
-        expr = (exprs or [""])[0] or ""
         decided = tr.decisions(value)
         entry = (data.get("columns") or {}).get(sel or "")
-        mine = decided.get(sel or "")
-        if went:
-            pick = "custom"
-        elif tried:
-            pick, expr = trig["kind"], (expr or "")
-        else:
-            pick = tr.kind_of(mine) or ((entry or {}).get("recommended") or {}).get("kind")
-            expr = mine.get("expr", "") if isinstance(mine, dict) else ""
-        sketch, error = None, None
-        if entry and run_id and pick and (pick != "custom" or (expr or "").strip()):
-            try:
-                sketch = service.sketch_transform(run_id, sel, pick, expr=expr or "")
-            except ValueError as exc:
-                error = str(exc)
-            except (KeyError, FileNotFoundError):
-                sketch = None
+        shown, expr = [], ""
+        if entry and run_id:
+            forms = tr.forms_shown(entry, decided.get(sel))
+            expr = next((f.get("expr", "") for f in forms if f["kind"] == "custom"), "")
+            keys = tr.drawn_keys([ct.form_key(f) for f in forms]) or [ct.form_key(forms[0])]
+            shown = _shown(run_id, sel, keys, expr)
         return tr.explore_detail(sel, data, decided, (theme or {}).get("scheme", "light"),
-                                 editable=bool(editable), pick=pick, sketch=sketch,
-                                 expr=expr or "", error=error)
+                                 editable=bool(editable), sketch=shown, expr=expr)
+
+    @app.callback(Output({"type": "txd-preview", "i": ALL}, "children"),
+                  Input({"type": "txd-try", "key": ALL}, "n_clicks"),
+                  Input({"type": "txd-expr-go", "i": ALL}, "n_clicks"),
+                  Input({"type": "txd-form", "key": ALL}, "checked"),
+                  State({"type": "txd-expr", "i": ALL}, "value"), State("txd-sel", "data"),
+                  State("txd-data", "data"), State("ws-run", "data"),
+                  State("theme-store", "data"), prevent_initial_call=True)
+    def preview_form(tries, go, checked, exprs, sel, data, run_id, theme):
+        # The ticked forms of the column's own axis are drawn together; a lagged or changed
+        # form, whose axis is its own, is drawn alone when its name is clicked.
+        trig = ctx.triggered_id
+        none = [no_update] * len(exprs or [None])
+        if not isinstance(trig, dict) or not run_id or not sel:
+            return none
+        expr = (exprs or [""])[0] or ""
+        on = [st["id"]["key"] for st, c in zip(ctx.inputs_list[2], checked or [], strict=False)
+              if c]
+        if trig["type"] == "txd-try":
+            if not any(c for c in (tries or []) if c):
+                return none
+            key = trig["key"]
+            keys = [key] if key not in tr.SAME_AXIS else (
+                tr.drawn_keys(on) if key in on else [*tr.drawn_keys(on), key])
+        else:
+            if trig["type"] == "txd-expr-go" and not any(c for c in (go or []) if c):
+                return none
+            keys = tr.drawn_keys(on + (["custom"] if trig["type"] == "txd-expr-go" else []))
+        entry = (data.get("columns") or {}).get(sel)
+        shown, error = [], None
+        for k in keys:
+            sk, err = _sketch(run_id, sel, k, expr)
+            shown.append((k, sk))
+            error = error or err
+        view = tr.preview_view(sel, entry, data, (theme or {}).get("scheme", "light"), shown,
+                               expr)
+        if error:
+            view = [dmc.Alert(error, color="red", variant="light"), *view]
+        return [view]
+
+    @app.callback(Output({"type": "txd-count", "i": ALL}, "children"),
+                  Input({"type": "txd-form", "key": ALL}, "checked"),
+                  State("txd-sel", "data"), State(tr.field_id("txd"), "value"),
+                  prevent_initial_call=True)
+    def count_forms(checked, sel, value):
+        n = sum(1 for c in checked or [] if c)
+        return [tr.count_words(n, sel in tr.decisions(value))]
 
     @app.callback(Output(tr.field_id("txd"), "value"),
                   Output("txd-sel", "data", allow_duplicate=True),
-                  Input({"type": "txd-confirm", "i": ALL, "pick": ALL}, "n_clicks"),
+                  Input({"type": "txd-confirm", "i": ALL}, "n_clicks"),
+                  State({"type": "txd-form", "key": ALL}, "checked"),
+                  State({"type": "txd-expr", "i": ALL}, "value"),
                   State("txd-sel", "data"), State(tr.field_id("txd"), "value"),
                   State("txd-data", "data"),
                   State({"type": "gate-field", "gate": "gate_data", "field": "exclude"}, "value"),
                   prevent_initial_call=True)
-    def decide(clicks, sel, value, data, excl):
-        # The kind previewed (carried on the button's id) becomes the decision; the next open
-        # variable comes up.
-        trig = ctx.triggered_id
-        if not isinstance(trig, dict) or not any(c for c in (clicks or []) if c) or not sel:
+    def decide(clicks, checked, exprs, sel, value, data, excl):
+        # The ticked forms become the decision; the next open variable comes up.
+        if not any(c for c in (clicks or []) if c) or not sel:
             return no_update, no_update
-        pick = json.loads(trig["pick"])
-        decided = {**tr.decisions(value), sel: pick}
+        expr = " ".join(str((exprs or [""])[0] or "").split())
+        keys = [s["id"]["key"] for s, on in zip(ctx.states_list[0], checked or [], strict=False)
+                if on]
+        forms = [ct.spec_of_key(k, expr) for k in keys if k != "custom" or expr]
+        if not forms:
+            return no_update, no_update
+        decided = {**tr.decisions(value), sel: {"forms": forms}}
         return json.dumps(decided), tr.next_open(data, decided, sel, list(excl or []))
 
     @app.callback(Output("txp-detail", "children"), Input("txp-sel", "data"),
@@ -1806,6 +1845,9 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
 
 def plan_patch(plan: dict, fields: dict) -> dict:
     """What the plan form changed: only the fields that differ from the plan on the page."""
+    if any(k.startswith("must::") for k in fields):  # one cell per variable in the table
+        fields = {**fields, "plan::selection.must_include": [
+            v for k, v in fields.items() if k.startswith("must::") and v]}
     def blank(v: Any) -> bool:
         return v is None or v == ""
 

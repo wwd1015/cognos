@@ -156,7 +156,7 @@ class ModelStage(Stage):
         # --- each column's own transformation, fitted on the development sample -----------
         # (ADR-0024) A cap, a knee or a smooth curve is placed with the outcome in view, so it
         # is fitted here, after the split, on train_df alone; test and holdout get the same
-        # frozen points. A fitted column enters only in its transformed form.
+        # frozen points. The library already left out a column not decided to enter as it is.
         expected = self._expected_signs(profile, plan)
         shaped, shape_report, shape_notes = column_transforms.library(
             train_df, coerce_target(train_df, cfg), features, plan["factors"].get("columns") or {},
@@ -166,9 +166,7 @@ class ModelStage(Stage):
             test_df = factors_mod.apply_library(test_df, shaped) if len(test_df) else test_df
             holdout_df = (factors_mod.apply_library(holdout_df, shaped) if len(holdout_df)
                           else holdout_df)
-            fitted = {f.source for f in shaped}
-            library = [*(f for f in library if not (f.source in fitted and f.transform == "level"
-                                                    and not f.lag)), *shaped]
+            library = [*library, *shaped]
         if shape_report:
             res.add_artifact(ctx.save_json("stages/model/transforms.json", shape_report))
         lib_notes = [*lib_notes, *shape_notes]
@@ -575,9 +573,7 @@ class ModelStage(Stage):
             classification=cfg.task.is_classification, period=plan["factors"].get("period"))
         if shaped:
             dev = factors_mod.apply_library(dev, shaped)
-            fitted = {f.source for f in shaped}
-            library = [*(f for f in library if not (f.source in fitted and f.transform == "level"
-                                                    and not f.lag)), *shaped]
+            library = [*library, *shaped]
         return dev, y, expected, library
 
     @staticmethod

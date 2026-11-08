@@ -131,32 +131,31 @@ def send_back(state: RunState, gate: str, payload: dict[str, Any], reason: str) 
     return [target]
 
 
-def _apply_kinds(state: RunState, action: str, asked: dict[str, str] | None, profile: dict
+def _apply_kinds(state: RunState, action: str, asked: dict[str, Any] | None, profile: dict
                  ) -> bool:
-    """Step one of each column's transformation (ADR-0024): the kind decided for every column
-    explore reviewed. Accepting takes the recommended kinds; an edit must decide every column
-    that is still in the model. True when the decisions changed."""
+    """Step one of each column's transformation (ADR-0024): the forms decided for every column
+    explore reviewed, each a variable of its own in the single-factor screen. Accepting takes
+    the recommended forms; an edit must decide every column that is still in the model. A
+    decision is ``{"forms": [...]}`` (a single kind or spec reads as one form). True when the
+    decisions changed."""
     from ..modeling import column_transforms as ct
 
     review = profile.get("transform_review") or {}
     reviewed = {c["column"]: c for c in review.get("columns") or []}
     if not reviewed:
         return False
-    kinds = review.get("kinds") or {}
     if action == "accept":
-        asked = {c: e["recommended"]["kind"] for c, e in reviewed.items()}
+        asked = {c: {"forms": e["recommended"].get("forms") or [e["recommended"]["kind"]]}
+                 for c, e in reviewed.items()}
     elif asked is None:
         return False  # this decision says nothing about the transformations: keep them
     unknown = [c for c in asked if c not in reviewed]
     if unknown:
         raise GateError(f"{unknown} were not reviewed by the exploration")
-    def kind_of(d: Any) -> str:
-        return d.get("kind") if isinstance(d, dict) else d
-
-    bad = {c: kind_of(k) for c, k in asked.items() if kind_of(k) not in kinds}
-    if bad:
-        raise GateError(f"not a transformation this model offers: {bad}; choose from "
-                        f"{sorted(kinds)}")
+    grid = review.get("grid") or {}
+    bases = set(grid.get("bases") or ("as_is", "log"))
+    lags = set(grid.get("lags") or (0,))
+    allowed = bases | set(grid.get("shapes") or ()) | {"custom"}
     left = sorted(c for c in reviewed if c not in asked
                   and c not in state.overrides.exclude_columns)
     if left:
@@ -167,43 +166,59 @@ def _apply_kinds(state: RunState, action: str, asked: dict[str, str] | None, pro
     for col, asked_one in asked.items():
         if col in state.overrides.exclude_columns:
             continue
-        kind = kind_of(asked_one)
-        spec = ct.normalize(asked_one)
-        if kind == "custom":
-            try:
-                spec["expr"] = ct.check_expr(spec["expr"], col)
-            except ValueError as exc:
-                raise GateError(f"{col}: {exc}") from exc
-        old = current.get(col)
-        # a kind kept (a custom one with the same expression) keeps the design gate's settings
-        same = old and old.get("kind") == kind and old.get("expr", "") == spec["expr"]
-        new[col] = old if same else spec
+        try:
+            forms = ct.forms_of(asked_one)
+        except ValueError as exc:
+            raise GateError(f"{col}: {exc}") from exc
+        if not forms:
+            raise GateError(f"{col}: choose at least one form (as it is, if nothing else)")
+        bad = [ct.form_label(f) for f in forms
+               if (f.get("op") if f["kind"] == "change" else f["kind"]) not in allowed
+               or f.get("lag", 0) not in lags]
+        if bad:
+            raise GateError(f"{col}: not a form this model offers: {', '.join(bad)}")
+        old = {ct.form_key(f): f for f in ct.forms_of(current.get(col))}
+        kept = []
+        for f in forms:
+            if f["kind"] == "custom":
+                try:
+                    f["expr"] = ct.check_expr(f["expr"], col)
+                except ValueError as exc:
+                    raise GateError(f"{col}: {exc}") from exc
+            prior = old.get(ct.form_key(f))
+            # a form kept (a custom one with the same expression) keeps the design gate's settings
+            kept.append(prior if prior and prior.get("expr", "") == f.get("expr", "") else f)
+        new[col] = {"forms": kept}
     changed = new != current
     state.overrides.transforms = new
     return changed
 
 
 def _apply_params(state: RunState, asked: dict[str, dict], ideate: dict) -> bool:
-    """Step two (ADR-0024): the parameters set at the design gate for the transformed columns.
-    True when they changed."""
+    """Step two (ADR-0024): the parameters set at the design gate for each form that needs
+    them (a fitted shape, a custom expression), keyed by ``column_transforms.item_key``.
+    Every other form is used as the data gate decided it. True when they changed."""
     from ..modeling import column_transforms as ct
 
     current = dict(state.overrides.transforms)
     open_ = ct.decided(current)
-    left = sorted(c for c in open_ if c in (ideate.get("transforms") or {}) and c not in asked)
+    left = sorted(k for k in open_ if k in (ideate.get("transforms") or {}) and k not in asked)
     if left:
-        raise GateError(f"set every transformed variable first: {', '.join(left)} still open "
+        raise GateError(f"set every transformed variable first: "
+                        f"{', '.join(k.replace('::', ' ') for k in left)} still open "
                         "(“Accept design” keeps the engine's settings for all)")
     changed = False
-    for col, spec in (asked or {}).items():
-        if col not in open_:
-            raise GateError(f"{col!r} is not transformed: decide that at the data gate")
-        kind = open_[col]["kind"]
+    for key, spec in (asked or {}).items():
+        col, kind = ct.split_item(key)
+        if key not in open_:
+            raise GateError(f"{key.replace('::', ' ')!r} is not a form to set here: decide the "
+                            "forms at the data gate")
         if spec.get("kind") not in (None, kind):
-            raise GateError(f"{col}: the transformation ({kind}) was decided at the data "
-                            "gate; reopen it there to use another one")
+            raise GateError(f"{col}: the forms ({kind}) were decided at the data gate; reopen "
+                            "it there to use another one")
+        base = {k: v for k, v in open_[key].items() if k != "column"}
         try:
-            new = ct.normalize({**open_[col], **spec, "kind": kind})
+            new = ct.normalize({**base, **spec, "kind": kind})
         except ValueError as exc:
             raise GateError(f"{col}: {exc}") from exc
         if new["kind"] == "custom":
@@ -214,14 +229,14 @@ def _apply_params(state: RunState, asked: dict[str, dict], ideate: dict) -> bool
         knots = new["knots"]
         if knots != sorted(set(knots)) or len(knots) > 2:
             raise GateError(f"{col}: at most two knots, in increasing order")
-        cap = ((ideate.get("transforms") or {}).get(col) or {}).get("cap")
+        cap = ((ideate.get("transforms") or {}).get(key) or {}).get("cap")
         if knots and cap and not all(cap[0] < k < cap[1] for k in knots):
             raise GateError(f"{col}: a knot must lie inside the capped range "
                             f"[{cap[0]:.4g}, {cap[1]:.4g}]")
         if new["kind"] == "knee" and knots:
             new["knees"] = max(new["knees"], len(knots))
-        if new != current[col]:
-            current[col] = new
+        if new != base:
+            current = ct.with_form(current, col, new)
             changed = True
     state.overrides.transforms = current
     return changed

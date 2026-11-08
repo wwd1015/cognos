@@ -1016,15 +1016,16 @@ _SKETCHES: dict[tuple, Any] = {}
 
 
 def sketch_transform(run_id: str, column: str, kind: str, root: str | Path | None = None,
-                     expr: str = "") -> dict[str, Any] | None:
-    """What a kind of transformation would do to a column, for the Explore page's preview
-    (ADR-0024): on the rows explore has, default parameters, nothing recorded. None when the
-    column cannot take it; ``ValueError`` for a custom ``expr`` the rules refuse."""
+                     expr: str = "", op: str = "diff", lag: int = 0) -> dict[str, Any] | None:
+    """What one form would do to a column (``kind``, with a change ``op`` and a ``lag``), for
+    the Explore page's preview (ADR-0024): on the rows explore has, default parameters,
+    nothing recorded. None when the column cannot take it; ``ValueError`` for a custom
+    ``expr`` the rules refuse."""
     from .datautil import coerce_target
     from .modeling import column_transforms as ct
 
     eng = engine(run_id, root)
-    key = (str(eng.run_dir), state(run_id, root).version, column, kind, expr)
+    key = (str(eng.run_dir), state(run_id, root).version, column, kind, expr, op, lag)
     if key in _SKETCHES:
         return _SKETCHES[key]
     ctx = eng.context()
@@ -1039,22 +1040,24 @@ def sketch_transform(run_id: str, column: str, kind: str, root: str | Path | Non
         df = df.sort_values(dt, kind="stable")
     out = ct.sketch(df, coerce_target(df, cfg), column, kind, direction=signs.get(column),
                     classification=cfg.task.is_classification, period=cfg.factors.period,
-                    expr=expr)
+                    expr=expr, op=op, lag=int(lag or 0))
     if len(_SKETCHES) > 256:
         _SKETCHES.clear()
     _SKETCHES[key] = out
     return out
 
 
-def preview_transform(run_id: str, column: str, spec: dict[str, Any],
+def preview_transform(run_id: str, item: str, spec: dict[str, Any],
                       root: str | Path | None = None) -> dict[str, Any]:
-    """A column's transformation fitted on the development sample, for the design gate
-    (ADR-0024): cut as the model stage will cut it under the plan in force, the test sample
-    and the holdout dropped unread. Nothing is recorded: the decision carries the parameters.
-    Raises ``ValueError`` when the column cannot be transformed this way."""
+    """One reviewed form of a column (``item``: ``column_transforms.item_key``, or a bare
+    column) fitted on the development sample, for the design gate (ADR-0024): cut as the
+    model stage will cut it under the plan in force, the test sample and the holdout dropped
+    unread. Nothing is recorded: the decision carries the parameters. Raises ``ValueError``
+    when the column cannot be transformed this way."""
     from .modeling import column_transforms as ct
     from .stages.model import ModelStage
 
+    column = ct.split_item(item)[0]
     ctx = engine(run_id, root).context()
     try:
         spec = ct.normalize(spec)
@@ -1065,7 +1068,7 @@ def preview_transform(run_id: str, column: str, spec: dict[str, Any],
     df = ctx.load_dataset()
     plan = ModelStage.plan_in_force(ctx, df, list(ctx.profile()["features"]),
                                     ModelStage.families(ctx))
-    ct.lay_over(plan, {column: spec})
+    ct.lay_over(plan, {column: ct.with_form(ctx.overrides.transforms, column, spec)[column]})
     dev, y, expected = ModelStage.development(ctx, plan)
     entry = ct.fit(dev, y, column, spec, direction=expected.get(column),
                    classification=ctx.config.task.is_classification,

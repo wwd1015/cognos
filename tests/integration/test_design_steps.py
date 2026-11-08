@@ -1,5 +1,5 @@
-"""The design stage in six steps (ADR-0025): the single-factor analysis is shown at the design
-gate, on the development sample, once the assessment plan is set. Every look is kept, rules
+"""The design stage in seven steps (ADR-0025): the single-factor analysis is shown at the design
+gate, on the development sample, once the variable rules are set. Every look is kept, rules
 changed after a look are counted, exceptions carry a reason, and the model stage runs the same
 screen again as the record. Models go through the plan's rules as a funnel and may be ranked by
 a blend of metrics."""
@@ -217,3 +217,35 @@ def test_the_developer_sets_the_model_form_and_proposes_one_the_engine_cannot_fi
     ctx = service.engine(run_id, runs_dir).context()
     assert {f.id for f in ValidateStage._model_form_findings(ctx)} == {
         "model-form-set", "model-form-proposed"}
+
+
+def test_the_page_says_why_a_model_form_cannot_be_applied():
+    from cognos.ui import design_steps as dz
+
+    rec = {"reduced_form_pd": "primary", "ml_challenger": "challenger"}
+    assert dz.model_form_problem(rec, rec, "") is None  # the recommendation needs no reason
+    assert "No framework" in dz.model_form_problem(
+        {**rec, "reduced_form_pd": "candidate"}, rec, "why")
+    assert "2 frameworks" in dz.model_form_problem({**rec, "ml_challenger": "primary"}, rec, "x")
+    assert "write your reason" in dz.model_form_problem(
+        {**rec, "ml_challenger": "rejected"}, rec, " ")
+
+
+def test_the_table_s_must_carry_cells_become_the_plan_s_must_include():
+    from cognos.ui import app as ui
+
+    plan = {"selection": {"must_include": []}, "factors": {}, "evaluation": {}}
+    assert ui.plan_patch(plan, {"must::drawn": "drawn__log", "must::limit": None}) == {
+        "selection": {"must_include": ["drawn__log"]}}
+    assert ui.plan_patch(plan, {"must::drawn": None}) == {}  # nothing flagged: no change
+
+
+def test_a_new_strength_metric_after_a_look_is_a_revision():
+    plan = {"factors": {"max_p_value": 0.1}, "evaluation": {"rank_by": [{"metric": "roc_auc"}]}}
+    rules = plan_mod.screen_rules(plan)
+    assert rules["metric"] == "roc_auc"
+    looks = [{"at": "1", "by": "a", "rules": {"max_p_value": 0.1}},  # a look from before
+             {"at": "2", "by": "a", "rules": rules},
+             {"at": "3", "by": "b", "rules": {**rules, "metric": "brier"}}]
+    revised = plan_mod.screen_revisions(looks)
+    assert [r["changed"] for r in revised] == [{"metric": ["roc_auc", "brier"]}]

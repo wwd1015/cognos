@@ -334,7 +334,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 10, "system_version": "1.0.0", "date": "2026-11-08"}</script>
+<script type="application/json" id="edition">{"edition": 11, "system_version": "1.0.0", "date": "2026-11-08"}</script>
 
 <div class="stage" id="stage">
 
@@ -718,6 +718,7 @@ body.moving .chrome { opacity: 1; }
         <tr><td class="mono">8</td><td class="mono">v1.0.0</td><td class="mono">2026-11-01</td><td>The agents are named for their work: Intake, Data, Design, Modeling, Backtest, Validation, Compliance and Writing agent. Job titles belong to the people (developer, reviewer, approver).</td></tr>
         <tr><td class="mono">9</td><td class="mono">v1.0.0</td><td class="mono">2026-11-07</td><td>Column transformations in two steps: whether and which at the data gate, one variable at a time with the curve previewed before it counts; the parameters at the design gate, fitted on the development sample only. A custom expression of the variable is allowed (ADR-0024).</td></tr>
         <tr><td class="mono">10</td><td class="mono">v1.0.0</td><td class="mono">2026-11-08</td><td>The design stage in six confirmed steps: model form (each framework's role can be changed with a reason, and a form the engine cannot fit proposed), data treatment, variables, assessment plan, single-factor analysis, summary. The single-factor analysis is seen before the search, after the rules; every look is kept, revised rules are counted and exceptions carry a reason. Models are filtered by rules including variance inflation and ranked in order or by a weighted blend (ADR-0025).</td></tr>
+        <tr><td class="mono">11</td><td class="mono">v1.0.0</td><td class="mono">2026-11-08</td><td>A variable can enter in several forms at once (as it is and its log; a driver lagged and as its change), each a variable of its own in the single-factor screen. Every form is decided at the data gate; the design gate fits only shapes and expressions and shows the variables and their forms as one table (ADR-0026). The design stage has seven steps: the variable rules come before the single-factor analysis and the model rules and ranking after it (ADR-0025).</td></tr>
       </tbody>
     </table>
     </div>
@@ -755,13 +756,13 @@ const FLOW = [
     agent: "Proposes the join and the target, asks for analyses or writes a script, names candidate features and columns to exclude. The engine looks at each variable against the outcome and suggests whether to transform it, by what the model is for.",
     person: "" },
   { id: "gate_data", label: "Review data decisions", seat: "Model developer",
-    person: "Accepts or changes the target, the join and the exclusions, reads any script the agent wrote, and decides for every variable whether it is transformed and how, after seeing the curve it gives." },
+    person: "Accepts or changes the target, the join and the exclusions, reads any script the agent wrote, and decides the forms each variable enters in (several at once if wanted), after seeing the curve each gives." },
   { id: "ideate", label: "Design the model", short: "Design", agentName: "Design agent",
     engine: "Assesses the frameworks, recommends how to cut the data, the rules and the ranking, then fits every variable alone on the development sample.",
     agent: "Ranks the slate of specifications, may change the plan, and raises what only the sponsor can decide.",
     person: "" },
   { id: "gate_design", label: "Review the design", seat: "Model developer",
-    person: "Confirms six steps, from the model form to the single-factor analysis. An exception needs a reason; rules changed after a look are counted." },
+    person: "Confirms seven steps: the variable rules before the single-factor analysis, the model rules after it. An exception needs a reason; rules changed after a look are counted." },
   { id: "model", label: "Search & build the candidate pool", short: "Pool", agentName: "Modeling agent",
     engine: "Runs the screen again as the record, builds models one factor at a time, sets aside any that break a rule and ranks the rest. The holdout stays sealed.",
     agent: "Recommends the pool of candidates that goes on, and checks coefficient signs. No champion is chosen here.",

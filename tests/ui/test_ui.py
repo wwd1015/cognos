@@ -368,15 +368,16 @@ def test_the_plan_the_pool_and_the_champion_are_decided_on_forms(root):
     ideate = service.results(run_id)["ideate"]
     plan = ideate.payload["plan"]
     panel = _serialize(stage_panel("ideate", ideate, st, "light"))
-    for n, title in enumerate(("Model form", "Data treatment", "Variables", "Assessment plan",
-                               "Single-factor analysis", "Summary and decision"), 1):
-        assert f"{n} \\u00b7 {title}" in panel, title  # the design page in six steps (ADR-0025)
+    for n, title in enumerate(("Model form", "Data treatment", "Variables", "Variable rules",
+                               "Single-factor analysis", "Model rules and ranking",
+                               "Summary and decision"), 1):
+        assert f"{n} \\u00b7 {title}" in panel, title  # the design page in seven steps (ADR-0025)
     assert "rolling origin" in panel and "cannot be shuffled" in panel
     assert "plan::evaluation.validation" in panel and "plan::selection.methods" in panel
     assert "plan::factors.max_p_value" in panel and "plan::rank.0.metric" in panel
     assert "plan::selection.max_vif" in panel and "plan::evaluation.rank_mode" in panel
     assert "recommended by the engine" in panel and "plan::factors.criterion" in panel
-    assert "Drawn when the assessment plan is confirmed." in panel  # not before the rules
+    assert "Drawn when the variable rules are confirmed." in panel  # not before the rules
     assert '"c": null' not in panel
     untouched = {"plan::evaluation.test": plan["evaluation"]["test"],
                  "plan::evaluation.folds": float(plan["evaluation"]["folds"]),

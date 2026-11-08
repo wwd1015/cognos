@@ -11,10 +11,16 @@ have and which transformations may give it.
 2. **How** (ideate, the design gate). ``fit`` places the parameters on the development
    sample alone, cut exactly as the model stage cuts it; a person may change them there.
 
+A column may enter in several **forms** at once (``forms_of``): as it is and its logarithm,
+or a driver as it is, lagged one and two periods, and its change at each lag. Every form is a
+variable of its own in the single-factor screen, which keeps the strongest per column. Forms
+that are functions of the column alone (as it is, log, change, each at a lag) are used as
+decided; only the forms fitted with the outcome in view (cap, knee, smooth) and a custom
+expression are reviewed at the design gate, one item each (``decided``, ``item_key``).
+
 The model stage fits again, on its own development sample, with what was decided
 (``library``), and freezes the points: the test sample and the holdout read them, never an
-outcome. ``log``, ``change`` and ``lag`` are functions of the column alone
-(``factors.own_factor``) and are computed with the rest of the library.
+outcome. The other forms (``factors.own_factor``) are computed with the rest of the library.
 """
 
 from __future__ import annotations
@@ -66,7 +72,120 @@ INTENTS: dict[str, dict[str, Any]] = {
 }
 
 FITTED = tuple(k for k, v in KINDS.items() if v["family"] == "fitted")
+REVIEWED = (*FITTED, "custom")  # set at the design gate; every other form is used as decided
 BANDS = 12
+
+# The forms a column may enter in, by the model's intent: a grid of base forms by lag (a lag
+# needs one row per period), the shapes fitted on the development sample, and an expression.
+BASES = {"as_is": "as it is", "log": "log", "diff": "change", "pct": "growth",
+         "yoy_diff": "change y/y", "yoy_pct": "growth y/y"}
+GRIDS: dict[str, dict[str, Any]] = {
+    "rank": {"bases": ("as_is", "log"), "lags": (0,), "shapes": ("cap", "knee", "smooth")},
+    "linear": {"bases": ("as_is", "log"), "lags": (0,), "shapes": ("cap", "knee")},
+    "stationary": {"bases": tuple(BASES), "lags": (0, 1, 2, 3, 4), "shapes": ()},
+}
+DRIVER_LAGS = 2  # a driver is tried as it is and as its change, now and up to two periods back
+
+
+def form_spec(base: str, lag: int = 0) -> dict[str, Any]:
+    """A base form of the grid (``as_is``, ``log`` or a change op) at a lag, as a spec."""
+    if base in ("as_is", "log"):
+        return normalize({"kind": base, "lag": lag})
+    return normalize({"kind": "change", "op": base, "lag": lag})
+
+
+def form_key(spec: dict[str, Any]) -> str:
+    """A form's short id within its column: ``as_is``, ``log@1``, ``diff@2``, ``knee``."""
+    kind = spec["kind"]
+    if kind not in ("as_is", "log", "change"):
+        return kind
+    base = (spec.get("op") or "diff") if kind == "change" else kind
+    return f"{base}@{spec['lag']}" if spec.get("lag") else base
+
+
+def form_label(spec: dict[str, Any]) -> str:
+    kind = spec["kind"]
+    if kind not in ("as_is", "log", "change"):
+        return KINDS[kind]["label"]
+    word = BASES[spec.get("op") or "diff"] if kind == "change" else BASES[kind]
+    return f"{word} lag {spec['lag']}" if spec.get("lag") else word
+
+
+def spec_of_key(key: str, expr: str = "") -> dict[str, Any]:
+    """The spec a ``form_key`` names (a custom one takes ``expr``)."""
+    base, _, lag = key.partition("@")
+    if base in BASES:
+        return form_spec(base, int(lag or 0))
+    return normalize({"kind": base, **({"expr": expr} if base == "custom" else {})})
+
+
+def driver_forms(lags: int = DRIVER_LAGS, change: str = "diff") -> list[dict[str, Any]]:
+    """A driver's forms: as it is and its ``change`` (growth on a year before for an index
+    that drifts), at lags 0..``lags``."""
+    return [form_spec(b, k) for b in ("as_is", change) for k in range(lags + 1)]
+
+
+def forms_of(spec: Any) -> list[dict[str, Any]]:
+    """Every form a column's decision makes, normalized and without repeats. A decision is
+    ``{"forms": [...]}``; one made before columns could carry several forms (a kind, or one
+    spec) reads as that one form, and the plan's lags and changes (``library``) as the
+    driver's forms."""
+    if spec is None:
+        return []
+    if hasattr(spec, "model_dump"):
+        spec = spec.model_dump()
+    if isinstance(spec, str):
+        spec = {"kind": spec}
+    if "forms" in spec:
+        raw = list(spec["forms"] or [])
+    elif spec.get("kind") == "library":
+        raw = driver_forms()
+    elif spec.get("kind") == "lag":
+        raw = [{"kind": "as_is", "lag": spec.get("lag", 0)}]
+    else:
+        raw = [spec]
+    out, seen = [], set()
+    for f in raw:
+        f = normalize(f)
+        if form_key(f) not in seen:
+            seen.add(form_key(f))
+            out.append(f)
+    return out
+
+
+def forms_words(forms: list[dict[str, Any]], short: bool = False) -> str:
+    """The forms in words, a form's lags together: "as it is, log", "as it is (now, lag 1),
+    growth y/y (lag 2)"; "6 forms" when ``short`` and there are many."""
+    if short and len(forms) > 2:
+        return f"{len(forms)} forms"
+    groups: dict[str, list[int]] = {}
+    for f in forms:
+        groups.setdefault(form_label({**f, "lag": 0}), []).append(int(f.get("lag") or 0))
+    parts = []
+    for word, lags in groups.items():
+        if lags == [0]:
+            parts.append(word)
+        else:
+            parts.append(f"{word} (" + ", ".join("now" if k == 0 else f"lag {k}" for k in lags)
+                         + ")")
+    return ", ".join(parts) or "none"
+
+
+def item_key(col: str, kind: str) -> str:
+    """The design gate's id of a reviewed form: one fitted shape or expression of a column."""
+    return f"{col}::{kind}"
+
+
+def split_item(key: str) -> tuple[str, str | None]:
+    col, _, kind = key.partition("::")
+    return col, kind or None
+
+
+def with_form(own: dict[str, Any] | None, col: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """The decisions with ``spec`` in place of the column's form of the same kind (added when
+    the column had none)."""
+    forms = [f for f in forms_of((own or {}).get(col)) if f["kind"] != spec["kind"]]
+    return {**(own or {}), col: {"forms": [*forms, normalize(spec)]}}
 
 
 def intent_of(task: str | None, shape: str | None = None) -> str | None:
@@ -77,7 +196,7 @@ def intent_of(task: str | None, shape: str | None = None) -> str | None:
 
 
 def normalize(spec: dict[str, Any] | str) -> dict[str, Any]:
-    """A column's transformation with every parameter filled in (``ColumnTransform``)."""
+    """One form of a column with every parameter filled in (``ColumnTransform``)."""
     raw = {"kind": spec} if isinstance(spec, str) else {k: v for k, v in spec.items()
                                                           if k in ColumnTransform.model_fields}
     return ColumnTransform(**raw).model_dump()
@@ -99,8 +218,8 @@ def check_expr(expr: str, col: str) -> str:
 
 
 def lay_over(plan: dict, own: dict[str, Any] | None, source: str = "human") -> dict:
-    """The plan with the transformations decided at the gates laid over its own."""
-    own = {c: normalize(s) for c, s in (own or {}).items()}
+    """The plan with the forms decided at the gates laid over its own."""
+    own = {c: {"forms": forms_of(s)} for c, s in (own or {}).items()}
     if own:
         plan["factors"]["columns"] = {**(plan["factors"].get("columns") or {}), **own}
         plan.setdefault("sources", {})["factors.columns"] = source
@@ -108,13 +227,13 @@ def lay_over(plan: dict, own: dict[str, Any] | None, source: str = "human") -> d
 
 
 def decided(own: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
-    """The columns given a transformation of their own (not kept as they are, not left to the
-    plan's library), their specs filled in: the ones the design gate sets."""
+    """The forms the design gate reviews (fitted shapes and custom expressions), keyed by
+    ``item_key``, each spec filled in and carrying its ``column``."""
     out = {}
     for col, spec in (own or {}).items():
-        spec = normalize(spec if isinstance(spec, dict | str) else spec.model_dump())
-        if spec["kind"] not in ("as_is", "library"):
-            out[col] = spec
+        for f in forms_of(spec):
+            if f["kind"] in REVIEWED:
+                out[item_key(col, f["kind"])] = {**f, "column": col}
     return out
 
 
@@ -191,9 +310,13 @@ def review(df: pd.DataFrame, y: Any, columns: list[str], *, intent: str,
             continue
         if intent == "stationary":  # time order matters: read the whole column, in order
             entry["checks"] += _time_checks(df[col], yv)
-            entry["recommended"] = _recommend(intent, entry["checks"])
+            lead = next((c.get("lag", 0) for c in entry["checks"] if c["id"] == "lead"), 0)
+            entry["recommended"] = _recommend(intent, entry["checks"], lead)
         out.append(entry)
+    grid = GRIDS[intent]
     return {"intent": intent, "label": spec["label"], "need": spec["need"],
+            "grid": {"bases": {b: BASES[b] for b in grid["bases"]}, "lags": list(grid["lags"]),
+                     "shapes": {k: KINDS[k]["label"] for k in grid["shapes"]}},
             "kinds": {k: KINDS[k]["label"] for k in spec["kinds"]},
             "hints": {k: KINDS[k]["hint"] for k in spec["kinds"]},
             "columns": out, "as_they_are": plain, "rows": int(len(take))}
@@ -224,7 +347,7 @@ def _review_one(col: str, x: np.ndarray, y: np.ndarray, *, intent: str, expected
                        "text": ("a straight line does as well as a bent one" if not knees else
                                 f"a line with {knees} bend{'s' if knees > 1 else ''} fits "
                                 "better, after paying for the extra slopes")})
-    if intent == "linear":
+    if intent in ("rank", "linear"):
         long_right = skew >= 1 and bool(np.nanmin(x) >= 0)
         checks.append({"id": "skew", "label": "Even spread", "ok": not long_right,
                        "text": (f"a long right tail (skew {skew:.1f}); a logarithm straightens it"
@@ -254,8 +377,10 @@ def _time_checks(s: pd.Series, y: np.ndarray) -> list[dict[str, Any]]:
     acf = float(x.autocorr(1)) if x.notna().sum() > 3 else 0.0
     acf = 0.0 if not np.isfinite(acf) else acf
     drift = acf >= 0.9
-    checks = [{"id": "drift", "label": "Does not drift", "ok": not drift,
-               "text": (f"the level drifts (autocorrelation {acf:.2f}); its change is steadier"
+    index = drift and bool(x.dropna().min() > 0)  # a positive level that drifts: an index
+    checks = [{"id": "drift", "label": "Does not drift", "ok": not drift, "index": index,
+               "text": (f"the level drifts (autocorrelation {acf:.2f}); its "
+                        + ("growth on a year before" if index else "change") + " is steadier"
                         if drift else f"autocorrelation {acf:.2f}")}]
     yy = pd.Series(np.asarray(y, dtype=float))
 
@@ -271,11 +396,37 @@ def _time_checks(s: pd.Series, y: np.ndarray) -> list[dict[str, Any]]:
     checks.append({"id": "lead", "label": "Acts at once", "ok": best_k == 0,
                    "text": (f"the outcome follows it {best_k} period(s) later (|r| {best:.2f} "
                             f"against {base:.2f} at once)" if best_k else
-                            f"strongest at once (|r| {base:.2f})")})
+                            f"strongest at once (|r| {base:.2f})"), "lag": best_k})
     return checks
 
 
-def _recommend(intent: str, checks: list[dict[str, Any]]) -> dict[str, str]:
+def _recommend(intent: str, checks: list[dict[str, Any]], lead: int = 0) -> dict[str, Any]:
+    """The forms the failed checks call for, in the order a modeler would reach for them: the
+    main kind and, where the screen should judge between them, its companions (a skewed
+    column as it is and as its log; a driver as it is and as its change, now and lagged)."""
+    rec = _recommend_kind(intent, checks)
+    bad = {c["id"] for c in checks if not c["ok"]}
+    kind = rec["kind"]
+    if kind == "library":
+        index = any(c.get("index") for c in checks)
+        forms = driver_forms(max(DRIVER_LAGS, lead), "yoy_pct" if index else "diff")
+        if index:
+            rec["why"] = rec["why"].replace("its level and its change",
+                                            "its level and its growth on a year before")
+        if "skew" in bad:
+            forms.append(form_spec("log"))
+    elif kind in ("as_is", "cap") and "skew" in bad:
+        forms = [normalize(kind), form_spec("log")]
+        rec["why"] += "; its logarithm competes with it in the screen"
+    elif kind == "log":
+        forms = [form_spec("as_is"), form_spec("log")]
+        rec["why"] += "; it competes with the column as it is in the screen"
+    else:
+        forms = [normalize(kind)]
+    return {**rec, "forms": forms}
+
+
+def _recommend_kind(intent: str, checks: list[dict[str, Any]]) -> dict[str, str]:
     """The kind the failed checks call for, in the order a modeler would reach for it."""
     bad = {c["id"]: c["text"] for c in checks if not c["ok"]}
     if "flat" in bad:
@@ -303,8 +454,8 @@ def _recommend(intent: str, checks: list[dict[str, Any]]) -> dict[str, str]:
             kind, why = "as_is", "it relates to the outcome along a straight line"
     else:  # a driver: its lags and changes compete in the screen, which picks on the outcome
         found = "; ".join(bad.values())
-        kind, why = "library", ((found + "; the plan's changes and lags compete with its level "
-                                 "in the screen") if found else
+        kind, why = "library", ((found + "; its level and its change, now and lagged, "
+                                 "compete in the screen") if found else
                                 "it does not drift and acts at once; its lags and changes still "
                                 "compete with its level in the screen")
     return {"kind": kind, "why": why}
@@ -432,7 +583,8 @@ def caption(col: str, entry: dict[str, Any]) -> str:
 
 def sketch(df: pd.DataFrame, y: Any, col: str, kind: str, *, direction: str | None,
            classification: bool, period: int | None = None, rows: int = 4000,
-           seed: int = 0, expr: str = "") -> dict[str, Any] | None:
+           seed: int = 0, expr: str = "", op: str = "diff", lag: int = 0
+           ) -> dict[str, Any] | None:
     """What a kind would do to a column, for step one's preview on the Explore page: the
     curve the model would see, with default parameters, on the rows explore has. Advice like
     the review: nothing it places is kept (the parameters are fitted at the design gate, on the
@@ -444,8 +596,10 @@ def sketch(df: pd.DataFrame, y: Any, col: str, kind: str, *, direction: str | No
         return None
     yv = np.asarray(y, dtype=float)
     frame = df
-    if kind in ("change", "lag"):  # read in time order on the whole column, then sampled
-        f = factors_mod.own_factor(col, normalize(kind), period)
+    form = normalize({"kind": kind, "op": op, "lag": lag})
+    timed = kind in ("change", "lag") or bool(lag)
+    if timed:  # read in time order on the whole column, then sampled
+        f = factors_mod.own_factor(col, form, period)
         values = factors_mod._compute(df, f) if f is not None else None
         if values is None:
             return None
@@ -454,8 +608,8 @@ def sketch(df: pd.DataFrame, y: Any, col: str, kind: str, *, direction: str | No
     if len(take) > rows:
         take = np.sort(np.random.default_rng(seed).choice(take, rows, replace=False))
     frame, yv = frame.iloc[take], yv[take]
-    if kind not in ("as_is", "log", "custom"):
-        out = fit(frame, yv, col, {"kind": kind}, direction=direction,
+    if kind not in ("as_is", "log", "custom") or timed:
+        out = fit(frame, yv, col, form, direction=direction,
                   classification=classification, period=period)
         if out is not None:
             out["caption"] = out["caption"].replace(
@@ -504,20 +658,20 @@ def library(dev: pd.DataFrame, y: Any, columns: list[str], specs: dict[str, Any]
     made: list[factors_mod.Factor] = []
     report: dict[str, dict] = {}
     notes: list[str] = []
-    for col, spec in decided(specs).items():
-        if col not in columns or col not in dev.columns:
-            continue
+    for key, spec in decided(specs).items():
+        col = spec["column"]
+        if col not in columns or col not in dev.columns or spec["kind"] not in FITTED:
+            continue  # a custom expression is computed with the library, before the split
         entry = fit(dev, y, col, spec, direction=expected.get(col),
                     classification=classification, period=period)
         if entry is None:
             notes.append(f"{col}: its {KINDS[spec['kind']]['label']} could not be fitted on the "
-                         "development sample; it enters as it is")
+                         "development sample; that form is left out")
             continue
-        report[col] = entry
-        if spec["kind"] in FITTED:
-            made.append(factors_mod.Factor(**entry["factor"]))
-            if not entry.get("monotonic", True):
-                notes.append(f"{col}: no {KINDS[spec['kind']]['label']} fit keeps one direction")
+        report[key] = entry
+        made.append(factors_mod.Factor(**entry["factor"]))
+        if not entry.get("monotonic", True):
+            notes.append(f"{col}: no {KINDS[spec['kind']]['label']} fit keeps one direction")
     fitted = [c for c, e in report.items() if e["kind"] in FITTED]
     if fitted:
         notes.append(f"{len(fitted)} column(s) fitted on the development sample ({len(dev)} "

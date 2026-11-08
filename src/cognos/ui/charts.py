@@ -198,10 +198,12 @@ def from_spec(spec: dict | None, scheme: str) -> go.Figure | None:
 
 def shape(entry: dict | None, scheme: str, *, column: str, rate: bool = True,
           height: int = 230, line: str = "fitted shape",
-          baseline: list | None = None) -> go.Figure | None:
+          baseline: list | None = None,
+          extra: list[tuple[str, list]] | None = None) -> go.Figure | None:
     """One column against the outcome (ADR-0024): the observed outcome per band as dots, the
     line (``line`` names it) through its knees, each knee a dotted rule, and, for an outcome
-    that is not 0/1, a faint cloud of rows (``points``). ``rate`` formats a percentage."""
+    that is not 0/1, a faint cloud of rows (``points``). ``extra`` adds more named lines on the
+    same axis (other forms of the column). ``rate`` formats a percentage."""
     if not entry or not entry.get("curve"):
         return None
     s, c = SERIES[scheme], CHROME[scheme]
@@ -215,7 +217,8 @@ def shape(entry: dict | None, scheme: str, *, column: str, rate: bool = True,
     if baseline:  # the column as explored, under what a transformation would make of it
         fig.add_trace(go.Scatter(
             x=[p[0] for p in baseline], y=[p[1] for p in baseline], mode="lines",
-            name="as explored (smoothed)", line={"color": c["muted"], "width": 1.5, "dash": "dot"},
+            name="the data, smoothed (no form)",
+            line={"color": c["muted"], "width": 1.5, "dash": "dot"},
             hovertemplate=f"{column} %{{x:.4g}}<br>smoothed %{{y:{fmt}}}<extra></extra>"))
     seen = entry.get("observed") or []
     fig.add_trace(go.Scatter(
@@ -228,6 +231,11 @@ def shape(entry: dict | None, scheme: str, *, column: str, rate: bool = True,
         x=[p[0] for p in entry["curve"]], y=[p[1] for p in entry["curve"]], mode="lines",
         name=line, line={"color": s[0], "width": 2.5},
         hovertemplate=f"{column} %{{x:.4g}}<br>fitted %{{y:{fmt}}}<extra></extra>"))
+    for i, (name, curve) in enumerate(extra or [], 1):
+        fig.add_trace(go.Scatter(
+            x=[p[0] for p in curve], y=[p[1] for p in curve], mode="lines", name=name,
+            line={"color": s[(i + 1) % len(s)], "width": 2},
+            hovertemplate=f"{name} %{{x:.4g}}<br>%{{y:{fmt}}}<extra></extra>"))
     for k in entry.get("knots") or []:
         fig.add_vline(x=k, line={"color": c["axis"], "width": 1, "dash": "dot"})
     fig.update_layout(**plot_layout(

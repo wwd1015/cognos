@@ -1082,11 +1082,13 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
     review = p.get("transform_review") or {}
     tx_cols = review.get("columns") or []
     if tx_cols:
+        from ..modeling import column_transforms as ct
+
         kinds = review.get("kinds") or {}
-        decided = ({c: ({"kind": "custom", "expr": s.get("expr", "")}
-                        if s["kind"] == "custom" else s["kind"])
-                    for c, s in state.overrides.transforms.items()} if revised else {})
+        decided = ({c: {"forms": ct.forms_of(s)} for c, s in state.overrides.transforms.items()}
+                   if revised else {})
         data = {"kinds": kinds, "hints": review.get("hints") or {},
+                "grid": review.get("grid") or {},
                 "columns": {c["column"]: c for c in tx_cols},
                 "order": [c["column"] for c in tx_cols]}
         plain = review.get("as_they_are") or []
@@ -1094,17 +1096,18 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
             next(n), "Transformations",
             transform_review.block(
                 "txd", data, decided, editable=editable, excluded=excluded,
-                lead=f"This model needs {review['label']}. {review['need']} Decide each "
-                     "variable: transform it, and by which kind, or keep it as it is."),
+                lead=f"This model needs {review['label']}. {review['need']} Decide the "
+                     "forms each variable enters in: as it is, transformed, or several at once "
+                     "(each form is a variable of its own in the single-factor screen)."),
             dmc.Text(f"{len(plain)} flag(s) and categories enter as they are: "
                      + ", ".join(plain), size="xs", c="dimmed", mt="sm") if plain else None,
-            description="Step one of two: whether each variable is transformed. Its "
-                        "parameters are set at the design gate, on the development sample."))
+            description="Every form is decided here. Logs, lags and changes are used as "
+                        "decided; a fitted shape or an expression gets its parameters at the "
+                        "design gate, on the development sample."))
 
     # 6 · summary and decision
-    kinds = review.get("kinds") or {}
     in_force = state.overrides.transforms if revised else {}
-    shaped = {c: s["kind"] for c, s in in_force.items() if s.get("kind") != "as_is"}
+    tx_data = {"order": [c["column"] for c in tx_cols]}
     summary = html.Div([
         _summary_line("Dependent variable",
                       f"{p.get('target', '—')} ({p.get('task', '')})"),
@@ -1113,9 +1116,7 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
         _summary_line("Join", f"{linked['plan']['base']} + {len(linked['plan']['steps'])} "
                               "table(s)") if linked else None,
         _summary_line("Transformations", html.Span(
-            (f"{len(shaped)} transformed: " + ", ".join(
-                f"{c} ({kinds.get(k, k)})" for c, k in shaped.items()) if shaped
-             else "none transformed") if not editable else "",
+            transform_review.summary(tx_data, in_force, excluded) if not editable else "",
             id="txd-summary")) if tx_cols else None,
         _summary_line("Analysis scripts", f"{len(scripts)} to accept as code") if scripts
         else None,
@@ -1146,8 +1147,9 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
 
 # --- ideate -------------------------------------------------------------------------------
 def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
-    """The design page in six steps (ADR-0025, ``ui/design_steps.py``): the model form, how the
-    data are cut, the variables, the assessment plan, the single-factor analysis, then the
+    """The design page in seven steps (ADR-0025, ``ui/design_steps.py``): the model form, how the
+    data are cut, the variables, the variable rules, the single-factor analysis, the model
+    rules and ranking, then the
     summary and the decision. Each step is confirmed before the next opens; the design gate
     reads every field wherever it sits."""
     from . import design_steps as dz
@@ -1162,7 +1164,24 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
                   for n, e in state.overrides.screen_exceptions.items()}
     names = [r["name"] for r in (screen or {}).get("rows") or []]
     tx = design_transforms(p, state, seat)
-    n_tx = len(p.get("transforms") or {})
+    explored = service.results(state.run_id).get("explore")
+    review = ((explored.payload if explored is not None else None) or {}).get(
+        "transform_review") or {}
+    form_rows = dz.forms_rows(review, state.overrides.transforms)
+    # every other variable the screen sees enters as it is: a category, a flag, an engineered one
+    reviewed = {r["column"] for r in form_rows}
+    plain = sorted({(r.get("source") or r["name"]) for r in (screen or {}).get("rows") or []}
+                   - reviewed) or list(review.get("as_they_are") or [])
+    editable_design = (state.status_of("gate_design") == "awaiting"
+                       and seat == SEAT_OF_GATE.get("gate_design"))
+    forms = dz.forms_table(form_rows, plain,
+                           (p.get("screen") or {}).get("rows"),
+                           (p.get("plan") or {}).get("selection", {}).get("must_include"),
+                           editable_design) if form_rows else None
+    n_plain = len(plain)
+    n_tx = (f"{len(form_rows) + n_plain} variables → "
+            f"{sum(len(r['forms']) for r in form_rows) + n_plain} forms"
+            if form_rows else str(len(p.get("transforms") or {})))
     open_gaps = [g for g in state.gaps if g.stage == "ideate" or g.reentry == "ideate"
                  or g.design_field]  # a design question still open from the intake interview
     q_inputs = [dmc.TextInput(id=_field("gate_design", f"answer::{g.id}"), label=g.question,
@@ -1191,8 +1210,8 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
                     summary=dz.treatment_summary(plan["evaluation"]), editable=editable,
                     description="How the rows are cut: where models are fitted, compared and "
                                 "confirmed."),
-            dz.step(3, [*dz.variables(tx, plan, names, editable),
-                        dmc.MultiSelect(id=_field("gate_design", "plan::factors.transforms"),
+            dz.step(3, [*dz.variables(tx, plan, names, editable, forms=forms),
+                        None if forms else dmc.MultiSelect(id=_field("gate_design", "plan::factors.transforms"),
                                         label="Extra forms tried for the other columns",
                                         description=(
                                             "A column with its own transformation from the "
@@ -1212,11 +1231,10 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
                     editable=editable,
                     description="What goes in: each transformation's parameters, the forms "
                                 "tried for the rest, and what every model must carry."),
-            dz.step(4, dz.assessment(plan, editable), summary=dz.assessment_summary(plan),
-                    editable=editable,
-                    description="The rules that set variables and models aside, and how what "
-                                "is left is ranked. Set before the single-factor analysis is "
-                                "seen."),
+            dz.step(4, dz.variable_rules(plan, editable),
+                    summary=dz.variable_rules_summary(plan), editable=editable,
+                    description="What a variable's strength is and the rules that keep it. "
+                                "Set before the single-factor analysis is seen."),
             dz.step(5, [
                 dmc.TextInput(id=_field("gate_design", "screen_exceptions"),
                               value=json.dumps(exceptions), style={"display": "none"}),
@@ -1226,7 +1244,7 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
                 dcc.Store(id="sf-chosen", data=None),
                 dcc.Store(id="sf-editable", data=editable),
                 dcc.Loading(html.Div(
-                    [dmc.Text("Drawn when the assessment plan is confirmed.", size="sm",
+                    [dmc.Text("Drawn when the variable rules are confirmed.", size="sm",
                               c="dimmed")] if editable else
                     dz.single_factor(screen, exceptions, False), id="sf-body"),
                     type="dot", color="var(--mantine-color-oxblood-6)", delay_show=250),
@@ -1234,15 +1252,21 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
                 description="Every variable fitted alone. The funnel shows each rule's toll; "
                             "click a bar to see who it removed and why, a variable to make an "
                             "exception."),
+            dz.step(6, dz.model_rules(plan, editable), summary=dz.model_rules_summary(plan),
+                    editable=editable,
+                    description="When a model is kept, how models are built and how they are "
+                                "ranked. Set with the single-factor analysis in view: these "
+                                "act on combinations of variables."),
         ]
     revisions = service.screen_revisions(state.run_id)
     summary = html.Div([
         _summary_line("Model form", dz.model_form_summary(p)),
         _summary_line("Data treatment", dz.treatment_summary(plan["evaluation"]))
         if plan else None,
-        _summary_line("Assessment plan", dz.assessment_summary(plan)) if plan else None,
+        _summary_line("Variable rules", dz.variable_rules_summary(plan)) if plan else None,
         _summary_line("Single-factor analysis",
                          dz.single_factor_summary(screen, len(exceptions))),
+        _summary_line("Model rules and ranking", dz.model_rules_summary(plan)) if plan else None,
         _summary_line("Rules revised after a look", f"{len(revisions)} time(s), on record "
                          "for validation") if revisions else None,
     ], className="sum-block")
@@ -1264,8 +1288,8 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
         dmc.Button("Apply my design", id=_act("gate_design", "edit"), variant="light",
                    leftSection=icon("tabler:edit")),
     ])
-    steps.append(dz.step(6, [gate], summary="", editable=editable,
-                         description="Confirm steps 1 to 5 first. Nothing above is recorded "
+    steps.append(dz.step(7, [gate], summary="", editable=editable,
+                         description="Confirm steps 1 to 6 first. Nothing above is recorded "
                                      "until the design is decided."))
     return [
         html.Div(f"{state.run_id}|{res.payload.get('plan_summary', '')}|"
@@ -1297,18 +1321,23 @@ def design_transforms(p: dict, state: RunState, seat: str) -> Any:
              if k not in ("as_is", "library")}
     editable = (state.status_of("gate_design") == "awaiting"
                 and seat == SEAT_OF_GATE.get("gate_design"))
-    own = {c: s for c, s in ct.decided(state.overrides.transforms).items()
-           if c in entries and s != ct.normalize(s["kind"])}  # set by a person, not defaults
-    data = {"kinds": kinds, "columns": entries, "order": list(entries)}
+    own = {}
+    for key, spec in ct.decided(state.overrides.transforms).items():
+        spec = {k: v for k, v in spec.items() if k != "column"}
+        if key in entries and spec != ct.normalize(spec["kind"]):
+            own[key] = spec  # set by a person, not the defaults
+    data = {"kinds": {**kinds, **{k: ct.KINDS[k]["label"] for k in ct.REVIEWED}},
+            "columns": entries, "order": list(entries)}
     return section(
-        "Transformations to set",
+        "Forms to fit",
         transform_review.block(
             "txp", data, own, editable=editable, excluded=[],
-            lead=f"{len(entries)} variable(s) were chosen for a transformation at the data "
-                 "gate. Check how each one is fitted and change its parameters if you need "
-                 "to. “Accept design” keeps the engine's settings for all of them."),
-        description="Step two of two: how each transformed variable is fitted. Set at this "
-                    "gate, then fitted again by the model stage on its own development sample.")
+            lead=f"{len(entries)} form(s) need fitting: shapes placed with the outcome in view, "
+                 "and expressions to test. Check each one and change its parameters if you "
+                 "need to; “Accept design” keeps the engine's settings. Logs, lags and changes "
+                 "are used as the data gate decided them."),
+        description="Fitted on the development sample at this gate, then again by the model "
+                    "stage on its own development sample.")
 
 
 def _words(v: Any) -> str:

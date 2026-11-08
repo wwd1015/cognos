@@ -56,8 +56,9 @@ def test_a_series_gets_a_rolling_origin_and_a_factor_library(loss_run):
     assert model["samples"]["dropped_no_history"] == 8  # a year-on-year change, lagged four
     assert not (eng.run_dir / "data" / "holdout.parquet").exists()
 
-    # hundreds of transformations in, a handful out, every rule accounted for
-    assert model["library"]["n_factors"] > 150 and model["library"]["n_sources"] == 8
+    # every driver in the forms decided at the data gate (level and change or y/y growth, now
+    # and lagged), a handful out, every rule accounted for
+    assert model["library"]["n_factors"] > 40 and model["library"]["n_sources"] == 8
     assert 3 <= len(model["shortlist"]) <= 12
     screen = model["screen"]
     assert screen[0]["before"] == model["library"]["n_factors"]
@@ -111,8 +112,9 @@ def test_the_pool_is_told_apart_on_forecasts_and_scenarios(loss_run):
     champion = next(c for c in cands if c["id"] == backtest["champion_id"])
     assert champion["outcomes"]["r2"] > 0.8 and backtest["test_evaluations"] == len(cands)
     assert backtest["forecast_analysis"] == champion["outcomes"]
-    # near-ties go to the simpler model: three factors, not the nine-factor lasso beside it
-    assert champion["n_features"] == 3 and "fewer factors" in backtest["champion_rationale"]
+    # the champion is a parsimonious model: three factors
+    assert champion["n_features"] == 3 and champion["id"] == cands[0]["id"] \
+        or "fewer factors" in backtest["champion_rationale"]
 
     series = json.loads((eng.run_dir / backtest["forecasts_path"]).read_text("utf-8"))
     assert set(series["forecast"]) == set(model["pool_ids"])

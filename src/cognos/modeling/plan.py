@@ -408,8 +408,10 @@ SCREEN_RULES = ("criterion", "max_missing", "max_p_value", "enforce_sign", "min_
 
 
 def screen_rules(plan: dict) -> dict:
-    """The single-factor screen's settings: what a look at the screen was taken under."""
-    return {k: plan["factors"].get(k) for k in SCREEN_RULES}
+    """The single-factor screen's settings: what a look at the screen was taken under. The
+    first ranking line's metric is one of them: it is what a variable's strength is."""
+    rank = (plan.get("evaluation") or {}).get("rank_by") or [{}]
+    return {**{k: plan["factors"].get(k) for k in SCREEN_RULES}, "metric": rank[0].get("metric")}
 
 
 def screen_revisions(looks: list[dict]) -> list[dict]:
@@ -418,7 +420,7 @@ def screen_revisions(looks: list[dict]) -> list[dict]:
     out = []
     for before, after in zip(looks, looks[1:], strict=False):
         changed = {k: [before["rules"].get(k), v] for k, v in after["rules"].items()
-                   if before["rules"].get(k) != v}
+                   if k in before["rules"] and before["rules"].get(k) != v}
         if changed:
             out.append({"at": after["at"], "by": after["by"], "changed": changed,
                         "kept_before": before.get("kept"), "kept_after": after.get("kept")})

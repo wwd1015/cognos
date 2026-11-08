@@ -12,7 +12,8 @@ holdout included, without seeing an outcome. Every number here is the engine's.
 A *shaped* factor (``cap``, ``knee``, ``smooth``; ADR-0024) is the one exception, and it is
 kept narrow: its points are fitted by ``transforms.library`` on the development sample alone,
 after the split, and then frozen. Computing it on any other sample reads the points, never an
-outcome. A column with its own transformation (``fc["columns"]``) enters only in that form.
+outcome. A column with forms of its own (``fc["columns"]``, ADR-0024) enters only in those
+forms, each a factor; it enters as it is only when that is one of them.
 """
 
 from __future__ import annotations
@@ -101,7 +102,9 @@ def own_factor(col: str, spec: dict[str, Any], period: int | None) -> Factor | N
     kind = spec.get("kind")
     lag = int(spec.get("lag") or 0)
     if kind == "log":
-        return Factor(name=factor_name(col, "log", 0, 0), source=col, transform="log")
+        return Factor(name=factor_name(col, "log", 0, lag), source=col, transform="log", lag=lag)
+    if kind == "as_is":
+        return Factor(name=factor_name(col, "level", 0, lag), source=col, lag=lag) if lag else None
     if kind == "custom":
         expr = str(spec.get("expr") or "").strip()
         return (Factor(name=factor_name(col, "custom", 0, 0), source=col, transform="custom",
@@ -207,28 +210,34 @@ def build_library(df: pd.DataFrame, columns: list[str], fc: dict[str, Any], *, s
     windows = sorted({int(w) for w in fc.get("windows") or [] if int(w) > 1})
 
     factors: list[Factor] = [Factor(name=c, source=c) for c in columns]
-    own = {c: (s if isinstance(s, dict) else s.model_dump())
-           for c, s in (fc.get("columns") or {}).items() if c in columns}
-    own = {c: s for c, s in own.items() if s.get("kind") != "library"}  # widened by the plan
-    replaced: set[str] = set()  # columns that enter only through their own factor
+    from .column_transforms import FITTED, form_key, form_label, forms_of
+
+    own = {c: forms_of(s) for c, s in (fc.get("columns") or {}).items() if c in columns}
+    replaced: set[str] = set()  # columns that do not enter as they are
     new: dict[str, pd.Series] = {}
     skipped = 0
     for col in columns:
         if col in protected or not pd.api.types.is_numeric_dtype(frame[col]) \
                 or pd.api.types.is_bool_dtype(frame[col]) or frame[col].nunique(dropna=True) <= 2:
             continue  # a category or a flag enters as it is
-        if col in own:  # the column's own transformation, decided at the gates (ADR-0024)
-            f = own_factor(col, own[col], period)
-            if f is None:
-                continue  # as it is, or fitted after the split (transforms.library)
-            values = _compute(frame, f)
-            if values is None or values.nunique(dropna=True) < 2:
-                notes.append(f"{col}: its {own[col]['kind']} could not be computed; it enters "
-                             "as it is")
-                continue
-            new[f.name] = values
-            factors.append(f)
-            replaced.add(col)
+        if col in own:  # the column's own forms, decided at the data gate (ADR-0024)
+            if not any(form_key(spec) == "as_is" for spec in own[col]):
+                replaced.add(col)
+            for spec in own[col]:
+                f = own_factor(col, spec, period)
+                if f is None:
+                    continue  # as it is, or fitted after the split (transforms.library)
+                values = _compute(frame, f)
+                if values is None or values.nunique(dropna=True) < 2:
+                    notes.append(f"{col}: its {form_label(spec)} could not be computed and is "
+                                 "left out")
+                    continue
+                new[f.name] = values
+                factors.append(f)
+            if col in replaced and all(spec["kind"] not in FITTED for spec in own[col]) \
+                    and not any(f.source == col and f.name in new for f in factors):
+                replaced.discard(col)  # no form could be made: it enters as it is
+                notes.append(f"{col}: none of its forms could be computed; it enters as it is")
             continue
         bases: list[tuple[str, int]] = [("level", 0)]
         for op in ops:

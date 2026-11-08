@@ -1,8 +1,10 @@
 """The transformation picker (ADR-0024): one variable at a time, on two pages.
 
 On the Explore page (``prefix="txd"``, the data gate) each reviewed variable is decided as a
-kind: transformed, and how, or kept as it is. On the design page (``prefix="txp"``, the design
-gate) each transformed variable gets its parameters, previewed on the development sample.
+set of forms, each a variable of its own in the single-factor screen: a grid of base forms by
+lag, the fitted shapes and an expression. On the design page (``prefix="txp"``, the design
+gate) each form that needs fitting gets its parameters, previewed on the development sample;
+the other forms are used as decided.
 
 Both share one layout: a short list on the left (status, the check that failed, the engine's
 recommendation, the decision), the selected variable on the right, and a progress line. The
@@ -19,6 +21,7 @@ from typing import Any
 import dash_mantine_components as dmc
 from dash import dcc, html
 
+from ..modeling import column_transforms as ct
 from . import charts
 from .components import empty, graph, icon
 
@@ -49,6 +52,30 @@ def decisions(value: str | None) -> dict[str, Any]:
 
 def kind_of(decision: Any) -> str | None:
     return decision.get("kind") if isinstance(decision, dict) else decision
+
+
+def forms_shown(entry: dict, decision: Any) -> list[dict]:
+    """A variable's forms on the Explore page: the decision, else the engine's."""
+    if decision is not None:
+        return ct.forms_of(decision)
+    rec = entry.get("recommended") or {}
+    return ct.forms_of({"forms": rec["forms"]} if rec.get("forms") else rec.get("kind"))
+
+
+def summary(data: dict, decided: dict, excluded: list[str] | None) -> str:
+    """The data gate's line: how many variables, how many forms enter the screen, how many
+    are fitted at the design gate, and how many are still open."""
+    order = wanted(data, excluded)
+    forms = {c: ct.forms_of(decided[c]) for c in order if c in decided}
+    n = sum(len(f) for f in forms.values())
+    fit = sum(1 for f in forms.values() for x in f if x["kind"] in ct.REVIEWED)
+    left = len(order) - len(forms)
+    line = (f"{len(forms)} variable(s) decided → {n} form(s) enter the single-factor screen"
+            + (f"; {fit} fitted at the design gate" if fit else ""))
+    if left:
+        line += (f"; {left} still open. “Apply my decisions” needs every variable decided; "
+                 "“Accept recommendation” takes the engine's forms for all.")
+    return line
 
 
 def wanted(data: dict, excluded: list[str] | None) -> list[str]:
@@ -101,26 +128,30 @@ def rows(prefix: str, data: dict, decided: dict, *, selected: str | None, filt: 
     out = []
     for col in wanted(data, excluded):
         entry = data["columns"][col]
-        rec = (entry.get("recommended") or {}).get("kind") if prefix == "txd" else entry.get(
-            "kind")
-        mine = kind_of(decided.get(col))
-        shown = mine or rec
+        mine = col in decided
+        if prefix == "txd":
+            forms = forms_shown(entry, decided.get(col))
+            plain = [ct.form_key(f) for f in forms] == ["as_is"]
+            shown, title = ct.forms_words(forms, short=True), col
+        else:
+            kind = entry.get("kind")
+            plain, shown = False, kinds.get(kind, kind or "")
+            title = f"{entry.get('column', ct.split_item(col)[0])} · {shown}"
         if search and search.lower() not in col.lower():
             continue
-        if filt == "open" and col in decided:
+        if filt == "open" and mine:
             continue
-        if filt == "decided" and col not in decided:
+        if filt == "decided" and not mine:
             continue
-        if filt == "transform" and (shown or "as_is") == "as_is":
+        if filt == "transform" and plain:
             continue
         flag = _flag(entry) if prefix == "txd" else None
         out.append(html.Div([
-            html.Span("✓" if col in decided else "○",
-                      className="tx-dot" + (" done" if col in decided else "")),
-            html.Span(col, className="tx-col", title=col),
+            html.Span("✓" if mine else "○", className="tx-dot" + (" done" if mine else "")),
+            html.Span(title if prefix == "txd" else entry.get("column", ct.split_item(col)[0]),
+                      className="tx-col", title=title),
             html.Span(flag[0], className=f"tx-flag {flag[1]}") if flag else html.Span(),
-            html.Span(kinds.get(shown, shown or ""),
-                      className="tx-kind" + (" mine" if mine else "")),
+            html.Span(shown, className="tx-kind" + (" mine" if mine else "")),
         ], id={"type": f"{prefix}-row", "col": col}, n_clicks=0,
             className="tx-row" + (" sel" if col == selected else "")))
     return out or [empty("Nothing matches.")]
@@ -170,86 +201,147 @@ def _checks(entry: dict) -> Any:
         for c in entry.get("checks") or []], gap=4)
 
 
+def _tick(key: str, on: set[str], editable: bool, label: Any = None) -> Any:
+    return dmc.Checkbox(id={"type": "txd-form", "key": key}, checked=key in on, size="xs",
+                        label=label, disabled=not editable)
+
+
+def _try(key: str, label: str, hint: str = "") -> Any:
+    return html.Button(label, id={"type": "txd-try", "key": key}, n_clicks=0,
+                       className="tx-try", title=hint or f"preview {label}")
+
+
+HEADS = {"as_is": "as is", "yoy_diff": "change y/y", "yoy_pct": "growth y/y", "cap": "capped",
+         "knee": "knees", "smooth": "smooth"}  # short column headings; the full name is the hint
+
+
+def form_grid(data: dict, on: set[str], editable: bool, rec: set[str]) -> Any:
+    """The forms of one variable as one table: the transformations across, the lags down (a
+    lag only where rows follow one another in time; without lags it is a single line). A
+    fitted shape has no lag, so it sits on the first line only. Each heading previews its
+    form; each box puts it in the decision; a dot marks the engine's recommendation."""
+    grid = data.get("grid") or {"bases": {"as_is": "as it is", "log": "log"}, "lags": [0],
+                                "shapes": {}}
+    lags = grid.get("lags") or [0]
+    hints = data.get("hints") or {}
+    cols = [*grid["bases"].items(), *(grid.get("shapes") or {}).items()]
+    shapes = set(grid.get("shapes") or {})
+    timed = len(lags) > 1
+
+    def cell(base: str, lag: int) -> Any:
+        if base in shapes and lag:
+            return html.Td()
+        key = base if not lag else f"{base}@{lag}"
+        return html.Td(html.Div([_tick(key, on, editable),
+                                 html.Span("•", className="tx-rec-dot", title="recommended")
+                                 if key in rec else None], className="tx-cell"))
+
+    def when(lag: int) -> str:
+        return ("same period" if not lag else
+                f"{lag} period{'s' if lag > 1 else ''} back")
+
+    head = html.Tr([html.Th("Lag") if timed else None,
+                    *(html.Th(_try(b, HEADS.get(b, word), hints.get(b, "") or word))
+                      for b, word in cols)])
+    body = [html.Tr([html.Th(when(k), className="tx-lag") if timed else None,
+                     *(cell(b, k) for b, _ in cols)]) for k in lags]
+    return html.Div(html.Table([html.Thead(head), html.Tbody(body)], className="tx-grid"),
+                    className="tx-grid-wrap")
+
+
 def explore_detail(col: str | None, data: dict, decided: dict, scheme: str, *,
-                   editable: bool, pick: str | None = None, sketch: dict | None = None,
+                   editable: bool, sketch: list[tuple[str, dict | None]] | None = None,
                    expr: str = "", error: str | None = None) -> Any:
     """Step one, one variable: how it relates to the outcome, the checks and the engine's
-    recommendation; then a preview of the kind being tried (``pick``, drawn from ``sketch``
-    over the curve as explored) and a button that makes it the decision."""
+    recommended forms; the grid of forms to tick (each a variable of its own in the screen);
+    the chart of the forms shown (``sketch``: ``(form_key, sketch)`` pairs) and a button that
+    makes the ticked forms the decision."""
     if not col or col not in (data.get("columns") or {}):
         return empty("Choose a variable on the left.")
     entry = data["columns"][col]
-    kinds, hints = data.get("kinds") or {}, data.get("hints") or {}
     rec = entry["recommended"]
-    mine = kind_of(decided.get(col))
-    pick = pick or mine or rec["kind"]
-    if pick == "custom" and not expr and isinstance(decided.get(col), dict):
-        expr = decided[col].get("expr", "")
+    rec_forms = forms_shown(entry, None)
+    forms = forms_shown(entry, decided.get(col))
+    on = {ct.form_key(f) for f in forms}
+    custom = next((f for f in forms if f["kind"] == "custom"), None)
+    expr = expr or (custom or {}).get("expr", "")
     way = "rises" if entry["direction"] == "+" else "falls"
-    if sketch and sketch.get("curve"):
-        shown = {**sketch, "points": entry.get("points") if sketch.get("axis") == col else None}
-        fig = charts.shape(shown, scheme, column=sketch.get("axis") or col,
-                           rate=entry.get("rate", False), height=300,
-                           line=f"{kinds.get(pick, pick)} (preview)",
-                           baseline=entry["curve"] if sketch.get("axis") == col else None)
-        note = sketch.get("caption") or ""
-    else:
-        fig = charts.shape({"observed": entry["observed"], "curve": entry["curve"],
-                            "points": entry.get("points")}, scheme, column=col,
-                           rate=entry.get("rate", False), height=300,
-                           line="as explored (smoothed)")
-        note = (hints.get(pick, "") if pick == "library" else
-                f"Write an expression of x ({col}) and preview it." if pick == "custom"
-                else f"{col} cannot be {kinds.get(pick, pick)}; try another kind")
-    tries = [dmc.Tooltip(dmc.Button(
-        kinds[k], id={"type": "txd-try", "kind": k}, size="xs",
-        variant="filled" if k == pick else "default",
-        color="oxblood" if k == pick else "gray",
-        rightSection=(dmc.Badge("recommended", size="xs", variant="light", color="oxblood")
-                      if k == rec["kind"] else None),
-        leftSection=icon("tabler:check", 14) if k == mine else None),
-        label=hints.get(k, ""), multiline=True, w=240, withArrow=True) for k in kinds]
-    chosen = {"kind": "custom", "expr": sketch.get("expr", expr)} if (
-        pick == "custom" and sketch) else pick
-    if pick == "custom" and isinstance(decided.get(col), dict) and mine == "custom":
-        mine_same = decided[col].get("expr") == (sketch or {}).get("expr", expr)
-    else:
-        mine_same = pick == mine
-    confirm = (dmc.Group([
-        dmc.Button(f"Use {kinds.get(pick, pick)}", size="sm",
-                   id={"type": "txd-confirm", "i": 0, "pick": json.dumps(chosen)},
-                   leftSection=icon("tabler:check", 16),
-                   disabled=not (sketch or pick == "library")),
-        dmc.Text("decided" if mine_same else
-                 f"decided: {kinds.get(mine, mine)}" if mine else "not decided yet",
-                 size="xs", c="green" if mine_same else "dimmed"),
-    ], gap="sm") if editable else dmc.Text(["Decided: ", html.B(kinds.get(mine, "not decided"))],
-                                           size="sm"))
-    custom = dmc.Group([
-        dmc.TextInput(id=opt("txd-expr"), value=expr, size="xs", w=300, error=error,
-                      label=f"Expression of x (x is {col})",
-                      placeholder="e.g. np.minimum(x, 3) or np.log1p(x)"),
-        dmc.Button("Preview", id=opt("txd-expr-go"), size="xs", variant="light",
-                   leftSection=icon("tabler:eye", 14)),
-    ], gap="xs", align="flex-end") if editable and pick == "custom" else None
     return dmc.Stack([
         dmc.Group([dmc.Text(col, ff="monospace", fw=700, size="lg"),
                    dmc.Badge(f"outcome {way} with it ({entry['direction_from']})", size="xs",
                              variant="outline", color="gray", tt="none")], gap="xs"),
         _checks(entry),
         html.Div([html.Span("Engine recommends ", className="tx-rec-k"),
-                  html.B(kinds.get(rec["kind"], rec["kind"])), html.Span(f": {rec['why']}.")],
+                  html.B(ct.forms_words(rec_forms)), html.Span(f": {rec['why']}.")],
                  className="tx-rec"),
-        dmc.Group(tries, gap=6) if editable else None,
-        custom,
-        graph(fig),
-        dmc.Text(note, size="xs", c="dimmed"),
-        confirm,
-        dmc.Text("Try a kind to see what it does; the dotted line is the variable as explored. "
-                 "The preview reads every row explore has, so nothing it places is kept: the "
-                 "parameters are fitted at the design gate, on the development sample.",
+        form_grid(data, on, editable, {ct.form_key(f) for f in rec_forms}),
+        html.Div([_tick("custom", on, editable),
+                  dmc.TextInput(id=opt("txd-expr"), value=expr, size="xs", w=300, error=error,
+                                disabled=not editable,
+                                placeholder=f"custom: an expression of x ({col}), e.g. "
+                                            "np.minimum(x, 3)"),
+                  dmc.Button("Preview", id=opt("txd-expr-go"), size="xs", variant="light",
+                             leftSection=icon("tabler:eye", 14)) if editable else None],
+                 className="tx-custom"),
+        html.Div(preview_view(col, entry, data, scheme, sketch or [], expr),
+                 id=opt("txd-preview")),
+        dmc.Group([
+            dmc.Button("Use the ticked forms", id=opt("txd-confirm"), size="sm",
+                       leftSection=icon("tabler:check", 16)),
+            html.Span(count_words(len(on), col in decided), id=opt("txd-count"),
+                      className="tx-count"),
+        ], gap="sm") if editable else dmc.Text(["Decided: ", html.B(ct.forms_words(forms))],
+                                               size="sm"),
+        dmc.Text("Each ticked form enters the single-factor screen as a variable of its own; "
+                 "the screen keeps the strongest of each column. The chart draws the ticked forms "
+                 "of the column itself; click a lagged or changed form's name to see it on its "
+                 "own. Previews read every row explore has, so nothing they place is "
+                 "kept. Shapes are fitted at the design gate, on the development sample.",
                  size="xs", c="dimmed") if editable else None,
     ], gap="sm")
+
+
+def count_words(n: int, decided: bool) -> str:
+    return (f"{n} form(s) ticked" + (" · decided" if decided else " · not decided yet")
+            if n else "tick at least one form")
+
+
+SAME_AXIS = ("as_is", "log", "cap", "knee", "smooth", "custom")  # a function of x, drawn on x
+
+
+def drawn_keys(on: list[str] | set[str]) -> list[str]:
+    """The ticked forms drawn together on the column's own axis (no lag, no change)."""
+    return [k for k in SAME_AXIS if k in set(on)]
+
+
+def preview_view(col: str, entry: dict, data: dict, scheme: str,
+                 shown: list[tuple[str, dict | None]], expr: str = "") -> list:
+    """The chart for the forms shown (``(form_key, sketch)``), over the data as explored: the
+    forms of the column's own axis together, or one lagged or changed form on its own."""
+    good = [(k, sk) for k, sk in shown if sk and sk.get("curve")]
+    failed = [k for k, sk in shown if not (sk and sk.get("curve"))]
+
+    def label(k: str) -> str:
+        return ct.form_label(ct.spec_of_key(k, expr))
+
+    if good:
+        k0, first = good[0]
+        same = first.get("axis") == col
+        fig = charts.shape({**first, "points": entry.get("points") if same else None}, scheme,
+                           column=first.get("axis") or col, rate=entry.get("rate", False),
+                           height=280, line=label(k0),
+                           baseline=entry["curve"] if same else None,
+                           extra=[(label(k), sk["curve"]) for k, sk in good[1:]])
+        note = " · ".join(f"{label(k)}: {sk.get('caption', '')}" for k, sk in good)
+    else:
+        fig = charts.shape({"observed": entry["observed"], "curve": entry["curve"],
+                            "points": entry.get("points")}, scheme, column=col,
+                           rate=entry.get("rate", False), height=280,
+                           line="the data, smoothed (no form)")
+        note = "Tick a form to draw it here, or click a lagged or changed form's name."
+    if failed:
+        note += f" Not drawn ({col} cannot take it): {', '.join(label(k) for k in failed)}."
+    return [graph(fig), dmc.Text(note, size="xs", c="dimmed")]
 
 
 def _params(spec: dict, kind: str, editable: bool, fitted: list[float] | None = None) -> Any:
@@ -320,8 +412,9 @@ def design_detail(col: str | None, data: dict, decided: dict, scheme: str, *,
         entry = preview
         spec = {**(preview.get("spec") or {}), **(decided.get(col) or {})}
     kind = data["columns"][col].get("kind") or spec.get("kind")  # decided at the data gate
+    column = data["columns"][col].get("column") or ct.split_item(col)[0]
     return dmc.Stack([
-        dmc.Group([dmc.Text(col, ff="monospace", fw=700, size="lg"),
+        dmc.Group([dmc.Text(column, ff="monospace", fw=700, size="lg"),
                    dmc.Badge("your settings" if col in decided else "engine's settings",
                              size="xs", variant="light",
                              color="oxblood" if col in decided else "gray")], gap="xs"),
@@ -343,8 +436,8 @@ def design_detail(col: str | None, data: dict, decided: dict, scheme: str, *,
         ], gap="xs") if editable else None,
         dmc.Text("Fitted on the development sample only, cut as the model stage will cut it; "
                  "the test sample and the holdout are not read. Refit redraws this chart; "
-                 "nothing is recorded until the design gate is decided. To use another "
-                 "transformation, reopen the data gate.", size="xs", c="dimmed"),
+                 "nothing is recorded until the design gate is decided. To use other forms, "
+                 "reopen the data gate.", size="xs", c="dimmed"),
     ], gap="sm")
 
 

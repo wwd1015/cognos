@@ -47,6 +47,7 @@ def test_the_review_recommends_a_kind_by_the_model_s_intent_never_a_parameter():
     lin = ct.review(pd.DataFrame({"amount": amount}), loss, ["amount"], intent="linear",
                     expected={})
     assert lin["columns"][0]["recommended"]["kind"] == "log"
+    assert [ct.form_key(f) for f in lin["columns"][0]["recommended"]["forms"]] == ["as_is", "log"]
     assert lin["columns"][0]["points"]  # a cloud of rows for an outcome that is not 0/1
     t = np.arange(200.0)
     drift = np.cumsum(rng.normal(0.5, 1, 200))
@@ -54,6 +55,9 @@ def test_the_review_recommends_a_kind_by_the_model_s_intent_never_a_parameter():
                    ["hpi"], intent="stationary", expected={})
     rec = ts["columns"][0]["recommended"]
     assert rec["kind"] == "library" and "drifts" in rec["why"] and t.size
+    assert [ct.form_key(f) for f in rec["forms"]][:6] == [
+        "as_is", "as_is@1", "as_is@2", "diff", "diff@1", "diff@2"]
+    assert ts["grid"]["lags"] == [0, 1, 2, 3, 4] and "pct" in ts["grid"]["bases"]
 
 
 def test_a_kind_can_be_previewed_before_it_is_decided():
@@ -114,6 +118,31 @@ def test_a_column_s_own_log_replaces_its_level_in_the_library():
     assert names >= {"noise"} and not any(n.startswith("noise__") for n in names)  # as it is
 
 
+def test_a_column_enters_in_every_form_decided_each_a_variable_of_its_own():
+    rng = np.random.default_rng(4)
+    n = 80
+    df = pd.DataFrame({"date": pd.date_range("2000-01-01", periods=n, freq="QS"),
+                       "hpi": np.cumsum(rng.normal(1, 1, n)) + 100,
+                       "rate": rng.normal(5, 1, n)})
+    forms = [ct.form_spec("as_is"), ct.form_spec("as_is", 1), ct.form_spec("diff"),
+             ct.form_spec("diff", 2), ct.form_spec("log", 1)]
+    frame, lib, _ = factors.build_library(
+        df, ["hpi", "rate"], {"transforms": ["auto"], "lags": [1, 2],
+                              "columns": {"hpi": {"forms": forms}, "rate": {"kind": "as_is"}}},
+        shape="series", datetime_col="date")
+    hpi = sorted(f.name for f in lib if f.source == "hpi")
+    assert len(hpi) == 5 and "hpi" in hpi  # as it is is one of the forms decided
+    assert {f.name for f in lib if f.source == "rate"} == {"rate"}  # nothing else for it
+    lagged = next(f for f in lib if f.source == "hpi" and f.transform == "log")
+    assert lagged.lag == 1 and np.isclose(frame[lagged.name].iloc[5],
+                                          np.log(frame["hpi"].iloc[4]))
+    # one form decided the old way reads as that form; the plan's lags as a driver's forms
+    assert [ct.form_key(f) for f in ct.forms_of("log")] == ["log"]
+    assert len(ct.forms_of({"kind": "library"})) == 6
+    assert ct.decided({"x": {"forms": [ct.form_spec("as_is"), {"kind": "knee"}]}}) == {
+        "x::knee": {**ct.normalize("knee"), "column": "x"}}
+
+
 def _at_data_gate(runs_dir) -> str:
     cfg = service.template_config("built-in:pd_logistic_scorecard", "pd", root=runs_dir)
     run_id = service.create_run(cfg, mode="interactive", provider="heuristic", root=runs_dir)
@@ -134,11 +163,14 @@ def test_two_steps_whether_at_the_data_gate_how_at_the_design_gate(runs_dir):
     review = service.results(run_id, runs_dir)["explore"].payload["transform_review"]
     rec = {c["column"]: c["recommended"]["kind"] for c in review["columns"]}
     assert rec["interest_coverage"] == "knee"
+    forms = {c["column"]: [ct.form_key(f) for f in c["recommended"]["forms"]]
+             for c in review["columns"]}
+    assert forms["drawn"] == ["as_is", "log"]  # skewed: its log competes in the screen
     with pytest.raises(GateError, match="decide every variable"):
         service.submit_gate(run_id, "gate_data", "edit", {"transforms": {"interest_coverage":
                                                                          "knee"}},
                             root=runs_dir, background=False)
-    with pytest.raises(GateError, match="not a transformation"):
+    with pytest.raises(GateError, match="not a form this model offers"):
         service.submit_gate(run_id, "gate_data", "edit", {"transforms": {**rec, "leverage":
                                                                          "change"}},
                             root=runs_dir, background=False)
@@ -146,49 +178,60 @@ def test_two_steps_whether_at_the_data_gate_how_at_the_design_gate(runs_dir):
         service.submit_gate(run_id, "gate_data", "edit", {"transforms": {
             **rec, "current_ratio": {"kind": "custom", "expr": "leverage * 2"}}},
             root=runs_dir, background=False)
+    with pytest.raises(GateError, match="at least one form"):
+        service.submit_gate(run_id, "gate_data", "edit", {"transforms": {
+            **rec, "leverage": {"forms": []}}}, root=runs_dir, background=False)
     service.submit_gate(run_id, "gate_data", "edit", {"transforms": {
-        **rec, "leverage": "cap",
+        **rec, "leverage": {"forms": [{"kind": "as_is"}, {"kind": "cap"}, {"kind": "log"}]},
         "current_ratio": {"kind": "custom", "expr": "np.minimum(x, 1.3)"}}},
         root=runs_dir, by="dana", background=False)
     st = service.state(run_id, runs_dir)
-    assert st.overrides.transforms["leverage"]["kind"] == "cap"
+    assert [ct.form_key(f) for f in st.overrides.transforms["leverage"]["forms"]] == [
+        "as_is", "cap", "log"]
     assert st.last_decision("gate_data").by == "dana"
     service.run_until_idle(run_id, runs_dir)
 
-    proposed = service.results(run_id, runs_dir)["ideate"].payload["transforms"]
-    assert proposed["interest_coverage"]["knots"] and proposed["leverage"]["kind"] == "cap"
-    entry = service.preview_transform(run_id, "interest_coverage",
+    ideate = service.results(run_id, runs_dir)["ideate"].payload
+    proposed = ideate["transforms"]  # only the forms that need fitting or testing
+    assert proposed["interest_coverage::knee"]["knots"]
+    assert proposed["leverage::cap"]["kind"] == "cap" and "leverage::log" not in proposed
+    assert "current_ratio::custom" in proposed
+    names = {r["name"] for r in ideate["screen"]["rows"]}
+    assert {"leverage", "leverage__cap", "leverage__log"} <= names  # three forms, three variables
+    entry = service.preview_transform(run_id, "interest_coverage::knee",
                                       {"kind": "knee", "knots": [2.5]}, runs_dir)
     assert entry["origin"] == "given" and entry["knots"] == [2.5]
     with pytest.raises(GateError, match="set every transformed variable"):
         service.submit_gate(run_id, "gate_design", "edit",
-                            {"transform_params": {"interest_coverage": {"knots": [2.5]}}},
+                            {"transform_params": {"interest_coverage::knee": {"knots": [2.5]}}},
                             root=runs_dir, background=False)
     every = {c: {"kind": e["kind"]} for c, e in proposed.items()}
     with pytest.raises(GateError, match="decided at the data gate"):  # one place decides kinds
         service.submit_gate(run_id, "gate_design", "edit", {"transform_params": {
-            **every, "leverage": {"kind": "smooth"}}}, root=runs_dir, background=False)
+            **every, "leverage::cap": {"kind": "smooth"}}}, root=runs_dir, background=False)
     with pytest.raises(GateError, match="inside the capped range"):
         service.submit_gate(run_id, "gate_design", "edit", {"transform_params": {
-            **every, "interest_coverage": {"kind": "knee", "knots": [9999.0]}}},
+            **every, "interest_coverage::knee": {"kind": "knee", "knots": [9999.0]}}},
             root=runs_dir, background=False)
     service.submit_gate(run_id, "gate_design", "edit", {"transform_params": {
-        **every, "interest_coverage": {"kind": "knee", "knots": [2.5]}}},
+        **every, "interest_coverage::knee": {"kind": "knee", "knots": [2.5]}}},
         root=runs_dir, by="dana", background=False)
-    assert service.state(run_id, runs_dir).overrides.transforms["interest_coverage"]["knots"] \
-        == [2.5]
+    knee = ct.forms_of(service.state(run_id, runs_dir).overrides.transforms["interest_coverage"])
+    assert knee[0]["knots"] == [2.5]
     service.run_until_idle(run_id, runs_dir)
 
     model = service.results(run_id, runs_dir)["model"].payload
-    assert model["transforms"]["current_ratio"]["factor"] == "current_ratio__custom"
-    name = model["transforms"]["interest_coverage"]["factor"]
-    assert "(given)" in model["transforms"]["interest_coverage"]["caption"]
+    screened = json.loads(service.read_artifact(run_id, "stages/model/single_factor.json",
+                                                runs_dir))
+    assert "current_ratio__custom" in {r["name"] for r in screened["rows"]}
+    name = model["transforms"]["interest_coverage::knee"]["factor"]
+    assert "(given)" in model["transforms"]["interest_coverage::knee"]["caption"]
     run = service.runs_root(runs_dir) / run_id
     train = pd.read_parquet(run / "data/train.parquet")
     test = pd.read_parquet(run / "data/test.parquet")
     assert name in train.columns and name in test.columns
     report = json.loads(service.read_artifact(run_id, "stages/model/transforms.json", runs_dir))
-    knee = factors.Factor(**report["interest_coverage"]["factor"])
+    knee = factors.Factor(**report["interest_coverage::knee"]["factor"])
     again = factors.apply_library(test.drop(columns=[name]), [knee])
     assert np.allclose(again[name], test[name], equal_nan=True)  # frozen: the same points
 
@@ -198,6 +241,7 @@ def test_accepting_takes_the_engine_s_kind_for_every_variable(runs_dir):
     review = service.results(run_id, runs_dir)["explore"].payload["transform_review"]
     service.submit_gate(run_id, "gate_data", "accept", root=runs_dir, background=False)
     st = service.state(run_id, runs_dir)
-    assert {c: s["kind"] for c, s in st.overrides.transforms.items()} == {
-        c["column"]: c["recommended"]["kind"] for c in review["columns"]
-        if c["column"] not in st.overrides.exclude_columns}
+    assert {c: [ct.form_key(f) for f in s["forms"]]
+            for c, s in st.overrides.transforms.items()} == {
+        c["column"]: [ct.form_key(f) for f in c["recommended"]["forms"]]
+        for c in review["columns"] if c["column"] not in st.overrides.exclude_columns}

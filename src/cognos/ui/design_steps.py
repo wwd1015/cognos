@@ -1,11 +1,13 @@
-"""The design page in six steps (ADR-0025): the model form, how the data are cut, the
-variables, the assessment plan, the single-factor analysis, then the summary and the decision.
+"""The design page in seven steps (ADR-0025): the model form, how the data are cut, the
+variables, the variable rules, the single-factor analysis, the model rules and ranking, then
+the summary and the decision.
 
 Each step is confirmed before the next opens, and a confirmed step folds into one line. The
 confirmations are the page's own (``dz-done``); nothing is recorded until the design gate is
 decided, and the gate reads every field wherever it sits. The single-factor analysis opens only
-once the assessment plan is confirmed, and every time it is drawn it is a look the engine
-keeps (``service.preview_screen``). Pure functions of their inputs; the callbacks are in
+once the variable rules are confirmed, and every time it is drawn it is a look the engine
+keeps (``service.preview_screen``). The model rules and the ranking act on combinations, so
+they are set after it, with the screen in view. Pure functions of their inputs; the callbacks are in
 ``register_design_callbacks``.
 """
 
@@ -15,15 +17,15 @@ import json
 from typing import Any
 
 import dash_mantine_components as dmc
-from dash import ALL, Input, Output, State, ctx, html, no_update
+from dash import ALL, Input, Output, State, ctx, dcc, html, no_update
 
 from .. import service
 from ..modeling import plan as plan_mod
 from ..modeling import selection
 from .components import empty, fmt, icon, pct, section, table
 
-STEPS = {1: "Model form", 2: "Data treatment", 3: "Variables", 4: "Assessment plan",
-         5: "Single-factor analysis", 6: "Summary and decision"}
+STEPS = {1: "Model form", 2: "Data treatment", 3: "Variables", 4: "Variable rules",
+         5: "Single-factor analysis", 6: "Model rules and ranking", 7: "Summary and decision"}
 GATE = "gate_design"
 RULE_LABELS = {"force_out": "left out by you", "not_fitted": "could not be fitted",
                "max_missing": "too much missing", "max_p_value": "not significant",
@@ -152,6 +154,9 @@ def slate_families(p: dict) -> list[str]:
 def _role_cell(f: dict, editable: bool) -> Any:
     if not f["applicable"]:
         return dmc.Text("Not possible with this data", size="sm", c="dimmed")
+    if f["applicable"] == "partial" and not f.get("families") and "editable" in f:
+        return dmc.Badge("Read through the main form", color="gray", variant="light", size="sm",
+                         tt="none")
     if not f.get("editable", False):
         return dmc.Badge(ROLE_WORDS.get(f["decision"], words(f["decision"])),
                          color=ROLE_COLORS.get(f["decision"], "gray"), variant="light",
@@ -205,6 +210,10 @@ def model_form(p: dict, editable: bool, *, reason: str = "",
                  "champion. Change a role if you disagree; the families below follow it when "
                  "you apply.", size="xs", c="dimmed"),
         table(["Framework", "Role", "Why"], table_rows),
+        dcc.Store(id={"type": "dz-form-rec", "i": 0},
+                  data={k: f["decision"] for k, f in fws.items() if f.get("editable")}),
+        dcc.Store(id={"type": "dz-form-ok", "i": 0}, data=True),
+        html.Div(id={"type": "dz-form-warn", "i": 0}, className="dz-warn-line"),
         dmc.Textarea(id=field("model_form_reason"), value=reason, disabled=not editable,
                      label="Your reason (only if you change a role)", autosize=True, minRows=1,
                      description="Leave it blank to keep the recommendation."
@@ -241,6 +250,20 @@ def model_form(p: dict, editable: bool, *, reason: str = "",
                               "benchmark only" if fam in bench else "yes"] for fam in fams])],
                      className="gate-more"),
     ]
+
+
+def model_form_problem(roles: dict[str, str], recommended: dict[str, str],
+                       reason: str | None) -> str | None:
+    """Why the model form as the page states it cannot be applied, in the page's words, or
+    None. The engine checks the same at the gate (``gates._apply_model_form``)."""
+    main = [k for k, d in roles.items() if d == "primary"]
+    if not main:
+        return "No framework is the main form: choose one."
+    if len(main) > 1:
+        return f"{len(main)} frameworks are the main form: keep one."
+    if any(recommended.get(k) != d for k, d in roles.items()) and not (reason or "").strip():
+        return "A role differs from the recommendation: write your reason."
+    return None
 
 
 def model_form_summary(p: dict, families: list[str] | None = None) -> str:
@@ -315,10 +338,85 @@ def treatment_summary(ev: dict) -> str:
 
 
 # --- 3 · variables --------------------------------------------------------------------------
-def variables(transforms: Any, plan: dict, factor_names: list[str], editable: bool) -> list:
+def forms_rows(review: dict, in_force: dict) -> list[dict]:
+    """One row per reviewed variable: the forms it enters the screen in, and who set them
+    (the developer when they differ from the engine's recommendation)."""
+    from ..modeling import column_transforms as ct
+
+    out = []
+    for c in review.get("columns") or []:
+        col = c["column"]
+        if col not in in_force:
+            continue  # excluded at the data gate
+        mine = ct.forms_of(in_force[col])
+        rec = c.get("recommended") or {}
+        engine = ct.forms_of({"forms": rec["forms"]} if rec.get("forms") else rec.get("kind"))
+        keys = [ct.form_key(f) for f in mine]
+        out.append({"column": col, "forms": mine,
+                    "fitted": sum(1 for f in mine if f["kind"] in ct.REVIEWED),
+                    "by": "engine" if keys == [ct.form_key(f) for f in engine] else "developer"})
+    return out
+
+
+def forms_table(rows: list[dict], plain: list[str], screen_rows: list[dict] | None = None,
+                must: list[str] | None = None, editable: bool = False) -> Any:
+    """Every variable going in, with its forms, who set them and whether every model must
+    carry it (and in which form): what enters the single-factor screen."""
+    from ..modeling import column_transforms as ct
+
+    n = sum(len(r["forms"]) for r in rows)
+    fit = sum(r["fitted"] for r in rows)
+    must = list(must or [])
+    by_source: dict[str, list[str]] = {}
+    for r in screen_rows or []:
+        by_source.setdefault(r.get("source") or r["name"], []).append(r["name"])
+
+    def carry(col: str) -> Any:
+        names = by_source.get(col) or [col]
+        mine = next((m for m in must if m in names), None)
+        return dmc.Select(id=field(f"must::{col}"), value=mine, clearable=True,
+                          placeholder="no", size="xs", w=180, disabled=not editable,
+                          data=[{"value": m, "label": m} for m in names])
+
+    body = [[dmc.Text(r["column"], ff="monospace", size="sm"),
+             dmc.Text(ct.forms_words(r["forms"]), size="xs"), str(len(r["forms"])),
+             dmc.Text(r["by"], size="xs", c="oxblood" if r["by"] == "developer" else "dimmed"),
+             carry(r["column"])]
+            for r in sorted(rows, key=lambda r: (-len(r["forms"]), r["column"]))]
+    body += [[dmc.Text(c, ff="monospace", size="sm"),
+              dmc.Text("as it is (not reviewed: a category, a flag or a count)", size="xs",
+                       c="dimmed"), "1",
+              dmc.Text("engine", size="xs", c="dimmed"), carry(c)] for c in plain]
+    return html.Div([
+        dmc.Text([html.B(f"{len(rows) + len(plain)} variables → {n + len(plain)} forms"),
+                  " enter the single-factor screen"
+                  + (f" ({len(plain)} as they are: categories, flags and counts)" if plain
+                     else "")
+                  + (f". {fit} form(s) need fitting below." if fit else ".")], size="sm"),
+        html.Div(dmc.Table([
+            dmc.TableThead(dmc.TableTr([dmc.TableTh(h) for h in
+                                        ("Variable", "Forms", "#", "Set by",
+                                         "Every model carries")])),
+            dmc.TableTbody([dmc.TableTr([dmc.TableTd(c) for c in row]) for row in body]),
+        ], stickyHeader=True, highlightOnHover=True, verticalSpacing=4, fz="sm",
+            tabularNums=True), className="dz-forms-scroll" + (" long" if len(body) > 8 else "")),
+        dmc.Text(f"All {len(body)} variables: scroll the table for the rest.", size="xs",
+                 c="dimmed") if len(body) > 8 else None,
+        dmc.Text("Forms are decided at the data gate; reopen it to change them. The screen "
+                 "keeps the strongest forms of each column (the per-column rule in step 4). A "
+                 "variable every model carries passes the screen and starts every model: a "
+                 "policy variable or an incumbent's driver.", size="xs", c="dimmed"),
+    ], className="dz-forms")
+
+
+def variables(transforms: Any, plan: dict, factor_names: list[str], editable: bool, *,
+              forms: Any = None) -> list:
     sel = plan["selection"]
+    if forms is not None:  # the table carries "every model carries" (``must::<column>``)
+        return [forms, transforms]
     return [
-        transforms if transforms is not None else dmc.Text(
+        forms,
+        transforms if transforms is not None else None if forms is not None else dmc.Text(
             "No variable was chosen for a transformation at the data gate: every variable "
             "enters as it is.", size="sm", c="dimmed"),
         dmc.MultiSelect(id=field("plan::selection.must_include"),
@@ -331,18 +429,72 @@ def variables(transforms: Any, plan: dict, factor_names: list[str], editable: bo
     ]
 
 
-def variables_summary(n_transformed: int, must: list[str] | None) -> str:
+def variables_summary(forms: Any, must: list[str] | None) -> str:
+    """``forms``: the line for the variables and their forms (or a count of fitted forms)."""
     must = must or []
-    return (f"{n_transformed} transformed · "
+    words = forms if isinstance(forms, str) and not forms.isdigit() else \
+        f"{int(forms or 0)} transformed"
+    return (f"{words} · "
             + (f"every model carries {', '.join(must)}" if must else "no variable required"))
 
 
-# --- 4 · the assessment plan ----------------------------------------------------------------
+# --- 4 · the variable rules, 6 · the model rules and ranking ---------------------------------
 RANK_LINES = 3
 
 
-def assessment(plan: dict, editable: bool) -> list:
-    ev, sel, fc = plan["evaluation"], plan["selection"], plan["factors"]
+def variable_rules(plan: dict, editable: bool) -> list:
+    """Step 4: what decides the single-factor screen, set before it is seen: what a variable's
+    strength is measured by (the first ranking line's metric, read on validation or in
+    sample) and the rules, in the order they run."""
+    ev, fc = plan["evaluation"], plan["factors"]
+    opts = plan.get("options") or {}
+    first = (ev.get("rank_by") or [{}])[0]
+    return [
+        _head("A variable's strength is", "Each variable is fitted alone on the development "
+              "sample and scored on this metric. It is also the first line of the ranking in "
+              "step 6."),
+        dmc.SimpleGrid([
+            dmc.Select(id=field("plan::rank.0.metric"), label="Metric", size="xs",
+                       value=first.get("metric"), allowDeselect=False, disabled=not editable,
+                       data=[{"value": m, "label": m} for m in opts.get("metric") or []]),
+            _pick("factors.criterion", "Read on", fc.get("criterion") or "validation",
+                  opts.get("factor_criterion") or ["validation", "in_sample"], editable,
+                  description=by(plan, "factors.criterion")),
+        ], cols={"base": 2, "md": 4}),
+        _head("Variables are kept when", "These rules run in this order. Empty = off. A change "
+              "after the single-factor analysis has been seen is counted as a revision."),
+        dmc.SimpleGrid([
+            _num("factors.max_missing", "Missing at most", fc.get("max_missing"), editable,
+                 min=0, max=1, step=0.05, decimalScale=2),
+            _num("factors.max_p_value", "p-value at most", fc.get("max_p_value"), editable,
+                 min=0, max=1, step=0.01, decimalScale=3),
+            _yes("factors.enforce_sign", "Drop a wrong sign", fc.get("enforce_sign"), editable),
+            _num("factors.best_per_source", "Forms kept per column", fc.get("best_per_source"),
+                 editable, min=1),
+            _num("factors.max_correlation", "Correlation at most", fc.get("max_correlation"),
+                 editable, min=0, max=1, step=0.05, decimalScale=2),
+            _num("factors.top_n", "Shortlist size", fc.get("top_n"), editable, min=1),
+        ], cols={"base": 2, "md": 3}),
+    ]
+
+
+def variable_rules_summary(plan: dict) -> str:
+    fc = plan["factors"]
+    first = (plan["evaluation"].get("rank_by") or [{}])[0]
+    rules = [f"p ≤ {fmt(fc['max_p_value'], 2)}" if fc.get("max_p_value") is not None
+             else None, "sign" if fc.get("enforce_sign") else None,
+             f"{fc['best_per_source']} per column" if fc.get("best_per_source") else None,
+             f"|corr| ≤ {fmt(fc['max_correlation'], 2)}"
+             if fc.get("max_correlation") is not None else None,
+             f"top {fc['top_n']}" if fc.get("top_n") else None]
+    return (f"strength: {first.get('metric')} ({words(fc.get('criterion') or 'validation')}) · "
+            f"{', '.join(x for x in rules if x) or 'no rule'}")
+
+
+def model_rules(plan: dict, editable: bool) -> list:
+    """Step 6: what acts on combinations of variables, set with the screen in view: when a
+    model is kept, how models are built and how what is left is ranked."""
+    ev, sel = plan["evaluation"], plan["selection"]
     opts = plan.get("options") or {}
     metrics = [*(opts.get("metric") or []), *plan_mod.RANK_EXTRAS]
     rank = list(ev.get("rank_by") or [])
@@ -350,13 +502,17 @@ def assessment(plan: dict, editable: bool) -> list:
     weights = ev.get("rank_mode") == "weights"
     lines = []
     for i, r in enumerate(rank[:RANK_LINES]):
+        metric = (dmc.TextInput(value=f"{r.get('metric') or ''} (step 4)", size="xs", w=230,
+                                disabled=True, rightSection=icon("tabler:lock", 12))
+                  if i == 0 else
+                  dmc.Select(id=field(f"plan::rank.{i}.metric"), value=r.get("metric"),
+                             size="xs", w=230, clearable=True, disabled=not editable,
+                             placeholder="add a line",
+                             data=[{"value": m, "label": plan_mod.RANK_EXTRAS.get(m, m)}
+                                   for m in metrics]))
         lines.append(dmc.Group([
             dmc.Text(str(i + 1), ff="monospace", size="sm", w=14),
-            dmc.Select(id=field(f"plan::rank.{i}.metric"), value=r.get("metric"), size="xs",
-                       w=230, clearable=i > 0, disabled=not editable,
-                       placeholder="add a line" if i else None,
-                       data=[{"value": m, "label": plan_mod.RANK_EXTRAS.get(m, m)}
-                             for m in metrics]),
+            metric,
             dmc.Select(id=field(f"plan::rank.{i}.sample"), size="xs", w=130,
                        value=r.get("sample") or "validation", disabled=not editable,
                        allowDeselect=False,
@@ -369,23 +525,6 @@ def assessment(plan: dict, editable: bool) -> list:
                             leftSection=dmc.Text("w", size="xs", c="dimmed")),
         ], gap="xs", wrap="nowrap"))
     return [
-        _head("Variables are kept when", "Each variable is fitted alone on the development "
-              "sample; these rules then run in this order. Empty = off."),
-        dmc.SimpleGrid([
-            _pick("factors.criterion", "Strength read on", fc.get("criterion") or "validation",
-                  opts.get("factor_criterion") or ["validation", "in_sample"], editable,
-                  description=by(plan, "factors.criterion")),
-            _num("factors.max_missing", "Missing at most", fc.get("max_missing"), editable,
-                 min=0, max=1, step=0.05, decimalScale=2),
-            _num("factors.max_p_value", "p-value at most", fc.get("max_p_value"), editable,
-                 min=0, max=1, step=0.01, decimalScale=3),
-            _yes("factors.enforce_sign", "Drop a wrong sign", fc.get("enforce_sign"), editable),
-            _num("factors.best_per_source", "Forms kept per column", fc.get("best_per_source"),
-                 editable, min=1),
-            _num("factors.max_correlation", "Correlation at most", fc.get("max_correlation"),
-                 editable, min=0, max=1, step=0.05, decimalScale=2),
-            _num("factors.top_n", "Shortlist size", fc.get("top_n"), editable, min=1),
-        ], cols={"base": 2, "md": 4}),
         _head("A model is kept when", "Every model the search builds goes through these; the "
               "candidate pool page shows each rule's funnel."),
         dmc.SimpleGrid([
@@ -412,7 +551,8 @@ def assessment(plan: dict, editable: bool) -> list:
         ], cols={"base": 1, "sm": 2}),
         _head("What is left is ranked by", "In order: the first line decides and the next ones "
               "break ties. Blended: each line turns into the share of models a model beats, "
-              "averaged by the weights."),
+              "averaged by the weights. The first line's metric is a variable's strength, set "
+              "in step 4."),
         dmc.Group([
             dmc.SegmentedControl(id=field("plan::evaluation.rank_mode"), size="xs",
                                  value="weights" if weights else "order",
@@ -426,20 +566,15 @@ def assessment(plan: dict, editable: bool) -> list:
     ]
 
 
-def assessment_summary(plan: dict) -> str:
-    fc, sel = plan["factors"], plan["selection"]
-    var_rules = [f"p ≤ {fmt(fc['max_p_value'], 2)}" if fc.get("max_p_value") is not None
-                 else None, "sign" if fc.get("enforce_sign") else None,
-                 f"|corr| ≤ {fmt(fc['max_correlation'], 2)}"
-                 if fc.get("max_correlation") is not None else None,
-                 f"top {fc['top_n']}" if fc.get("top_n") else None]
-    model_rules = [f"≤ {sel['max_factors']} factors",
-                   f"VIF ≤ {fmt(sel['max_vif'], 1)}" if sel.get("max_vif") is not None else None,
-                   f"every p ≤ {fmt(sel['max_p_value'], 2)}"
-                   if sel.get("max_p_value") is not None else None]
-    return (f"variables: {', '.join(x for x in var_rules if x) or 'no rule'} · models: "
-            f"{', '.join(x for x in model_rules if x)} · ranked by "
-            f"{plan_mod.rank_words(plan['evaluation'])}")
+def model_rules_summary(plan: dict) -> str:
+    sel = plan["selection"]
+    rules = [f"≤ {sel['max_factors']} factors",
+             f"VIF ≤ {fmt(sel['max_vif'], 1)}" if sel.get("max_vif") is not None else None,
+             f"every p ≤ {fmt(sel['max_p_value'], 2)}"
+             if sel.get("max_p_value") is not None else None]
+    return (f"models: {', '.join(x for x in rules if x)} · built by "
+            f"{', '.join(words(m) for m in sel.get('methods') or []) or 'no method'} · ranked "
+            f"by {plan_mod.rank_words(plan['evaluation'])}")
 
 
 # --- 5 · the single-factor analysis ---------------------------------------------------------
@@ -631,17 +766,36 @@ def register_design_callbacks(app, plan_patch) -> None:
     def page_fields(values, ids) -> dict:
         return {i["field"]: v for i, v in zip(ids, values, strict=False) if i["gate"] == GATE}
 
+    @app.callback(Output({"type": "dz-form-warn", "i": ALL}, "children"),
+                  Output({"type": "dz-form-ok", "i": ALL}, "data"),
+                  Input({"type": "gate-field", "gate": ALL, "field": ALL}, "value"),
+                  State({"type": "gate-field", "gate": ALL, "field": ALL}, "id"),
+                  State({"type": "dz-form-rec", "i": ALL}, "data"))
+    def check_form(values, ids, recs):
+        # The model form as the page states it, checked as the gate will check it.
+        if not recs:
+            return [], []
+        fields = page_fields(values, ids)
+        roles = {**recs[0], **{k.split("::", 1)[1]: v for k, v in fields.items()
+                              if k.startswith("framework::") and v}}
+        problem = model_form_problem(roles, recs[0], fields.get("model_form_reason"))
+        return ([html.Span([icon("tabler:alert-triangle", 14), " ", problem])
+                 if problem else None], [problem is None])
+
     @app.callback(Output("dz-done", "data"),
                   Input({"type": "dz-confirm", "n": ALL}, "n_clicks"),
                   Input({"type": "dz-reopen", "n": ALL}, "n_clicks"),
                   State("dz-done", "data"), State("dz-key", "children"),
+                  State({"type": "dz-form-ok", "i": ALL}, "data"),
                   prevent_initial_call=True)
-    def confirm(_c, _r, done, key):
+    def confirm(_c, _r, done, key, form_ok):
         trig = ctx.triggered_id
         if not isinstance(trig, dict) or not (ctx.triggered and ctx.triggered[0].get("value")):
             return no_update
         have = list((done or {}).get("done") or []) if (done or {}).get("key") == key else []
         n = int(trig["n"])
+        if trig["type"] == "dz-confirm" and n == 1 and form_ok and not form_ok[0]:
+            return no_update  # the model form cannot be applied as it stands: the page says why
         if trig["type"] == "dz-confirm":
             have = sorted(set(have) | {n})
         else:  # a step opened again: the ones after it wait for it
@@ -710,7 +864,7 @@ def register_design_callbacks(app, plan_patch) -> None:
             else:
                 exceptions[chosen] = {"keep": k == "keep", "reason": w}
         elif trig["type"] == "dz-confirm" and int(trig["n"]) != 4:
-            # only the assessment plan draws the analysis: any other step restates its line
+            # only the variable rules draw the analysis: any other step restates its line
             patch = plan_patch(plan, fields)
             return no_update, no_update, _summaries(
                 sum_ids, ideate, fields, patch, n_tx, screen=(drawn or {}).get("screen"),
@@ -785,11 +939,13 @@ def _summaries(sum_ids: list[dict], ideate: dict, fields: dict, patch: dict, n_t
         elif n == 2 and plan:
             out.append(treatment_summary(plan["evaluation"]))
         elif n == 3 and plan:
-            out.append(variables_summary(int(n_tx or 0), plan["selection"].get("must_include")))
+            out.append(variables_summary(n_tx, plan["selection"].get("must_include")))
         elif n == 4 and plan:
-            out.append(assessment_summary(plan))
+            out.append(variable_rules_summary(plan))
         elif n == 5 and screen is not None:
             out.append(single_factor_summary(screen, n_exc))
+        elif n == 6 and plan:
+            out.append(model_rules_summary(plan))
         else:
             out.append(no_update)
     return out
