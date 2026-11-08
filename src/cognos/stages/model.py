@@ -19,6 +19,8 @@ cached by a fingerprint of its inputs, so a changed pool re-finalizes without se
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -26,8 +28,8 @@ from ..analysis import consult
 from ..artifacts import ArtifactRef, Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..datautil import coerce_target
+from ..modeling import column_transforms, fit_full, greedy_ensemble, score, selection, splits
 from ..modeling import factors as factors_mod
-from ..modeling import fit_full, greedy_ensemble, score, selection, splits
 from ..modeling import plan as plan_mod
 from ..modeling.fit import HAZARD_FAMILIES, Candidate
 from ..modeling.metrics import metric_direction
@@ -74,10 +76,7 @@ class ModelStage(Stage):
             structural_info = {"spec": structural_spec.to_dict(), **s_info}
 
         # --- the plan in force ------------------------------------------------------
-        families = ctx.get("ideate").payload.get("families") if ctx.has("ideate") else None
-        if ctx.overrides.slate:  # the human's slate edit at gate_design wins
-            families = list(dict.fromkeys(h["family"] for h in ctx.overrides.slate))
-        families = families or (cfg.search.model_families or None)
+        families = self.families(ctx)
         plan = self.plan_in_force(ctx, df, features, families)
         ev = plan["evaluation"]
         shape = plan["shape"]["shape"]
@@ -151,20 +150,24 @@ class ModelStage(Stage):
             }
             migration_findings = self._check_migration(migration_model)
 
-        # --- shaped factors: fitted on the development sample, frozen for the others -------
-        # (ADR-0024) A cap or a knee is chosen with the outcome in view, so it is fitted here,
-        # after the split, on train_df alone; test and holdout get the same frozen points.
+        # --- each column's own transformation, fitted on the development sample -----------
+        # (ADR-0024) A cap, a knee or a smooth curve is placed with the outcome in view, so it
+        # is fitted here, after the split, on train_df alone; test and holdout get the same
+        # frozen points. A fitted column enters only in its transformed form.
         expected = self._expected_signs(profile, plan)
-        shaped, shape_report, shape_notes = factors_mod.shape_library(
-            train_df, coerce_target(train_df, cfg), features, plan["factors"],
-            expected=expected, classification=is_clf)
+        shaped, shape_report, shape_notes = column_transforms.library(
+            train_df, coerce_target(train_df, cfg), features, plan["factors"].get("columns") or {},
+            expected=expected, classification=is_clf, period=plan["factors"].get("period"))
         if shaped:
             train_df = factors_mod.apply_library(train_df, shaped)
             test_df = factors_mod.apply_library(test_df, shaped) if len(test_df) else test_df
             holdout_df = (factors_mod.apply_library(holdout_df, shaped) if len(holdout_df)
                           else holdout_df)
-            library = [*library, *shaped]
-            res.add_artifact(ctx.save_json("stages/model/shapes.json", shape_report))
+            fitted = {f.source for f in shaped}
+            library = [*(f for f in library if not (f.source in fitted and f.transform == "level"
+                                                    and not f.lag)), *shaped]
+        if shape_report:
+            res.add_artifact(ctx.save_json("stages/model/transforms.json", shape_report))
         lib_notes = [*lib_notes, *shape_notes]
 
         ctx.save_df("data/train.parquet", train_df)
@@ -270,7 +273,9 @@ class ModelStage(Stage):
             from ..modeling.guided import guided_search
             from .ideate import _engine_families
 
-            explored = [f.name for f in library if f.transform == "level" and not f.lag]
+            # every explored column, a transformed one too: the search builds on raw columns
+            explored = list(dict.fromkeys(f.source for f in library
+                                          if f.source in train_df.columns))
             gr = guided_search(
                 lambda c: ctx.recommend("modeling_agent_search", c).model_dump(),
                 train_df[explored], y_train, columns=explored, champion=lead.candidate,
@@ -413,10 +418,9 @@ class ModelStage(Stage):
                 "n_factors": len(library), "n_sources": len({f.source for f in library}),
                 "transforms": plan["factors"]["transforms"], "notes": lib_notes,
             },
-            "shapes": {col: {k: r.get(k) for k in ("set_by", "factors", "cap", "knots",
-                                                   "knees_asked", "knees_used", "origin",
-                                                   "direction", "direction_from", "monotonic")}
-                       for col, r in shape_report.items()},
+            "transforms": {col: {"kind": r["kind"], "factor": r["factor"]["name"],
+                                 "caption": r["caption"], "spec": r["spec"]}
+                           for col, r in shape_report.items()},
             "single_factor": [r for r in rows if r["status"] == "kept"][:40],
             "screen": [{k: line[k] for k in ("rule", "setting", "before", "after")}
                        for line in found["screen"]],
@@ -496,12 +500,33 @@ class ModelStage(Stage):
         plan = plan_mod.resolve(cfg, plan_mod.shape_of(df, cfg), families=list(families),
                                 columns=list(df.columns), proposed=proposed,
                                 human=ctx.overrides.plan)
-        own = {c: {k: v for k, v in s.items() if k != "by"}
-               for c, s in (ctx.overrides.shapes or {}).items()}
-        if own:  # a person's shape for a column wins (ADR-0024)
-            plan["factors"]["shapes"] = {**(plan["factors"].get("shapes") or {}), **own}
-            plan["sources"]["factors.shapes"] = "human"
-        return plan
+        # each column's transformation, as decided at the gates, wins (ADR-0024)
+        return column_transforms.lay_over(plan, ctx.overrides.transforms)
+
+    @staticmethod
+    def families(ctx: RunContext) -> list[str] | None:
+        """The model families in force: the developer's slate, else ideate's, else the profile's."""
+        families = ctx.get("ideate").payload.get("families") if ctx.has("ideate") else None
+        if ctx.overrides.slate:  # the human's slate edit at gate_design wins
+            families = list(dict.fromkeys(h["family"] for h in ctx.overrides.slate))
+        return families or (ctx.config.search.model_families or None)
+
+    @staticmethod
+    def development(ctx: RunContext, plan: dict) -> tuple[pd.DataFrame, Any, dict[str, str]]:
+        """The development sample exactly as this stage cuts it under ``plan`` (the library
+        computed, then the split), its outcome and the expected signs. The test sample and the
+        holdout are cut and dropped unread: the design gate fits its previews on this (ADR-0024)."""
+        cfg = ctx.config
+        df = ctx.load_dataset()
+        profile = ctx.profile()
+        features = list(profile["features"])
+        frame, _, _ = factors_mod.build_library(
+            df, features, plan["factors"], shape=plan["shape"]["shape"],
+            datetime_col=cfg.data.datetime_col)
+        dev, _, _ = splits.split_samples(frame, plan["evaluation"],
+                                         datetime_col=cfg.data.datetime_col,
+                                         random_state=cfg.search.random_state)
+        return dev, coerce_target(dev, cfg), ModelStage._expected_signs(profile, plan)
 
     @staticmethod
     def _names(ctx: RunContext, ranked: list) -> dict[str, str]:
@@ -776,8 +801,8 @@ class ModelStage(Stage):
             source, _, rest = name.partition("__")
             if name in expected:
                 out[name] = expected[name]
-            elif rest.startswith("knee"):
-                out[name] = "+"  # turned to rise with the outcome (factors.fit_shape)
+            elif rest.startswith(("knee", "smooth")):
+                out[name] = "+"  # turned to rise with the outcome (modeling/transforms.py)
             elif source in expected and not rest.startswith("square"):
                 out[name] = expected[source]
         return out

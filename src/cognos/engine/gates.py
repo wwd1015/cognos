@@ -127,25 +127,99 @@ def send_back(state: RunState, gate: str, payload: dict[str, Any], reason: str) 
     return [target]
 
 
-FORMS = {"none": None, "cap": {"cap": True, "knees": 0}, "knee1": {"cap": True, "knees": 1},
-         "knee2": {"cap": True, "knees": 2}}
+def _apply_kinds(state: RunState, action: str, asked: dict[str, str] | None, profile: dict
+                 ) -> bool:
+    """Step one of each column's transformation (ADR-0024): the kind decided for every column
+    explore reviewed. Accepting takes the recommended kinds; an edit must decide every column
+    that is still in the model. True when the decisions changed."""
+    from ..modeling import column_transforms as ct
+
+    review = profile.get("transform_review") or {}
+    reviewed = {c["column"]: c for c in review.get("columns") or []}
+    if not reviewed:
+        return False
+    kinds = review.get("kinds") or {}
+    if action == "accept":
+        asked = {c: e["recommended"]["kind"] for c, e in reviewed.items()}
+    elif asked is None:
+        return False  # this decision says nothing about the transformations: keep them
+    unknown = [c for c in asked if c not in reviewed]
+    if unknown:
+        raise GateError(f"{unknown} were not reviewed by the exploration")
+    def kind_of(d: Any) -> str:
+        return d.get("kind") if isinstance(d, dict) else d
+
+    bad = {c: kind_of(k) for c, k in asked.items() if kind_of(k) not in kinds}
+    if bad:
+        raise GateError(f"not a transformation this model offers: {bad}; choose from "
+                        f"{sorted(kinds)}")
+    left = sorted(c for c in reviewed if c not in asked
+                  and c not in state.overrides.exclude_columns)
+    if left:
+        raise GateError(f"decide every variable first: {len(left)} still open "
+                        f"({', '.join(left[:6])}{', ...' if len(left) > 6 else ''})")
+    current = state.overrides.transforms
+    new = {}
+    for col, asked_one in asked.items():
+        if col in state.overrides.exclude_columns:
+            continue
+        kind = kind_of(asked_one)
+        spec = ct.normalize(asked_one)
+        if kind == "custom":
+            try:
+                spec["expr"] = ct.check_expr(spec["expr"], col)
+            except ValueError as exc:
+                raise GateError(f"{col}: {exc}") from exc
+        old = current.get(col)
+        # a kind kept (a custom one with the same expression) keeps the design gate's settings
+        same = old and old.get("kind") == kind and old.get("expr", "") == spec["expr"]
+        new[col] = old if same else spec
+    changed = new != current
+    state.overrides.transforms = new
+    return changed
 
 
-def _apply_forms(state: RunState, forms: dict[str, str], profile: dict) -> bool:
-    """Lay the forms chosen at the data gate over ``overrides.shapes``; True when it changed."""
-    known = {s["column"] for s in profile.get("shape_survey") or []}
-    shapes = dict(state.overrides.shapes)
-    for col, form in (forms or {}).items():
-        if col not in known:
-            raise GateError(f"{col!r} is not a column the exploration surveyed")
-        if form not in FORMS:
-            raise GateError(f"unknown shape {form!r} for {col}; choose from {sorted(FORMS)}")
-        if FORMS[form] is None:
-            shapes.pop(col, None)
-        else:
-            shapes[col] = {**FORMS[form], "knots": []}
-    changed = shapes != state.overrides.shapes
-    state.overrides.shapes = shapes
+def _apply_params(state: RunState, asked: dict[str, dict], ideate: dict) -> bool:
+    """Step two (ADR-0024): the parameters set at the design gate for the transformed columns.
+    True when they changed."""
+    from ..modeling import column_transforms as ct
+
+    current = dict(state.overrides.transforms)
+    open_ = ct.decided(current)
+    left = sorted(c for c in open_ if c in (ideate.get("transforms") or {}) and c not in asked)
+    if left:
+        raise GateError(f"set every transformed variable first: {', '.join(left)} still open "
+                        "(“Accept design” keeps the engine's settings for all)")
+    changed = False
+    for col, spec in (asked or {}).items():
+        if col not in open_:
+            raise GateError(f"{col!r} is not transformed: decide that at the data gate")
+        kind = open_[col]["kind"]
+        if spec.get("kind") not in (None, kind):
+            raise GateError(f"{col}: the transformation ({kind}) was decided at the data "
+                            "gate; reopen it there to use another one")
+        try:
+            new = ct.normalize({**open_[col], **spec, "kind": kind})
+        except ValueError as exc:
+            raise GateError(f"{col}: {exc}") from exc
+        if new["kind"] == "custom":
+            try:
+                new["expr"] = ct.check_expr(new["expr"], col)
+            except ValueError as exc:
+                raise GateError(f"{col}: {exc}") from exc
+        knots = new["knots"]
+        if knots != sorted(set(knots)) or len(knots) > 2:
+            raise GateError(f"{col}: at most two knots, in increasing order")
+        cap = ((ideate.get("transforms") or {}).get(col) or {}).get("cap")
+        if knots and cap and not all(cap[0] < k < cap[1] for k in knots):
+            raise GateError(f"{col}: a knot must lie inside the capped range "
+                            f"[{cap[0]:.4g}, {cap[1]:.4g}]")
+        if new["kind"] == "knee" and knots:
+            new["knees"] = max(new["knees"], len(knots))
+        if new != current[col]:
+            current[col] = new
+            changed = True
+    state.overrides.transforms = current
     return changed
 
 
@@ -249,6 +323,7 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
         if payload.get("join_changed"):
             if pick and pick != analysed and profile.get("target_source") != "profile":
                 state.overrides.target, state.overrides.task = pick, None
+            state.overrides.transforms = {}  # the columns are reviewed again on the new table
             return ["explore"], False  # explore rebuilds the dataset from the new join
         if pick and pick != analysed:
             if profile.get("target_source") == "profile":
@@ -257,6 +332,7 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
             if pick not in (profile.get("dtypes") or {}):
                 raise GateError(f"unknown column {pick!r}")
             state.overrides.target, state.overrides.task = pick, None
+            state.overrides.transforms = {}  # reviewed against another outcome
             return ["explore"], False  # explore re-reads the data against the new target
         if profile.get("target_source") != "profile" and analysed:
             state.overrides.target, state.overrides.task = analysed, profile.get("task")
@@ -275,13 +351,8 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
                 raise GateError("the target column cannot be excluded")
         changed = sorted(new) != sorted(state.overrides.exclude_columns)
         state.overrides.exclude_columns = sorted(set(new))
-        # Version A (ADR-0024): the form of each surveyed column is decided here. Accepting
-        # takes the suggested form; the knees themselves are fitted after the split.
-        forms = payload.get("shapes") if action == "edit" else None
-        if forms is None:
-            forms = {s["column"]: (f"knee{s['suggested_knees']}" if s["suggested_knees"]
-                                   else "none") for s in profile.get("shape_survey") or []}
-        changed = _apply_forms(state, forms, profile) or changed
+        # Step one of each column's transformation (ADR-0024): whether, and by which kind.
+        changed = _apply_kinds(state, action, payload.get("transforms"), profile) or changed
         return (_changed_downstream(gate) if changed else []), True
 
     if gate == "gate_design":
@@ -301,6 +372,11 @@ def handle(state: RunState, gate: str, action: str, payload: dict[str, Any], rea
             invalidate += _changed_downstream(gate)
         elif action == "accept" and state.overrides.slate is not None:
             pass  # accepting keeps whatever slate is in force
+        if action == "edit" and payload.get("transform_params"):
+            # Step two (ADR-0024): how each transformed column is fitted.
+            if _apply_params(state, payload["transform_params"],
+                             (res.payload if res is not None else None) or {}):
+                invalidate = sorted(set(invalidate) | set(_changed_downstream(gate)))
         patch = payload.get("plan") if action == "edit" else None
         replan = apply_plan(state, res, patch) if patch else []
         rerun = apply_answers(state, answers) + replan
@@ -403,10 +479,11 @@ def _source(state: RunState, payload: dict[str, Any], config: Any) -> list[str]:
         state.overrides.data = given
         state.overrides.target, state.overrides.task = target, None
         state.overrides.join, state.overrides.exclude_columns = None, []
-        state.overrides.drawn_links = []
+        state.overrides.drawn_links, state.overrides.transforms = [], {}
         return _changed_downstream("gate_source")
     if target and target != state.overrides.target:
         state.overrides.target, state.overrides.task = target, None
+        state.overrides.transforms = {}  # reviewed against another outcome
         return _changed_downstream("gate_source")
     return []
 

@@ -35,6 +35,7 @@ from ..engine.graph import (
 )
 from ..engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, next_action, seat_label
 from . import ask as ask_ui
+from . import transform_review
 from .components import (
     empty,
     fmt,
@@ -913,6 +914,8 @@ def create_app(runs_dir: str | None = None) -> Dash:
 
 
 def register_callbacks(app: Dash) -> None:
+    register_transform_callbacks(app)
+
     @app.callback(Output("mantine", "forceColorScheme"), Output("theme-store", "data"),
                   Input("theme-switch", "checked"), prevent_initial_call=True)
     def set_theme(dark):
@@ -1481,6 +1484,174 @@ def register_callbacks(app: Dash) -> None:
         ], value="out")
 
 
+def register_transform_callbacks(app: Dash) -> None:
+    """The transformation picker (ui/transform_review.py, ADR-0024) on the Explore page
+    (``txd``) and the design page (``txp``). Choosing, deciding and refitting change only the
+    list, the pane and the chart: the page is not redrawn and the variable stays in view."""
+    tr = transform_review
+
+    def _excluded(prefix: str, value: Any) -> list[str]:
+        return list(value or []) if prefix == "txd" else []
+
+    for prefix in ("txd", "txp"):
+        field = tr.field_id(prefix)
+        exclude = ({"type": "gate-field", "gate": "gate_data", "field": "exclude"}
+                   if prefix == "txd" else f"{prefix}-data")
+        exclude_prop = "value" if prefix == "txd" else "modified_timestamp"
+
+        @app.callback(Output(f"{prefix}-list", "children"), Output(f"{prefix}-progress", "children"),
+                      *([Output("txd-summary", "children")] if prefix == "txd" else []),
+                      Input(f"{prefix}-filter", "value"), Input(f"{prefix}-search", "value"),
+                      Input(field, "value"), Input(f"{prefix}-sel", "data"),
+                      Input(exclude, exclude_prop), State(f"{prefix}-data", "data"),
+                      State(f"{prefix}-editable", "data"))
+        def draw_list(filt, search, value, sel, excl, data, editable, _p=prefix):
+            if not data:
+                return (no_update,) * (3 if _p == "txd" else 2)
+            decided = tr.decisions(value)
+            excluded = _excluded(_p, excl)
+            out = (tr.rows(_p, data, decided, selected=sel, filt=filt or "all",
+                           search=search or "", excluded=excluded),
+                   tr.progress(_p, data, decided, excluded))
+            if _p != "txd":
+                return out
+            if not editable:
+                return (*out, no_update)
+            order = tr.wanted(data, excluded)
+            left = [c for c in order if c not in decided]
+            kinds_of = {c: tr.kind_of(decided.get(c)) for c in order}
+            shaped = [f"{c} ({data['kinds'].get(kinds_of[c], kinds_of[c])})"
+                      for c in order if kinds_of[c] not in (None, "as_is")]
+            line = (f"{len(shaped)} transformed" + (": " + ", ".join(shaped) if shaped else "")
+                    + f"; {len(order) - len(left) - len(shaped)} as they are")
+            if left:
+                line += (f"; {len(left)} still open. “Apply my decisions” needs every variable "
+                         "decided; “Accept recommendation” takes the engine's kind for all.")
+            return (*out, line)
+
+        @app.callback(Output(f"{prefix}-sel", "data", allow_duplicate=True),
+                      Input({"type": f"{prefix}-row", "col": ALL}, "n_clicks"),
+                      prevent_initial_call=True)
+        def choose(clicks, _p=prefix):
+            trig = ctx.triggered_id
+            if not trig or not any(c for c in (clicks or []) if c):
+                return no_update
+            return trig["col"]
+
+    @app.callback(Output("txd-detail", "children"), Input("txd-sel", "data"),
+                  Input({"type": "txd-try", "kind": ALL}, "n_clicks"),
+                  Input({"type": "txd-expr-go", "i": ALL}, "n_clicks"),
+                  Input(tr.field_id("txd"), "value"),
+                  State({"type": "txd-expr", "i": ALL}, "value"), State("txd-data", "data"),
+                  State("txd-editable", "data"), State("ws-run", "data"),
+                  State("theme-store", "data"))
+    def draw_explore(sel, _tries, go, value, exprs, data, editable, run_id, theme):
+        # Trying a kind redraws this pane alone with its preview; nothing is recorded.
+        if not data:
+            return no_update
+        trig = ctx.triggered_id
+        kind_of_trig = trig.get("type") if isinstance(trig, dict) else trig
+        tried = kind_of_trig == "txd-try"
+        went = kind_of_trig == "txd-expr-go"
+        if (tried and not any(c for c in (_tries or []) if c)) or (
+                went and not any(c for c in (go or []) if c)):
+            return no_update
+        expr = (exprs or [""])[0] or ""
+        decided = tr.decisions(value)
+        entry = (data.get("columns") or {}).get(sel or "")
+        mine = decided.get(sel or "")
+        if went:
+            pick = "custom"
+        elif tried:
+            pick, expr = trig["kind"], (expr or "")
+        else:
+            pick = tr.kind_of(mine) or ((entry or {}).get("recommended") or {}).get("kind")
+            expr = mine.get("expr", "") if isinstance(mine, dict) else ""
+        sketch, error = None, None
+        if entry and run_id and pick and (pick != "custom" or (expr or "").strip()):
+            try:
+                sketch = service.sketch_transform(run_id, sel, pick, expr=expr or "")
+            except ValueError as exc:
+                error = str(exc)
+            except (KeyError, FileNotFoundError):
+                sketch = None
+        return tr.explore_detail(sel, data, decided, (theme or {}).get("scheme", "light"),
+                                 editable=bool(editable), pick=pick, sketch=sketch,
+                                 expr=expr or "", error=error)
+
+    @app.callback(Output(tr.field_id("txd"), "value"),
+                  Output("txd-sel", "data", allow_duplicate=True),
+                  Input({"type": "txd-confirm", "i": ALL, "pick": ALL}, "n_clicks"),
+                  State("txd-sel", "data"), State(tr.field_id("txd"), "value"),
+                  State("txd-data", "data"),
+                  State({"type": "gate-field", "gate": "gate_data", "field": "exclude"}, "value"),
+                  prevent_initial_call=True)
+    def decide(clicks, sel, value, data, excl):
+        # The kind previewed (carried on the button's id) becomes the decision; the next open
+        # variable comes up.
+        trig = ctx.triggered_id
+        if not isinstance(trig, dict) or not any(c for c in (clicks or []) if c) or not sel:
+            return no_update, no_update
+        pick = json.loads(trig["pick"])
+        decided = {**tr.decisions(value), sel: pick}
+        return json.dumps(decided), tr.next_open(data, decided, sel, list(excl or []))
+
+    @app.callback(Output("txp-detail", "children"), Input("txp-sel", "data"),
+                  Input(tr.field_id("txp"), "value"), State("txp-data", "data"),
+                  State("txp-editable", "data"), State("txp-previews", "data"),
+                  State("theme-store", "data"))
+    def draw_design(sel, value, data, editable, previews, theme):
+        if not data:
+            return no_update
+        return tr.design_detail(sel, data, tr.decisions(value),
+                                (theme or {}).get("scheme", "light"), editable=bool(editable),
+                                preview=(previews or {}).get(sel or ""))
+
+    # The kind was decided at the data gate (ADR-0024): read from the fitted entry, not a control.
+    _params = [State(f"txp-{n}", "value") for n in ("knees", "knots", "span", "lower",
+                                                    "upper", "op", "lag", "expr")]
+
+    def _kind(data, sel):
+        return ((data or {}).get("columns") or {}).get(sel or "", {}).get("kind")
+
+    @app.callback(Output("txp-view", "children"), Output("txp-previews", "data"),
+                  Input({"type": "txp-refit", "i": ALL}, "n_clicks"), *_params,
+                  State("txp-sel", "data"), State("txp-data", "data"),
+                  State("txp-previews", "data"),
+                  State("ws-run", "data"), State("theme-store", "data"),
+                  prevent_initial_call=True)
+    def refit(clicks, knees, knots, span, lower, upper, op, lag, expr, sel, data,
+              previews, run_id, theme):
+        # The Refit button: the chart alone is redrawn.
+        if not sel or not run_id or not any(c for c in (clicks or []) if c):
+            return no_update, no_update
+        kind = _kind(data, sel)
+        scheme = (theme or {}).get("scheme", "light")
+        try:
+            spec = tr.spec_from(kind, knees, knots, span, lower, upper, op, lag, expr)
+            entry = service.preview_transform(run_id, sel, spec)
+        except ValueError as exc:
+            return tr.fit_view(None, scheme, error=str(exc)), no_update
+        return tr.fit_view(entry, scheme), {**(previews or {}), sel: entry}
+
+    @app.callback(Output(tr.field_id("txp"), "value"),
+                  Output("txp-sel", "data", allow_duplicate=True),
+                  Input({"type": "txp-keep", "i": ALL}, "n_clicks"), *_params,
+                  State("txp-sel", "data"),
+                  State(tr.field_id("txp"), "value"), State("txp-data", "data"),
+                  prevent_initial_call=True)
+    def keep(clicks, knees, knots, span, lower, upper, op, lag, expr, sel, value, data):
+        if not any(c for c in (clicks or []) if c) or not sel:
+            return no_update, no_update
+        kind = _kind(data, sel)
+        try:
+            spec = tr.spec_from(kind, knees, knots, span, lower, upper, op, lag, expr)
+        except ValueError:
+            return no_update, no_update  # unreadable knots: the refit says why
+        decided = {**tr.decisions(value), sel: spec}
+        return json.dumps(decided), tr.next_open(data, decided, sel)
+
+
 def column_layout(tab: str | None, focus: bool | None) -> tuple[bool, int, bool]:
     """(left shown, main column span of 24, right shown). Focus hides both side columns so the
     page in the middle gets the room; a run-wide view never has the live activity."""
@@ -1549,10 +1720,9 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
         return source_payload(fields, run_id), reason
     if gate == "gate_data" and action == "edit":
         payload["exclude_columns"] = list(fields.get("exclude") or [])
-        forms = {k.split("::", 1)[1]: v for k, v in fields.items()
-                 if k.startswith("shape::") and v}
-        if forms:
-            payload["shapes"] = forms
+        kinds = transform_review.decisions(fields.get("transforms"))
+        if "transforms" in fields:  # the picker was on the page: every decision it holds
+            payload["transforms"] = kinds
         if fields.get("target"):
             payload["target"] = fields["target"]
         if fields.get("join_spec"):  # several sources: the join as the canvas now states it
@@ -1577,6 +1747,9 @@ def gate_payload(gate: str, action: str, fields: dict, run_id: str) -> tuple[dic
         if action == "edit" and keep is not None and set(keep) != {h["id"] for h in hyps}:
             payload["slate"] = [{k: h[k] for k in ("family", "feature_strategy", "role", "priority",
                                                    "rationale")} for h in hyps if h["id"] in keep]
+        params = transform_review.decisions(fields.get("transform_params"))
+        if action == "edit" and params:
+            payload["transform_params"] = params
         plan = (service.results(run_id).get("ideate").payload or {}).get("plan")
         if action == "edit" and plan:
             patch = plan_patch(plan, fields)

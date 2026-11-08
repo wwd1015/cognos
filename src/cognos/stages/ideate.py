@@ -473,6 +473,7 @@ class IdeateStage(Stage):
                     + [f for f in slate_families if f not in families])
         plan = plan_mod.resolve(cfg, shape, families=families, columns=columns,
                                 proposed=plan_proposed, human=ctx.overrides.plan)
+        transforms = self._transforms(ctx, plan)
         proposed_transforms = [{"name": t.name, "expr": t.expr, "rationale": t.rationale}
                                for t in out.transforms]
         framework_choices = [f.model_dump() for f in out.frameworks]
@@ -514,6 +515,8 @@ class IdeateStage(Stage):
             "plan_summary": plan_mod.summary(plan),
             "notes": notes,
         }
+        if transforms:
+            payload["transforms"] = transforms
         if incumbent:
             payload["incumbent"] = incumbent
         attach_recommendation(payload, ctx, "design_agent", out)
@@ -634,6 +637,29 @@ class IdeateStage(Stage):
             return (f"Flexible {family} {feat_txt} as a challenger benchmark only — quantifies the "
                     "predictive ceiling; the deployed model must stay interpretable.")
         return f"Flexible {family} {feat_txt} to capture nonlinearity; weigh against interpretability."
+
+    @staticmethod
+    def _transforms(ctx: RunContext, plan: dict) -> dict[str, dict]:
+        """Step two of each column's transformation (ADR-0024): the parameters the engine
+        proposes for every column decided at the data gate, fitted on the development sample
+        as the model stage will cut it under this plan. Lays the decisions over ``plan``."""
+        from ..modeling import column_transforms
+        from .model import ModelStage
+
+        own = column_transforms.decided(ctx.overrides.transforms)
+        column_transforms.lay_over(plan, ctx.overrides.transforms)
+        if not own:
+            return {}
+        dev, y, expected = ModelStage.development(ctx, plan)
+        out = {}
+        for col, spec in own.items():
+            entry = column_transforms.fit(dev, y, col, spec, direction=expected.get(col),
+                                          classification=ctx.config.task.is_classification,
+                                          period=plan["factors"].get("period"))
+            out[col] = entry or {"kind": spec["kind"], "spec": spec, "failed": True,
+                                 "caption": "could not be fitted on the development sample; "
+                                            "it would enter as it is"}
+        return out
 
     @staticmethod
     def _design_brief_md(cfg: CognosConfig, structure: dict, frameworks: list[dict],

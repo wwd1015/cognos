@@ -1012,6 +1012,70 @@ def measure_link(run_id: str, a: str, a_on: list[str], b: str, b_on: list[str],
                                           "b_on": list(b_on)}, target)
 
 
+_SKETCHES: dict[tuple, Any] = {}
+
+
+def sketch_transform(run_id: str, column: str, kind: str, root: str | Path | None = None,
+                     expr: str = "") -> dict[str, Any] | None:
+    """What a kind of transformation would do to a column, for the Explore page's preview
+    (ADR-0024): on the rows explore has, default parameters, nothing recorded. None when the
+    column cannot take it; ``ValueError`` for a custom ``expr`` the rules refuse."""
+    from .datautil import coerce_target
+    from .modeling import column_transforms as ct
+
+    eng = engine(run_id, root)
+    key = (str(eng.run_dir), state(run_id, root).version, column, kind, expr)
+    if key in _SKETCHES:
+        return _SKETCHES[key]
+    ctx = eng.context()
+    cfg = ctx.config
+    df = ctx.load_dataset()
+    profile = ctx.profile()
+    signs = {c["column"]: c["relationship"] for c in profile.get("feature_candidates") or []
+             if c.get("relationship") in ("+", "-")}
+    signs.update(cfg.factors.expected_signs)
+    dt = cfg.data.datetime_col
+    if cfg.task.value == "timeseries" and dt and dt in df.columns:
+        df = df.sort_values(dt, kind="stable")
+    out = ct.sketch(df, coerce_target(df, cfg), column, kind, direction=signs.get(column),
+                    classification=cfg.task.is_classification, period=cfg.factors.period,
+                    expr=expr)
+    if len(_SKETCHES) > 256:
+        _SKETCHES.clear()
+    _SKETCHES[key] = out
+    return out
+
+
+def preview_transform(run_id: str, column: str, spec: dict[str, Any],
+                      root: str | Path | None = None) -> dict[str, Any]:
+    """A column's transformation fitted on the development sample, for the design gate
+    (ADR-0024): cut as the model stage will cut it under the plan in force, the test sample
+    and the holdout dropped unread. Nothing is recorded: the decision carries the parameters.
+    Raises ``ValueError`` when the column cannot be transformed this way."""
+    from .modeling import column_transforms as ct
+    from .stages.model import ModelStage
+
+    ctx = engine(run_id, root).context()
+    try:
+        spec = ct.normalize(spec)
+        if spec["kind"] == "custom":
+            spec["expr"] = ct.check_expr(spec["expr"], column)
+    except ValueError as exc:
+        raise ValueError(f"{column}: {exc}") from exc
+    df = ctx.load_dataset()
+    plan = ModelStage.plan_in_force(ctx, df, list(ctx.profile()["features"]),
+                                    ModelStage.families(ctx))
+    ct.lay_over(plan, {column: spec})
+    dev, y, expected = ModelStage.development(ctx, plan)
+    entry = ct.fit(dev, y, column, spec, direction=expected.get(column),
+                   classification=ctx.config.task.is_classification,
+                   period=plan["factors"].get("period"))
+    if entry is None:
+        raise ValueError(f"{column} cannot be {ct.KINDS[spec['kind']]['label']} on the "
+                         "development sample")
+    return entry
+
+
 def catalog_line(table: dict[str, Any]) -> str:
     """One line on what a catalog table (as :func:`catalog_listing` gives it) holds."""
     from . import catalog

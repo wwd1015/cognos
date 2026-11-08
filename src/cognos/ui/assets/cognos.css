@@ -253,7 +253,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ── Run workspace: the stage index ── */
 .run-hero { border-top: 0; padding-bottom: 16px; }
-.run-hero-name { font-family: var(--font-display); font-weight: 600; font-size: 25px; line-height: 1.15; }
+.run-hero-name { font-family: var(--font-display); font-weight: 600; font-size: 25px; line-height: 1.15; overflow-wrap: anywhere; }
 .run-hero-id { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-top: 3px; }
 .run-hero-next { font-size: 13.5px; line-height: 1.5; margin-top: 12px; }
 .run-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin-top: 12px; font-size: 12.5px; }
@@ -547,3 +547,32 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-top: 1px solid var(--line); }
 .ask-foot { color: var(--ink-3); font-size: 10.5px; padding: 0 12px 9px; }
 .ask-fab { box-shadow: var(--shadow-menu); }
+
+/* The transformation picker (ui/transform_review.py, ADR-0024): a short ledger of variables
+   on the left, one variable at a time on the right. Hairlines, no boxes. */
+.tx-list { max-height: 460px; overflow-y: auto; border-top: 1px solid var(--rule); }
+.tx-row {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto; gap: 10px;
+  align-items: center; padding: 7px 8px 7px 4px; border-bottom: 1px solid var(--hair);
+  cursor: pointer; font-size: 13px; transition: background 120ms var(--ease);
+}
+.tx-row:hover { background: var(--bg-sunken); }
+.tx-row.sel { background: var(--accent-tint); box-shadow: inset 2px 0 0 var(--accent); }
+.tx-dot { color: var(--ink-3); font-size: 12px; text-align: center; }
+.tx-dot.done { color: var(--mantine-color-green-7); font-weight: 700; }
+.tx-col { font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tx-flag { font-size: 11px; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
+.tx-flag.yellow { color: var(--mantine-color-yellow-9); background: var(--mantine-color-yellow-light); }
+.tx-flag.gray { color: var(--ink-3); background: var(--bg-sunken); }
+.tx-kind { font-size: 12px; color: var(--ink-3); white-space: nowrap; text-align: right; }
+.tx-kind.mine { color: var(--ink); font-weight: 600; }
+.tx-detail { border-left: 1px solid var(--line); padding-left: 20px; min-height: 420px; }
+@media (max-width: 62em) { .tx-detail { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 14px; } }
+.tx-rec { font-size: 13px; padding: 8px 0; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+.tx-rec-k { color: var(--ink-2); }
+
+/* A step's summary: label and value in two columns, hairline between rows. */
+.sum-block { margin: 2px 0 6px; }
+.sum-row { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--hair); font-size: 13px; }
+.sum-k { color: var(--ink-2); }
+.sum-v { color: var(--ink); }

@@ -60,7 +60,9 @@ class ValidateStage(Stage):
         leakage_suspects = list(explore_payload.get("leakage_suspects", []) or [])
         champion = model.get("champion", {}) or {}
         champ_features = list(champion.get("features", []) or [])
-        leaked = [f for f in champ_features if f in leakage_suspects]
+        # a factor of a suspect column (its log, lag, knee...) leaks as much as the column
+        leaked = [f for f in champ_features
+                  if f in leakage_suspects or f.split("__", 1)[0] in leakage_suspects]
         if leaked:
             for f in leaked:
                 res.add_finding(Finding(

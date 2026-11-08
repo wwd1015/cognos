@@ -313,7 +313,7 @@ def test_linked_sources_show_the_join_and_let_the_developer_change_it(root):
     service.run_until_idle(run_id)
     st = service.state(run_id)
     page = _serialize(stage_panel("explore", service.results(run_id)["explore"], st, "light"))
-    assert "Sources and join" in page and "loans.obligor_id = financials.obligor_id" in page
+    assert "The join" in page and "loans.obligor_id = financials.obligor_id" in page
     assert "join_spec" in page and "dropped" in page
     # the join is drawn as a canvas: a tile per table, a chip per measured link; the canvas
     # keeps the join (base, links, each link's rules, links drawn) in join_spec

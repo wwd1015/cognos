@@ -67,7 +67,7 @@ def options(shape: dict[str, Any], cfg, columns: list[str]) -> dict[str, list[st
             "criterion": list(selection.CRITERIA), "sample": list(SAMPLES),
             "metric": list(METRICS[is_clf]),
             "transforms": ["none", *(factors_mod.ALL_OPS if shape["shape"] == "series"
-                                     else (*factors_mod.POINT_OPS, *factors_mod.SHAPE_OPS))]}
+                                     else factors_mod.POINT_OPS)]}
 
 
 def recommend(cfg, shape: dict[str, Any], *, families: list[str], columns: list[str]) -> dict:
@@ -224,8 +224,7 @@ def recommend(cfg, shape: dict[str, Any], *, families: list[str], columns: list[
             "min_strength": fc.min_strength, "best_per_source": fc.best_per_source,
             "max_correlation": fc.max_correlation, "top_n": fc.top_n,
             "force_in": list(fc.force_in), "force_out": list(fc.force_out),
-            "max_knees": int(fc.max_knees),
-            "shapes": {c: s.model_dump() for c, s in fc.shapes.items()},
+            "columns": {c: s.model_dump() for c, s in fc.columns.items()},
         },
         "selection": {
             "methods": list(methods), "criterion": criterion,

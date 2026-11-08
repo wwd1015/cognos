@@ -283,16 +283,27 @@ class EvaluationConfig(BaseModel):
     pool_size: int = 6  # candidates the engine proposes; the developer may carry any number
 
 
-class ShapeSpec(BaseModel):
-    """How one column is shaped before it is fitted (ADR-0024, ``factors.shape_library``).
+class ColumnTransform(BaseModel):
+    """How one column enters the model (ADR-0024, ``modeling/transforms.py``).
 
-    ``cap`` holds the column to its 1st and 99th percentiles. ``knees`` (0 to 2) lets the
-    line bend that many times while it keeps one direction, so the factor is monotonic. Where
-    the knees go is fitted on the development sample unless a person gives ``knots``."""
+    Decided in two steps: at the data gate *whether* the column is transformed and by which
+    ``kind`` (``as_is`` keeps it as it is); at the design gate *how*, by the parameters below.
+    A kind reads only the parameters it needs. ``cap``, ``knee`` and ``smooth`` are fitted on
+    the development sample after the split; ``log``, ``change`` and ``lag`` are functions of
+    the column alone, and so is ``custom``, an expression a person writes in ``x`` (the column)
+    under the safe expression rules of ``modeling/transforms.py``; ``library`` leaves the column to the plan's ``transforms``. ``knots``
+    given by a person are kept, not fitted."""
 
-    cap: bool = True
-    knees: int = Field(0, ge=0, le=2)
-    knots: list[float] = Field(default_factory=list)  # given by a person: kept, not fitted
+    kind: Literal["as_is", "cap", "knee", "smooth", "log", "change", "lag", "library",
+                  "custom"] = "as_is"
+    knees: int = Field(2, ge=1, le=2)  # knee: at most this many bends
+    knots: list[float] = Field(default_factory=list)  # knee: where it bends, when given
+    span: float = Field(0.5, ge=0.1, le=0.9)  # smooth: the share of rows each local fit reads
+    lower: float = Field(1.0, ge=0.0, le=20.0)  # cap: percentiles the column is held inside
+    upper: float = Field(99.0, ge=80.0, le=100.0)
+    op: Literal["diff", "pct", "yoy_diff", "yoy_pct"] = "diff"  # change: which change
+    lag: int = Field(0, ge=0, le=8)  # change, lag: periods behind
+    expr: str = Field("", max_length=200)  # custom: an expression of x, the column itself
 
 
 class FactorConfig(BaseModel):
@@ -306,9 +317,8 @@ class FactorConfig(BaseModel):
 
     transforms: list[str] = Field(default_factory=lambda: ["auto"])
     # auto | none | lag | diff | pct | yoy_diff | yoy_pct | ma | log | sqrt | square
-    # | cap | knee (shaped: fitted on the development sample, every numeric column)
-    max_knees: int = Field(2, ge=1, le=2)  # "knee" in transforms: knees per column at most
-    shapes: dict[str, ShapeSpec] = Field(default_factory=dict)  # by column; wins over transforms
+    # A column's own transformation (ADR-0024) wins over ``transforms`` for that column.
+    columns: dict[str, ColumnTransform] = Field(default_factory=dict)
     lags: list[int] = Field(default_factory=lambda: [1, 2, 3, 4])
     windows: list[int] = Field(default_factory=lambda: [4])  # moving-average lengths
     period: int | None = None  # periods per year (yoy); None => read from the date spacing

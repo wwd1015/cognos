@@ -18,7 +18,7 @@ from ..artifacts import StageResult
 from ..engine.graph import LABELS, SEND_BACK_TARGETS
 from ..engine.process import CORE_DESIGN, SEAT_OF_GATE, preparation_of, seat_label
 from ..engine.state import RunState
-from . import charts
+from . import charts, transform_review
 from .components import (
     empty,
     findings_table,
@@ -871,7 +871,8 @@ def chip_class(chosen: bool, proposed: bool) -> str:
     return "jc-chip " + ("proposed" if proposed else "measured")
 
 
-def linking_section(linked: dict | None) -> Any:
+def linking_section(linked: dict | None, *, title: str = "Sources and join",
+                    lead: list | None = None) -> Any:
     """Several sources: what they are, the join as the engine ran it, and the links it measured
     but did not use."""
     if not linked:
@@ -908,7 +909,7 @@ def linking_section(linked: dict | None) -> Any:
     notes = [*why.get("concerns", []),
              *(f"{t['table']} is left out: {t['reason']}" for t in why.get("left_out", []))]
     return section(
-        "Sources and join", sources,
+        title, *(lead or []), sources,
         dmc.Group([dmc.Text("Base table", size="sm", c="dimmed"),
                    dmc.Text(plan["base"], ff="monospace", fw=650),
                    dmc.Badge(how, variant="outline", size="sm", color="gray", tt="none")],
@@ -934,7 +935,22 @@ def linking_section(linked: dict | None) -> Any:
                     "repeats a row.")
 
 
+def _step(n: int, title: str, *children, description: str | None = None,
+          status: Any = None) -> Any:
+    """One numbered step of a page that follows the work in order."""
+    return section(f"{n} · {title}", *children, right=status, description=description)
+
+
+def _summary_line(label: str, value: Any) -> Any:
+    return html.Div([html.Span(label, className="sum-k"), html.Span(value, className="sum-v")],
+                    className="sum-row")
+
+
 def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
+    """The Explore page, in the order the work is done: the data, the join, the outcome and the
+    variables, how each variable relates to the outcome, the transformations, then the summary
+    and the decision. The data gate's fields sit in the step they belong to; the gate reads
+    them all when it is decided."""
     p = res.payload or {}
     ts = p.get("target_summary") or {}
     suspects = set(p.get("leakage_suspects", []))
@@ -942,31 +958,44 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
     rec = _rec(res) or {}
     out = rec.get("output") or {}
     decisions = {d["column"]: d for d in out.get("column_decisions", [])}
-    rows = []
-    for f in p.get("features", []):
-        d = decisions.get(f)
-        rows.append([
-            dmc.Group([dmc.Text(f, size="sm", ff="monospace"),
-                       dmc.Badge("leakage suspect", color="red", size="xs", variant="light")
-                       if f in suspects else None], gap=6),
-            p.get("dtypes", {}).get(f, ""),
-            pct(p.get("missing", {}).get(f, 0.0)),
-            fmt(corr.get(f), 3),
-            (dmc.Badge(d["decision"], color="red" if d["decision"] == "exclude" else "gray",
-                       variant="light", size="sm") if d else ""),
-        ])
-    decision_rows = [[dmc.Text(d["column"], ff="monospace", size="sm"),
-                      dmc.Badge(d["decision"], color="red" if d["decision"] == "exclude" else "gray",
-                                variant="light", size="sm"), d["reason"]]
-                     for d in out.get("column_decisions", [])]
-    rec_extra = dmc.Stack([
-        table(["Column", "Decision", "Reason"], decision_rows) if decision_rows else None,
-        dmc.List([dmc.ListItem(c["statement"]) for c in out.get("data_quality", [])], size="sm")
-        if out.get("data_quality") else None,
-    ], gap="xs")
-    analyses = p.get("analyses") or []
-    scripts = [a for a in analyses if a["kind"] == "code"]
+    editable = (state.status_of("gate_data") == "awaiting"
+                and seat == SEAT_OF_GATE.get("gate_data"))
+    revised = state.last_decision("gate_data") is not None
+    excluded = list(state.overrides.exclude_columns if revised
+                    else p.get("recommended_exclusions", []))
+    n = iter(range(1, 10))
+    steps: list[Any] = []
+
+    # 1 · the data
     src = p.get("source") or {}
+    if src:
+        steps.append(_step(
+            next(n), "The data",
+            table(["Connector", "Location", "Rows × columns", "Fetched", "Snapshot SHA-256"],
+                  [[src.get("connector", "—"),
+                    dmc.Text(src.get("query") or src.get("location") or "—", size="xs",
+                             ff="monospace"),
+                    f"{fmt(src.get('n_rows'))} × {fmt(src.get('n_cols'))}",
+                    str(src.get("fetched_at", ""))[:19].replace("T", " "),
+                    dmc.Code(str(src.get("snapshot_sha256", ""))[:12])]]),
+            description="Fetched once; every stage reads this snapshot."))
+
+    # 2 · the join
+    linked = p.get("linking") or None
+    if linked:
+        join_fixed = linked["plan"]["source"] == "profile"
+        chosen_links = [s["link"] for s in linked["plan"]["steps"]]
+        canvas = [
+            dmc.Text("Stated in the project profile." if join_fixed else
+                     "The tables, the base table framed in ink, and every link the engine "
+                     "measured with how well it matches. Changing the join rebuilds the "
+                     "dataset and re-runs the exploration.", size="xs", c="dimmed"),
+            join_canvas(linked, p.get("target"), chosen_links,
+                        disabled=join_fixed or not editable),
+        ]
+        steps.append(linking_section(linked, title=f"{next(n)} · The join", lead=canvas))
+
+    # 3 · the outcome and the variables
     fixed = p.get("target_source") == "profile"
     how = {"profile": "fixed in the project profile", "decision": "set at the data gate",
            "agent": "proposed by the Data agent"}.get(p.get("target_source", ""), "")
@@ -981,91 +1010,136 @@ def explore_panel(res: StageResult, state: RunState, scheme: str, seat: str = "d
                             color="gray"),
                   fmt(corr.get(c["column"]), 3), dmc.Text(c["rationale"], size="xs")]
                  for c in p.get("feature_candidates", [])]
-    linked = p.get("linking") or None
-    join_fixed = bool(linked) and linked["plan"]["source"] == "profile"
-    chosen_links = [s["link"] for s in linked["plan"]["steps"]] if linked else []
-    join_fields = [] if not linked else [
-        dmc.Text("The join", fw=600, size="sm"),
-        dmc.Text("Stated in the project profile." if join_fixed else
-                 "The tables, the base table framed in ink, and every link the engine measured "
-                 "with how well it matches. Changing the join rebuilds the dataset and re-runs "
-                 "the exploration.", size="xs", c="dimmed"),
-        join_canvas(linked, p.get("target"), chosen_links, disabled=join_fixed),
-    ]
-    gate = gate_block("gate_data", state, res, seat=seat, body=[
-        *join_fields,
+    decision_rows = [[dmc.Text(d["column"], ff="monospace", size="sm"),
+                      dmc.Badge(d["decision"], color="red" if d["decision"] == "exclude" else "gray",
+                                variant="light", size="sm"), d["reason"]]
+                     for d in out.get("column_decisions", [])]
+    steps.append(_step(
+        next(n), "Outcome and variables",
         dmc.Select(id=_field("gate_data", "target"), label="Dependent variable",
                    data=target_options, value=p.get("target"), allowDeselect=False,
-                   disabled=fixed, searchable=True,
-                   description="Fixed in the project profile." if fixed else
-                   "Changing it re-runs the exploration against the new target."),
-        dmc.Alert(f"{len(scripts)} analysis script(s) written by the Data agent are part of "
-                  "what you are accepting. Read the code under “Analyses” below: it goes to "
-                  "validation and into the white paper as it stands.", color="grape",
-                  variant="light", icon=icon("tabler:code"), mt="xs") if scripts else None,
+                   disabled=fixed or not editable, searchable=True, maw=520,
+                   description=("Fixed in the project profile." if fixed else
+                                f"The outcome as {how}. Changing it re-runs the "
+                                "exploration.")),
+        dmc.Group([dmc.Badge(p.get("task", ""), variant="light", size="sm"),
+                   dmc.Text(p.get("target_rationale") or "", size="sm")], gap="xs", mt=6)
+        if p.get("target") else None,
         dmc.MultiSelect(id=_field("gate_data", "exclude"), label="Columns to exclude from modeling",
                         data=[{"value": c, "label": c} for c in p.get("features", [])],
-                        value=list(state.overrides.exclude_columns
-                                   if state.last_decision("gate_data")
-                                   else p.get("recommended_exclusions", [])),
-                        searchable=True, clearable=True,
+                        value=excluded, searchable=True, clearable=True, mt="md",
+                        disabled=not editable,
                         description="Pre-filled with the Data agent's recommendation."),
-    ], primary=[
+        html.Details([html.Summary(f"The Data agent's candidates ({len(cand_rows)}) and column "
+                                   "decisions", className="gate-fold"),
+                      table(["Feature", "Expected", "Corr.", "Why"], cand_rows)
+                      if cand_rows else None,
+                      table(["Column", "Decision", "Reason"], decision_rows)
+                      if decision_rows else None,
+                      dmc.List([dmc.ListItem(c["statement"]) for c in out.get("data_quality", [])],
+                               size="sm", mt="xs") if out.get("data_quality") else None],
+                     className="gate-more") if cand_rows or decision_rows else None,
+        description="What the model predicts and the columns it may use: hypotheses for the "
+                    "design stage, not a selection."))
+
+    # 4 · how each variable relates to the outcome
+    analyses = p.get("analyses") or []
+    scripts = [a for a in analyses if a["kind"] == "code"]
+    profile_rows = []
+    for f in p.get("features", []):
+        d = decisions.get(f)
+        profile_rows.append([
+            dmc.Group([dmc.Text(f, size="sm", ff="monospace"),
+                       dmc.Badge("leakage suspect", color="red", size="xs", variant="light")
+                       if f in suspects else None], gap=6),
+            p.get("dtypes", {}).get(f, ""),
+            pct(p.get("missing", {}).get(f, 0.0)),
+            fmt(corr.get(f), 3),
+            (dmc.Badge(d["decision"], color="red" if d["decision"] == "exclude" else "gray",
+                       variant="light", size="sm") if d else ""),
+        ])
+    steps.append(_step(
+        next(n), "How each variable relates to the outcome",
+        table(["Feature", "Type", "Missing", "Corr. with target", "Agent"], profile_rows,
+              max_height=300),
+        dmc.Alert(f"{len(scripts)} analysis script(s) written by the Data agent are part of "
+                  "what you are accepting: the code goes to validation and into the white "
+                  "paper as it stands.", color="grape", variant="light",
+                  icon=icon("tabler:code"), mt="sm") if scripts else None,
+        html.Details([
+            html.Summary(f"Analyses ({len(analyses)}), requested by the Data agent and run by "
+                         "the engine", className="gate-fold"),
+            source_counts(analyses),
+            dmc.SimpleGrid([analysis_card(state.run_id, a, scheme) for a in analyses],
+                           cols={"base": 1, "lg": 2}, spacing="md"),
+        ], className="gate-more", open=bool(scripts)) if analyses else None,
+        description="Each feature's type, missing share and correlation with the outcome, "
+                    "and the analyses behind them. A built-in or plugin tool is reviewed code; "
+                    "a script is code the agent wrote for this run, kept with its hash and "
+                    "re-run at validation."))
+
+    # 5 · the transformations
+    review = p.get("transform_review") or {}
+    tx_cols = review.get("columns") or []
+    if tx_cols:
+        kinds = review.get("kinds") or {}
+        decided = ({c: ({"kind": "custom", "expr": s.get("expr", "")}
+                        if s["kind"] == "custom" else s["kind"])
+                    for c, s in state.overrides.transforms.items()} if revised else {})
+        data = {"kinds": kinds, "hints": review.get("hints") or {},
+                "columns": {c["column"]: c for c in tx_cols},
+                "order": [c["column"] for c in tx_cols]}
+        plain = review.get("as_they_are") or []
+        steps.append(_step(
+            next(n), "Transformations",
+            transform_review.block(
+                "txd", data, decided, editable=editable, excluded=excluded,
+                lead=f"This model needs {review['label']}. {review['need']} Decide each "
+                     "variable: transform it, and by which kind, or keep it as it is."),
+            dmc.Text(f"{len(plain)} flag(s) and categories enter as they are: "
+                     + ", ".join(plain), size="xs", c="dimmed", mt="sm") if plain else None,
+            description="Step one of two: whether each variable is transformed. Its "
+                        "parameters are set at the design gate, on the development sample."))
+
+    # 6 · summary and decision
+    kinds = review.get("kinds") or {}
+    in_force = state.overrides.transforms if revised else {}
+    shaped = {c: s["kind"] for c, s in in_force.items() if s.get("kind") != "as_is"}
+    summary = html.Div([
+        _summary_line("Dependent variable",
+                      f"{p.get('target', '—')} ({p.get('task', '')})"),
+        _summary_line("Variables", f"{len(p.get('features', [])) - len(excluded)} in, "
+                                   f"{len(excluded)} excluded"),
+        _summary_line("Join", f"{linked['plan']['base']} + {len(linked['plan']['steps'])} "
+                              "table(s)") if linked else None,
+        _summary_line("Transformations", html.Span(
+            (f"{len(shaped)} transformed: " + ", ".join(
+                f"{c} ({kinds.get(k, k)})" for c, k in shaped.items()) if shaped
+             else "none transformed") if not editable else "",
+            id="txd-summary")) if tx_cols else None,
+        _summary_line("Analysis scripts", f"{len(scripts)} to accept as code") if scripts
+        else None,
+    ], className="sum-block")
+    gate = gate_block("gate_data", state, res, seat=seat, body=[summary], primary=[
         dmc.Button("Accept recommendation", id=_act("gate_data", "accept"),
                    leftSection=icon("tabler:check")),
-        dmc.Button("Apply my changes", id=_act("gate_data", "edit"), variant="light",
+        dmc.Button("Apply my decisions", id=_act("gate_data", "edit"), variant="light",
                    leftSection=icon("tabler:edit")),
     ])
+    steps.append(_step(
+        next(n), "Summary and decision",
+        recommendation_card(rec, title="The Data agent's recommendation"),
+        gate,
+        description="“Accept recommendation” takes the Data agent's exclusions and the "
+                    "engine's kind for every variable. “Apply my decisions” takes the steps "
+                    "above as they stand, and needs every variable decided."))
     return [
         kpis([("Rows", fmt(p.get("n_rows")), None),
               ("Features", fmt(len(p.get("features", []))), None),
               ("Event rate", pct(ts.get("positive_rate")) if "positive_rate" in ts else "—",
                "positive share of the target"),
               ("Leakage suspects", fmt(len(suspects)), "|corr| ≥ 0.98 with the target")]),
-        recommendation_card(rec, extra=rec_extra),
-        gate,
-        section("Dependent variable",
-                dmc.Group([dmc.Text(p.get("target", "—"), ff="monospace", fw=650, size="lg"),
-                           dmc.Badge(p.get("task", ""), variant="light", size="sm"),
-                           dmc.Badge(how, variant="outline", size="sm", color="gray", tt="none")],
-                          gap="xs"),
-                dmc.Text(p.get("target_rationale") or "", size="sm", mt=4)
-                if p.get("target_rationale") else None,
-                description="The outcome the business intent describes.") if p.get("target") else None,
-        linking_section(linked),
-        section("Features to consider", table(["Feature", "Expected", "Corr.", "Why"], cand_rows),
-                description="The Data agent's candidates for the design stage: hypotheses, "
-                            "not a selection.") if cand_rows else None,
-        section("Shape of each ratio",
-                dmc.SimpleGrid(survey_cards(
-                    p["shape_survey"], scheme,
-                    choose={c: form_of(s) for c, s in state.overrides.shapes.items()}),
-                    cols={"base": 1, "md": 2, "xl": 3}, spacing="lg"),
-                description="Choose how each column enters the model, then “Apply my changes” "
-                            "(“Accept recommendation” takes the suggested forms). The curves "
-                            "read every row explore has; the knees are fitted later, after the "
-                            "split, on the development sample only, and shown on the model "
-                            "page.") if p.get("shape_survey") else None,
-        section(f"Analyses ({len(analyses)})",
-                source_counts(analyses),
-                dmc.SimpleGrid([analysis_card(state.run_id, a, scheme) for a in analyses],
-                               cols={"base": 1, "lg": 2}, spacing="md"),
-                description="Requested by the Data agent, run by the engine. Each one says "
-                            "where it came from: a built-in tool and a plugin tool are reviewed "
-                            "code; a script is code the agent wrote for this run, kept with its "
-                            "hash and re-run at validation.")
-        if analyses else None,
-        section("Data source",
-                table(["Connector", "Location", "Rows × columns", "Fetched", "Snapshot SHA-256"],
-                      [[src.get("connector", "—"),
-                        dmc.Text(src.get("query") or src.get("location") or "—", size="xs",
-                                 ff="monospace"),
-                        f"{fmt(src.get('n_rows'))} × {fmt(src.get('n_cols'))}",
-                        str(src.get("fetched_at", ""))[:19].replace("T", " "),
-                        dmc.Code(str(src.get("snapshot_sha256", ""))[:12])]]),
-                description="Fetched once; every stage reads this snapshot.") if src else None,
-        section("Feature profile", table(["Feature", "Type", "Missing", "Corr. with target",
-                                          "Agent"], rows, max_height=380)),
+        *steps,
         section("Engine findings", findings_table(_findings(res))),
     ]
 
@@ -1123,6 +1197,7 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
               ("Events / variable", fmt(ds.get("events_per_variable"), 1), "≥ 10 rule of thumb"),
               ("Open questions", fmt(len([g for g in state.gaps if g.status == "open"])), None)]),
         recommendation_card(_rec(res)),
+        design_transforms(p, state, seat),
         gate,
         plan_section(plan) if plan else None,
         section("Framework assessment — alternatives considered",
@@ -1138,6 +1213,36 @@ def ideate_panel(res: StageResult, state: RunState, scheme: str, seat: str = "de
                                           dmc.AccordionPanel(markdown(brief))], value="brief")],
                       variant="separated"),
     ]
+
+
+def design_transforms(p: dict, state: RunState, seat: str) -> Any:
+    """Step two of each column's transformation (ADR-0024): the variables decided at the data
+    gate, one at a time, with the parameters the engine fitted on the development sample and
+    a refit that redraws only the chart. None when nothing is transformed."""
+    entries = p.get("transforms") or {}
+    if not entries:
+        return None
+    from ..modeling import column_transforms as ct
+
+    explored = service.results(state.run_id).get("explore")
+    review = ((explored.payload if explored is not None else None) or {}).get(
+        "transform_review") or {}
+    kinds = {k: v for k, v in (review.get("kinds") or {}).items()
+             if k not in ("as_is", "library")}
+    editable = (state.status_of("gate_design") == "awaiting"
+                and seat == SEAT_OF_GATE.get("gate_design"))
+    own = {c: s for c, s in ct.decided(state.overrides.transforms).items()
+           if c in entries and s != ct.normalize(s["kind"])}  # set by a person, not defaults
+    data = {"kinds": kinds, "columns": entries, "order": list(entries)}
+    return section(
+        "Transformations to set",
+        transform_review.block(
+            "txp", data, own, editable=editable, excluded=[],
+            lead=f"{len(entries)} variable(s) were chosen for a transformation at the data "
+                 "gate. Check how each one is fitted and change its parameters if you need "
+                 "to. “Accept design” keeps the engine's settings for all of them."),
+        description="Step two of two: how each transformed variable is fitted. Set at this "
+                    "gate, then fitted again by the model stage on its own development sample.")
 
 
 # --- the development plan (shown at design, restated at model) ------------------------------
@@ -1482,7 +1587,7 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
             *[dmc.Text(n, size="xs", c="dimmed") for n in [samples.get("validation_note"),
                                                              *(lib.get("notes") or [])] if n],
             description=p.get("plan_summary")),
-        shapes_section(state.run_id, p, scheme),
+        transforms_section(state.run_id, p, scheme),
         section("Single-factor screen",
                 table(["Rule", "Setting", "Factors in", "Factors out", "Dropped"], screen_rows),
                 dmc.Text("Shortlist", size="xs", fw=650, c="dimmed", mt="sm"),
@@ -1512,104 +1617,32 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
 
 
 # --- backtest -----------------------------------------------------------------------------
-def _is_rate(entry: dict) -> bool:
-    """A 0/1 outcome: its observed means and fitted line all lie between 0 and 1."""
-    values = [o[1] for o in entry.get("observed") or []] + [c[1] for c in entry.get("curve") or []]
-    return bool(values) and all(0 <= v <= 1 for v in values)
-
-
-def shape_caption(col: str, entry: dict) -> str:
-    """One line for a shaped column: where it is capped, where it bends, which way it runs."""
-    parts = []
-    if entry.get("cap"):
-        parts.append(f"capped to [{entry['cap'][0]:.4g}, {entry['cap'][1]:.4g}]")
-    knots = entry.get("knots") or []
-    if "knees_used" in entry:
-        asked = entry.get("knees_asked") or 0
-        if entry.get("origin") == "given":
-            parts.append("knees at " + ", ".join(f"{k:.4g}" for k in knots) + " (given)")
-        elif knots:
-            parts.append(f"{len(knots)} knee{'s' if len(knots) > 1 else ''} at "
-                         + ", ".join(f"{k:.4g}" for k in knots)
-                         + (f" (up to {asked} allowed)" if asked > len(knots) else ""))
-        else:
-            parts.append(f"straight: no knee earned its place (up to {asked} allowed)")
-        way = "rises" if entry.get("direction") == "+" else "falls"
-        parts.append(f"risk {way} with {col} ({entry.get('direction_from', 'the data')})")
-        if not entry.get("monotonic", True):
-            parts.append("not monotonic")
-    return " · ".join(parts)
-
-
-SHAPE_FORMS = {"none": "as it is", "cap": "capped", "knee1": "capped, up to 1 knee",
-               "knee2": "capped, up to 2 knees"}
-
-
-def form_of(spec: dict | None) -> str:
-    """A column's shape as one of ``SHAPE_FORMS``."""
-    if not spec:
-        return "none"
-    knees = int(spec.get("knees") or 0)
-    return f"knee{knees}" if knees else ("cap" if spec.get("cap", True) else "none")
-
-
-def survey_cards(survey: list[dict], scheme: str, *, choose: dict[str, str] | None = None,
-                 gate: str = "gate_data") -> list:
-    """Explore's shape survey (ADR-0024), one small chart per column: the observed outcome
-    per band on every row explore has, and the shape a fit would take. With ``choose``
-    ({column: form}), each card carries a form field for ``gate``; without, it is advice."""
-    cards = []
-    for s in survey:
-        col = s["column"]
-        way = "rises" if s["direction"] == "+" else "falls"
-        verdict = ("runs one way" if s["runs_one_way"] else "turns: not monotonic as it is")
-        suggested = f"knee{s['suggested_knees']}" if s["suggested_knees"] else "none"
-        cards.append(dmc.Stack([
-            dmc.Group([dmc.Text(col, size="sm", fw=650, ff="monospace"),
-                       dmc.Badge(verdict, size="xs", variant="light",
-                                 color="green" if s["runs_one_way"] else "yellow"),
-                       dmc.Badge(f"suggested: {SHAPE_FORMS[suggested]}", size="xs",
-                                 variant="outline", color="gray", tt="none")], gap=6),
-            graph(charts.shape({"observed": s["observed"], "curve": s["curve"]}, scheme,
-                               column=col, rate=_is_rate(s), height=200)),
-            dmc.Text(f"Risk {way} with {col} ({s['direction_from']}); {s['why']}.", size="xs",
-                     c="dimmed"),
-            dmc.Select(id=_field(gate, f"shape::{col}"), size="xs", allowDeselect=False,
-                       value=choose.get(col, suggested), w=220,
-                       data=[{"value": k, "label": v} for k, v in SHAPE_FORMS.items()])
-            if choose is not None else None,
-        ], gap=2))
-    return cards
-
-
-def shapes_section(run_id: str, p: dict, scheme: str, *, extra: Any = None,
-                   description: str | None = None) -> Any:
-    """The shaped columns (ADR-0024), as fitted on the development sample: the observed
-    outcome per band, the fitted line and its knees. None when nothing was shaped."""
-    if not p.get("shapes"):
+def transforms_section(run_id: str, p: dict, scheme: str) -> Any:
+    """Each transformed column as the model stage fitted it on the development sample
+    (ADR-0024): the observed outcome per band and the curve the model sees. None when no
+    column is transformed."""
+    if not p.get("transforms"):
         return None
     try:
-        report = json.loads(service.read_artifact(run_id, "stages/model/shapes.json", None)
+        report = json.loads(service.read_artifact(run_id, "stages/model/transforms.json", None)
                             or "{}")
     except ValueError:
         report = {}
     cells = []
-    for col, entry in (report or p["shapes"]).items():
+    for col, entry in (report or p["transforms"]).items():
         cells.append(dmc.Stack([
             dmc.Group([dmc.Text(col, size="sm", fw=650, ff="monospace"),
-                       *[dmc.Code(n) for n in entry.get("factors") or []]], gap=6),
-            graph(charts.shape(entry, scheme, column=col, rate=_is_rate(entry)))
-            if entry.get("curve") else None,
-            dmc.Text(shape_caption(col, entry), size="xs", c="dimmed"),
+                       dmc.Code((entry.get("factor") or {}).get("name", "")
+                                if isinstance(entry.get("factor"), dict)
+                                else entry.get("factor", ""))], gap=6),
+            *(transform_review.fit_view(entry, scheme) if entry.get("curve")
+              else [dmc.Text(entry.get("caption") or "", size="xs", c="dimmed")]),
         ], gap=2))
     return section(
-        "Shaped factors", dmc.SimpleGrid(cells, cols={"base": 1, "md": 2}, spacing="lg"),
-        *([extra] if extra is not None else []),
-        description=description or (
-            "Fitted on the development sample only, after the split, then frozen: the test "
-            "sample and the sealed holdout get the same points. Dots are the observed outcome "
-            "per band; the line is the fitted shape. Every shaped factor competes with its "
-            "column as it is in the screen below."))
+        "Transformed variables", dmc.SimpleGrid(cells, cols={"base": 1, "md": 2}, spacing="lg"),
+        description="Fitted on the development sample only, after the split, then frozen: the "
+                    "test sample and the sealed holdout get the same points. Dots are the "
+                    "observed outcome per band; the line is what the model sees.")
 
 
 def _forecast_spec(run_id: str, p: dict) -> dict | None:

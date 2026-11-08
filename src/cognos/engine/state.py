@@ -140,9 +140,9 @@ class Overrides(BaseModel):
     plan: dict[str, Any] | None = None
     pool: list[str] | None = None  # candidate ids carried to outcomes analysis (gate_candidates)
     names: dict[str, str] = Field(default_factory=dict)  # candidate id -> the developer's name
-    # A person's shape for a column (ADR-0024): {"cap", "knees", "knots", "by"}. Wins over the
-    # plan's shapes and its plan-wide cap / knee; fitted (or kept, for knots) at model.
-    shapes: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # How each column enters the model (ADR-0024): the kind decided at the data gate, the
+    # parameters set at the design gate ({"kind", "knees", "knots", ...}). Wins over the plan.
+    transforms: dict[str, dict[str, Any]] = Field(default_factory=dict)
     champion: str | None = None  # the pool member chosen at gate_champion
 
 
