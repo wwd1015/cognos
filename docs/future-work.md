@@ -30,8 +30,10 @@ number stays with the main session. Nothing is committed.
    2 skipped; ruff clean.
 6. ~~The user looked at the workbench and said to commit.~~ Committed on the branch
    `review-2026-11`.
-7. **Now:** the architecture list below, in its order, one commit per item on the same
-   branch. Mechanical moves go to helper agents; the whole suite runs before each commit.
+7. ~~The architecture list, one commit per item.~~ All six done on `review-2026-11`
+   (2026-11-13); 445 passed, 2 skipped; ruff clean.
+8. **Waiting for the user:** merge `review-2026-11` into `main`, and the three answers
+   below.
 
 Still waiting for a yes or no (none blocks the list): listing re-opens and retries in the
 run record; px to rem and darker input borders; the deck's `--ink-3`.
@@ -82,11 +84,15 @@ In the order I would do them. None changes what a run records.
    Each was proved a pure move (same definitions, same callbacks and layout, same recorded
    numbers on nine demo runs). `stages/model.py` is still 840 lines because `run` alone is
    460; cutting `run` into steps is a further change, not a move.
-2. **Typed stage payloads.** Stages hand each other plain dictionaries. Two of the bugs fixed
-   in this review (PBO, the fair-lending sentence) were a reader asking for a key the writer
-   had stopped writing, and nothing noticed for months. A small pydantic model per stage
-   payload (permissive: extra keys allowed, so old runs still load) turns that into a failing
-   test. Start with `backtest` and `model`, the two most read.
+2. ~~Typed stage payloads, first step.~~ Done for `model` and `backtest`:
+   `payloads.py` declares the shapes and `tests/unit/test_payload_shapes.py` fails when a
+   writer records an undeclared key, when a reader asks for one, or when a key that is
+   read is no longer written by any of three real runs. Nothing uses the shapes at run
+   time. Not covered yet: reads inside a pool member or a backtest candidate row; the
+   gate handler in `engine/gates.py` (one function for every gate, so its reads are not
+   attributed); the other stages' payloads. Seen on the way: `transforms` means
+   `{column: form}` on the model payload and a list of transformations in the champion's
+   view; a reader of one given the other would not be caught.
 3. ~~Paths in results are relative to the run.~~ Done: a member's `scorer_path` is recorded
    as `models/candidates/<id>.joblib`; `pool.scorer_path` still resolves the absolute path an
    older run carries.

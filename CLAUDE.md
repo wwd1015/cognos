@@ -312,7 +312,9 @@ artifacts under `runs/<id>/stages/<name>/`, and obtains judgment only via
 `ctx.recommend(agent, data, fresh={stage: provisional_result}, check=...)` (after
 `ctx.consult_tools`, see Stage tools; the champion's record via `ctx.champion()`), recording it with
 `attach_recommendation(payload, ctx, agent, out)`. Questions for the sponsor go in
-`payload["questions"]` (the engine syncs them to gaps). Register with `@register_stage` and add to
+`payload["questions"]` (the engine syncs them to gaps). A key added to the `model` or `backtest`
+payload is declared in `payloads.py` (`tests/unit/test_payload_shapes.py` holds writers and
+readers to it). Register with `@register_stage` and add to
 `stages/__init__._STAGE_MODULES`.
 
 ## Agents (agents/)

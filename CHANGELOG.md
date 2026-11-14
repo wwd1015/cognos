@@ -6,6 +6,10 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- Declared shapes for the `model` and `backtest` payloads (`payloads.py`), held by tests:
+  a writer may not record an undeclared key, a reader may not ask for one, and a key that
+  is read must still be written by a real run. A contract for the tests; nothing reads it
+  at run time.
 - A test that the top-level docs name code that exists
   (`tests/unit/test_docs_name_code.py`): every file, `file.py::symbol` and `module.symbol`.
 - **The same fit on the same rows is computed once** (`modeling/cv_cache.py`). The
