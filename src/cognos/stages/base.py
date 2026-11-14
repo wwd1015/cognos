@@ -96,6 +96,3 @@ def make_stage(name: str) -> Stage:
         raise KeyError(f"Unknown stage '{name}'. Known: {sorted(STAGE_REGISTRY)}")
     return STAGE_REGISTRY[name]()
 
-
-def all_stage_names() -> list[str]:
-    return list(STAGE_REGISTRY)

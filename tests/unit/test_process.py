@@ -9,7 +9,9 @@ import pytest
 from cognos.engine import Engine, GateError
 from cognos.engine.gates import apply_answers
 from cognos.engine.process import (
+    digest_of,
     journal,
+    material,
     missing_design,
     next_action,
     preparation_of,
@@ -114,6 +116,15 @@ def test_approve_seals_a_package_and_a_later_edit_does_not_rewrite_it(make_confi
     path = eng.run_dir / state.package.path
     original = path.read_text(encoding="utf-8")
     assert json.loads(original)["digest"] == state.package.digest
+    body = material(eng.config, state, eng.results())
+    assert digest_of(body) == state.package.digest
+    # every decision is bound: the data, the target, the join, the forms, the model form
+    assert {"data", "target", "task", "join", "exclude_columns", "column_forms", "model_form",
+            "screen_exceptions", "slate", "plan", "pool", "champion_id"} <= set(body)
+    assert body["target"] and body["task"]
+    other = state.model_copy(deep=True)
+    other.overrides.transforms = {"x": {"kind": "log"}}
+    assert digest_of(material(eng.config, other, eng.results())) != state.package.digest
     eng.reopen("gate_signoff", seat="approver")
     assert eng.state.package.status == "superseded"
     assert eng.state.status != "approved"

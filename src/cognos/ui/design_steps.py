@@ -57,13 +57,14 @@ def by(plan: dict, key: str) -> str | None:
 # --- the step frame -------------------------------------------------------------------------
 def step(n: int, body: list, *, summary: str, editable: bool, description: str = "") -> Any:
     """One numbered step. On an editable page it carries a confirm button, a folded line for
-    when it is confirmed and a note for while an earlier step is open; the page's callback
-    shows the right one."""
+    when it is confirmed and, while an earlier step is open, one quiet line in place of the
+    whole step (its number, its title and when it opens); the page's callback shows the right
+    one."""
     title = f"{n} · {STEPS[n]}"
     if not editable:
         return section(title, *body, description=description or None)
     last = n == max(STEPS)
-    return section(
+    full = section(
         title,
         html.Div([*body, dmc.Group([
             dmc.Button(f"Confirm {STEPS[n].lower()}", id={"type": "dz-confirm", "n": n},
@@ -77,11 +78,19 @@ def step(n: int, body: list, *, summary: str, editable: bool, description: str =
             dmc.Button("Change", id={"type": "dz-reopen", "n": n}, size="compact-xs",
                        variant="subtle")], gap="xs", wrap="nowrap"),
             id={"type": "dz-folded", "n": n}, style={"display": "none"}),
-        html.Div(dmc.Text(f"Opens when step {n - 1} is confirmed.", size="sm", c="dimmed",
-                          fs="italic"), id={"type": "dz-wait", "n": n},
-                 style={"display": "none"}),
         right=html.Span(id={"type": "dz-badge", "n": n}, style={"flexShrink": 0}),
         description=description or None)
+    return html.Div([
+        html.Div(full, id={"type": "dz-step", "n": n}),
+        waiting_line(n, id={"type": "dz-wait", "n": n}, style={"display": "none"}),
+    ])
+
+
+def waiting_line(n: int, **attrs: Any) -> Any:
+    """A step that is not open yet, in one line: its number, its title, when it opens."""
+    return html.Div([html.Span(f"{n} · {STEPS[n]}", className="dz-wait-title"),
+                     html.Span(f"Opens when step {n - 1} is confirmed.",
+                               className="dz-wait-why")], className="dz-waitline", **attrs)
 
 
 def visibility(done: list[int], editable_steps: list[int]) -> dict[int, str]:
@@ -802,7 +811,8 @@ def register_design_callbacks(app, plan_patch) -> None:
             have = [k for k in have if k < n]
         return {"key": key, "done": have}
 
-    @app.callback(Output({"type": "dz-body", "n": ALL}, "style"),
+    @app.callback(Output({"type": "dz-step", "n": ALL}, "style"),
+                  Output({"type": "dz-body", "n": ALL}, "style"),
                   Output({"type": "dz-folded", "n": ALL}, "style"),
                   Output({"type": "dz-wait", "n": ALL}, "style"),
                   Output({"type": "dz-badge", "n": ALL}, "children"),
@@ -814,6 +824,7 @@ def register_design_callbacks(app, plan_patch) -> None:
         have = list((done or {}).get("done") or []) if (done or {}).get("key") == key else []
         vis = visibility(have, steps)
         hidden = {"display": "none"}
+        whole = [(hidden if vis[n] == "wait" else {}) for n in steps]
         bodies = [({} if vis[n] == "open" else hidden) for n in steps]
         folded = [({} if vis[n] == "done" else hidden) for n in steps]
         waits = [({} if vis[n] == "wait" else hidden) for n in steps]
@@ -822,8 +833,8 @@ def register_design_callbacks(app, plan_patch) -> None:
                             color={"done": "green", "open": "oxblood", "wait": "gray"}[vis[n]])
                   for n in steps]
         ready = all(vis[n] == "done" for n in steps if n < max(STEPS))
-        acts = ctx.outputs_list[4]
-        return bodies, folded, waits, badges, [not ready for _ in acts]
+        acts = ctx.outputs_list[5]
+        return whole, bodies, folded, waits, badges, [not ready for _ in acts]
 
     @app.callback(Output("dz-timeline", "children"),
                   Input(field("plan::evaluation.test"), "value"),

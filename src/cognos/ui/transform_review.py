@@ -50,10 +50,6 @@ def decisions(value: str | None) -> dict[str, Any]:
     return out if isinstance(out, dict) else {}
 
 
-def kind_of(decision: Any) -> str | None:
-    return decision.get("kind") if isinstance(decision, dict) else decision
-
-
 def forms_shown(entry: dict, decision: Any) -> list[dict]:
     """A variable's forms on the Explore page: the decision, else the engine's."""
     if decision is not None:

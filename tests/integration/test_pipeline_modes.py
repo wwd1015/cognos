@@ -93,3 +93,20 @@ def test_interactive_approve_cannot_override_block(leak_config, runs_dir):
     # v1: a BLOCK (confirmed leakage) is never overridable by approval; the run stays halted.
     assert summary.final_verdict == Verdict.BLOCK
     assert "document" not in summary.stages_run
+
+
+def test_the_model_card_claims_a_fair_lending_check_only_when_one_ran(make_config, runs_dir):
+    """The model card repeats what the compliance stage recorded: a run with fair lending off
+    must not say the checks were performed."""
+    off, _ = run_pipeline(make_config("regression"), runs_root=runs_dir)
+    assert off.require("comply").payload["fair_lending"] == {"enabled": False}
+    card = (off.docs_dir / "model_card.md").read_text(encoding="utf-8")
+    assert "Fair-lending testing was not run" in card
+    assert "checks were performed" not in card
+
+    on, _ = run_pipeline(make_config("credit"), runs_root=runs_dir)
+    fair = on.require("comply").payload["fair_lending"]
+    assert fair["enabled"] and fair["disparate_impact"] is not None
+    card = (on.docs_dir / "model_card.md").read_text(encoding="utf-8")
+    assert "Fair-lending checks were performed" in card
+    assert f"{fair['disparate_impact']:.3f}" in card

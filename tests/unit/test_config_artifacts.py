@@ -73,3 +73,18 @@ def test_config_yaml_roundtrip(tmp_path):
     cfg.to_yaml(p)
     cfg2 = CognosConfig.from_yaml(p)
     assert cfg2.name == "rt" and cfg2.task == TaskType.REGRESSION
+
+
+def test_config_legacy_backtest_and_impact_keys_still_load():
+    """`backtest.enabled`, `backtest.scheme`, `backtest.pbo` and `impact.extra_fields` were removed (nothing read
+    them); a profile that still sets them loads, and the keys are dropped."""
+    cfg = CognosConfig.from_dict({
+        "name": "legacy", "task": "classification", "data": {"target": "y"},
+        "backtest": {"enabled": False, "scheme": "cscv", "pbo": False, "n_splits": 3},
+        "impact": {"extra_fields": [{"name": "segment", "type": "str"}]},
+    })
+    assert cfg.backtest.n_splits == 3
+    dumped = cfg.model_dump()
+    assert "enabled" not in dumped["backtest"]
+    assert "scheme" not in dumped["backtest"] and "pbo" not in dumped["backtest"]
+    assert "extra_fields" not in dumped["impact"]

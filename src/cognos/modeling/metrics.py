@@ -1,7 +1,6 @@
 """Frozen metric registry and leakage-safe cross-validation.
 
-The metric definitions and the holdout split live here, in a module the modeling/idea agents do
-*not* edit at runtime — the "frozen substrate" guardrail borrowed from Karpathy's autoresearch
+The metric definitions live here, in a module the modeling/idea agents do *not* edit at runtime — the "frozen substrate" guardrail borrowed from Karpathy's autoresearch
 (prepare.py). This is what prevents an autonomous search loop from gaming its own yardstick.
 """
 
@@ -25,7 +24,6 @@ from sklearn.metrics import (
 from sklearn.model_selection import KFold, StratifiedKFold, TimeSeriesSplit
 
 MAXIMIZE = {"roc_auc", "accuracy", "r2", "f1", "average_precision", "direction_accuracy"}
-NEEDS_PROBA = {"roc_auc", "log_loss", "average_precision", "brier"}
 
 
 def metric_direction(name: str) -> str:
@@ -33,7 +31,7 @@ def metric_direction(name: str) -> str:
 
 
 def is_better(name: str, candidate: float, incumbent: float | None) -> bool:
-    """Accept-if-better test used by the ratchet (autoresearch/autoforge KEEP/DISCARD)."""
+    """True when ``candidate`` beats ``incumbent`` in the metric's direction (``None`` always loses)."""
     if incumbent is None:
         return True
     if metric_direction(name) == "maximize":
@@ -140,22 +138,3 @@ def cv_score(
         fold_scores=fold_scores,
         n_folds=len(fold_scores),
     )
-
-
-def holdout_split(
-    df: pd.DataFrame,
-    *,
-    holdout_fraction: float,
-    datetime_col: str | None,
-    random_state: int,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Seal a final holdout. Time-ordered when a datetime column is given (no look-ahead)."""
-    if holdout_fraction <= 0:
-        return df.reset_index(drop=True), df.iloc[0:0].copy()
-    if datetime_col and datetime_col in df.columns:
-        ordered = df.sort_values(datetime_col).reset_index(drop=True)
-        cut = int(len(ordered) * (1 - holdout_fraction))
-        return ordered.iloc[:cut].reset_index(drop=True), ordered.iloc[cut:].reset_index(drop=True)
-    shuffled = df.sample(frac=1.0, random_state=random_state).reset_index(drop=True)
-    cut = int(len(shuffled) * (1 - holdout_fraction))
-    return shuffled.iloc[:cut].reset_index(drop=True), shuffled.iloc[cut:].reset_index(drop=True)

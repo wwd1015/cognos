@@ -43,6 +43,18 @@ def detail(run_dir: str | Path, entry: dict[str, Any] | None) -> dict[str, Any]:
         return {}
 
 
+def scorer_path(run_dir: str | Path, entry: dict[str, Any] | None) -> str | None:
+    """Where a member's saved scorer is now. The payload records the path it was saved under;
+    a run that was copied (a trial run, ADR-0017) or is reached under another path (a shared
+    runs folder, ADR-0015) has the file at the same place inside its own directory, and that
+    one is read: never another run's file, never a path that is gone."""
+    recorded = (entry or {}).get("scorer_path")
+    if not recorded:
+        return None
+    own = Path(run_dir) / "models" / "candidates" / Path(str(recorded)).name
+    return str(own.resolve()) if own.exists() else str(recorded)
+
+
 def view(run_dir: str | Path, model: dict[str, Any] | None,
          backtest: dict[str, Any] | None = None, validate: dict[str, Any] | None = None,
          chosen: str | None = None) -> dict[str, Any]:
@@ -78,7 +90,7 @@ def view(run_dir: str | Path, model: dict[str, Any] | None,
         "hazard": rec.get("hazard"),
         "transforms": rec.get("transforms") or [],
         "base_features": rec.get("base_features") or entry["features"],
-        "scorer_path": entry.get("scorer_path"),
+        "scorer_path": scorer_path(run_dir, entry),
         "test_metric": (backtest or {}).get("oos_metric") if decided else None,
         "holdout_metric": (validate or {}).get("holdout_metric"),
         "holdout_evaluations": int((validate or {}).get("holdout_evaluations") or 0),

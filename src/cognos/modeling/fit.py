@@ -166,8 +166,10 @@ def _estimator(family: str, is_classification: bool, hp: dict[str, Any]):
     if family == "ridge_logit":
         return LogisticRegression(C=hp.get("C", 1.0), max_iter=2000, **_penalty("l2"))
     if family == "lasso_logit":
+        # liblinear shuffles its coordinates: without the run's seed two fits of the same
+        # specification differ in the sixth digit
         return LogisticRegression(C=hp.get("C", 1.0), solver="liblinear", max_iter=2000,
-                                  **_penalty("l1"))
+                                  random_state=rs, **_penalty("l1"))
     if family == "random_forest":
         cls = RandomForestClassifier if is_classification else RandomForestRegressor
         return cls(n_estimators=hp.get("n_estimators", 200), max_depth=hp.get("max_depth", None),

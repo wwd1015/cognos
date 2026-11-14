@@ -204,6 +204,9 @@ class ModelStage(Stage):
                   if ev["validation"] == "group_kfold" and ev.get("group_col") in train_df.columns
                   else None)
 
+        # validation results the design gate's looks (or an earlier search) already computed
+        cv_cache = self.cv_cache(ctx)
+
         def new_evaluator() -> selection.Evaluator:
             return selection.Evaluator(
                 train_df, y_train, task=cfg.task.value, metric=rank_metric,
@@ -211,11 +214,13 @@ class ModelStage(Stage):
                 metrics=tuple(dict.fromkeys([metric, *(r["metric"] for r in rank_by)])),
                 test=test_df, y_test=y_test,
                 score_test=any(r["sample"] == "test" for r in rank_by),
-                random_state=cfg.search.random_state, time_budget_s=cfg.search.time_budget_s)
+                random_state=cfg.search.random_state, time_budget_s=cfg.search.time_budget_s,
+                cv_cache=cv_cache)
 
         found = self._cached_search(ctx, fingerprint, lambda: self._search(
             new_evaluator(), cfg, plan, library, expected, families, hazard_meta,
             protected, is_clf, shape))
+        cv_cache.save()
         evaluator = new_evaluator()  # carries the cached evaluations; fits nothing again
         evaluator.cache = {e.id: e for e in found["evaluations"]}
         evaluator.order = [e.id for e in found["evaluations"]]
@@ -348,10 +353,12 @@ class ModelStage(Stage):
 
         # Pure-structural / pure-migration challenger benchmarks: the PD scored directly on the
         # test sample — labelled reference points, never a pool member.
+        benchmark_looks = 0  # each is a look at the test sample, counted like any other
         if len(test_df) and is_clf:
             for info, spec in ((structural_info, structural_spec), (migration_info, migration_spec)):
                 if info is None or spec is None:
                     continue
+                benchmark_looks += 1
                 pd_alone = test_df[spec.pd_feature].to_numpy(dtype=float)
                 auc = score("roc_auc", y_test, (pd_alone >= 0.5).astype(int), y_proba=pd_alone)
                 info["benchmark"] = {
@@ -459,7 +466,7 @@ class ModelStage(Stage):
             "best_score": best.value(rank_metric, rank_by[0]["sample"]),
             "n_candidates_tried": len(ledger),
             "n_configs_for_deflation": len(ledger),
-            "test_evaluations": int(found["test_evaluations"]),
+            "test_evaluations": int(found["test_evaluations"]) + benchmark_looks,
             "oof_perf_path": oof_perf_path,
             "n_search_strategies": len(validated),
             "challenger_benchmark": challenger_benchmark,
@@ -588,13 +595,15 @@ class ModelStage(Stage):
         groups = (dev[ev["group_col"]].to_numpy()
                   if ev["validation"] == "group_kfold" and ev.get("group_col") in dev.columns
                   else None)
+        cv_cache = ModelStage.cv_cache(ctx)
         evaluator = selection.Evaluator(
             dev, y, task=cfg.task.value, metric=ev["rank_by"][0]["metric"],
             is_classification=cfg.task.is_classification, splitter=splitter, groups=groups,
-            random_state=cfg.search.random_state)
+            random_state=cfg.search.random_state, cv_cache=cv_cache)
         found = ModelStage.screen_factors(
             evaluator, cfg, plan, library, expected, [], cfg.task.is_classification,
             plan["shape"]["shape"])
+        cv_cache.save()  # the model stage, and the next look, start from these
         keep = ("name", "source", "transform", "lag", "status", "dropped_by", "reason",
                 "overruled", "exception", "sign", "p_value", "missing", "in_sample",
                 "validation", "ranked_on", "note")
@@ -603,6 +612,15 @@ class ModelStage(Stage):
                 "fallback": found["fallback"], "metric": evaluator.metric,
                 "n_rows": int(len(dev)), "rules": plan_mod.screen_rules(plan),
                 "engineered": bool(cfg.structural.enabled or cfg.migration.enabled)}
+
+    @staticmethod
+    def cv_cache(ctx: RunContext):
+        """The run's memo of validation results (modeling/cv_cache.py): shared by every look
+        at the single-factor analysis and by the search, so the same fit on the same rows is
+        computed once. It changes how long they take, never what they find."""
+        from ..modeling.cv_cache import CVCache
+
+        return CVCache(ctx.resolve("stages/model/cv_cache.joblib"))
 
     @staticmethod
     def _names(ctx: RunContext, ranked: list) -> dict[str, str]:

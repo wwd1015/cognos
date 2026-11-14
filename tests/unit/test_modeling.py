@@ -1,4 +1,4 @@
-"""Modeling core: metrics, fitters, ratchet search, ensemble, backtest statistics."""
+"""Modeling core: metrics, fitters, the candidate space, ensemble, backtest statistics."""
 
 from __future__ import annotations
 
@@ -11,10 +11,8 @@ from cognos.modeling import (
     cv_score,
     fit_full,
     greedy_ensemble,
-    holdout_split,
     is_better,
     make_fit_predict,
-    ratchet_search,
     score,
 )
 from cognos.modeling.backtest_stats import (
@@ -34,14 +32,6 @@ def test_metric_score_and_direction():
     assert is_better("rmse", 1.0, None)  # first candidate always accepted
 
 
-def test_holdout_split_time_ordered():
-    df = synth.make_timeseries_dataset(n=100)
-    train, hold = holdout_split(df, holdout_fraction=0.2, datetime_col="date", random_state=1)
-    assert len(hold) == 20 and len(train) == 80
-    # time-ordered: every holdout date is after every training date
-    assert train["date"].max() <= hold["date"].min()
-
-
 def test_cv_score_oof_shape_and_leakage_safe():
     df = synth.make_regression_dataset(n=120)
     X = df[["x1", "x2", "x3"]]
@@ -51,18 +41,6 @@ def test_cv_score_oof_shape_and_leakage_safe():
                   metric="rmse", is_classification=False, folds=4)
     assert cv.oof_pred.shape == (120,)
     assert cv.n_folds == 4 and cv.mean > 0
-
-
-def test_ratchet_search_regression_finds_signal():
-    df = synth.make_regression_dataset(n=200)
-    X = df[["x1", "x2", "x3", "region"]]
-    y = coerce_target_reg(df)
-    sr = ratchet_search(X, y, task="regression", metric="rmse", is_classification=False,
-                        max_candidates=8, folds=3)
-    assert sr.champion is not None
-    assert sr.champion_cv.mean < 1.5  # real signal recovered
-    assert any(r.status == "keep" for r in sr.ledger)
-    assert "idx\tlabel" in sr.ledger_tsv()
 
 
 def test_fit_full_ols_has_coefficients():

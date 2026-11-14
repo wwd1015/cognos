@@ -5,7 +5,7 @@ verdict gates. It still works: the wrapper runs the engine with the human review
 (the agents' recommendations stand) and, when ``interactive`` with a ``gate_handler``, asks the
 handler about a non-OK ``validate``/``review`` verdict. v1 semantics apply to that answer: a FAIL or
 WARN may be approved, a **BLOCK cannot** — approving it halts the run exactly like a rejection
-(CLAUDE.md non-negotiable #6). New code should use :class:`cognos.engine.Engine` or
+(CLAUDE.md non-negotiable #7). New code should use :class:`cognos.engine.Engine` or
 :mod:`cognos.service`, which expose the full gate actions (edit, override, send back).
 """
 

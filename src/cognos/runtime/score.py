@@ -11,6 +11,7 @@ paragraphs at ``{@code:src/cognos/runtime/score.py#score_row}`` etc.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
@@ -100,12 +101,24 @@ def save_scorer(path: str, fitted) -> str:
         datetime_col=getattr(fitted, "datetime_col", None),
     )
     joblib.dump(bundle, path)
+    _read.cache_clear()  # a model fitted again keeps its path: never score with the old fit
     return path
 
 
 @lru_cache(maxsize=16)
-def load_scorer(model_path: str) -> ScorerBundle:
+def _read(model_path: str, stamp: tuple[int, int]) -> ScorerBundle:
     return joblib.load(model_path)
+
+
+def load_scorer(model_path: str) -> ScorerBundle:
+    """The scorer saved at ``model_path``. Kept in memory while the file is the one that was
+    read (``score_row`` is called once per row); a file written again, by this process or by
+    another one on a shared runs folder, is read again."""
+    st = os.stat(model_path)
+    return _read(model_path, (st.st_mtime_ns, st.st_size))
+
+
+load_scorer.cache_clear = _read.cache_clear  # the name callers already clear
 
 
 def score_frame(df: pd.DataFrame, model_path: str) -> np.ndarray:

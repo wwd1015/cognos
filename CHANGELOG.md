@@ -6,6 +6,15 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- **The same fit on the same rows is computed once** (`modeling/cv_cache.py`). The
+  single-factor analysis was computed at the design stage, again on every look at the design
+  gate and again by the model stage. Validation results are now kept in a memo keyed by
+  everything they were computed from (the specification, its factor columns row by row, the
+  outcome, the rows of every validation block, the metric, the library versions). A look at
+  the screen and a re-run after a changed rule take a fraction of the time; every recorded
+  number is the same with and without it.
+- `docs/future-work.md`: what the review left open, the decisions that wait, and what is
+  proposed next.
 - Catalog sources (ADR-0022): the data catalog answers search, describe, links and defaults
   behind one plugin contract (`catalog.CatalogSource`, `registry.add_catalog`,
   `COGNOS_CATALOG`), so a metadata system or a skill can supply it. The YAML catalog is the
@@ -51,6 +60,39 @@ versioning is SemVer.
   the choice is kept in the browser.
 
 ### Changed
+- **The stage page reads decision first.** On the pages that end on a choice (candidate
+  pool, champion, validation, compliance, documents, review) the decision is at the top with
+  the figures under it; the agent's note and each piece of evidence sit behind tabs, one open
+  at a time. The live activity opens from a button and no longer takes a column, so the page
+  is wider. Waiting design steps fold to a line, models are shown by name (the id in a
+  tooltip), factor lists are chips, and a scenario table says in a sentence when nothing moved.
+- **The package digest binds every decision.** It now also covers the data given, the target
+  and task, the join, the column forms, the model form and the screen exceptions. A package
+  already sealed keeps its file and digest; a new seal of the same run has a different digest.
+- **A script that does not reproduce lowers the verdict.** Validation raised the finding
+  after the verdict was set, so a run could read PASS with a MEDIUM finding. It is WARN now,
+  like every other MEDIUM finding.
+- **The benchmark's look at the test sample is counted.** The pure structural and pure
+  migration benchmarks are scored on the test sample; each adds one to `test_evaluations`.
+- **The review stage works from an installed package.** Code anchors are resolved against
+  the installed `cognos` package, not a repository checkout, so a wheel install no longer
+  BLOCKs on every anchor. The result no longer records the machine's `repo_root`.
+- **A replaced main run says so**: "replaced by <run>; kept on record" in place of
+  "waiting for ...", in the run list, the run header, the gate and `cognos status`.
+- **The white paper's backtest section** names the sample the pool was compared on in place
+  of a "Scheme" line that always read "n/a", and shows PBO and the deflated Sharpe ratio
+  only in trading mode.
+- `service.reopen` and `service.retry` take `by` and record who asked (the step's stamp and
+  the activity log). `service.demo_config("migration", n=...)` takes `n` as the number of
+  obligors.
+
+### Removed
+- Profile fields nothing read: `backtest.enabled`, `backtest.scheme`, `backtest.pbo`,
+  `impact.extra_fields`. A profile that still sets them loads; the keys are dropped.
+- The v0.x search path, called only by tests since ADR-0016: `ratchet_search`,
+  `metrics.holdout_split`, `integrations/autoforge_loop.py`.
+- Unused public functions: `service.preview_source`, `RunContext.save_model` / `load_model`,
+  `TaskType.is_ml`, `stages.all_stage_names`, `okf.is_conformant`.
 - Agent ids match their names (ADR-0023): `data_agent`, `validation_agent`, `writing_agent`,
   ... instead of `data_analyst`, `validator`, `writer`. The run record names agents by their
   display name. Older runs, audit files and replay recordings keep their ids and still read.
@@ -165,6 +207,29 @@ versioning is SemVer.
   re-runs when one is recorded after it; `docs/limitations.md` lists the two apart.
 
 ### Fixed
+- **A trial run goes no further than the champion** (ADR-0017). A main run replaced by a
+  trial run could still be decided at its validation gate or signed off (sealing a package)
+  when it was waiting there, and a trial run of a profile with `validate` switched off ran
+  on through compliance, the white paper and sign-off. The engine now schedules nothing from
+  validation on for a trial run and refuses a decision or a re-open at those gates.
+- **A model fitted again is scored from its new fit.** Scorers were kept in memory by file
+  path, and a pool member keeps its id and path when it is fitted again (a changed plan, new
+  exclusions). In a long-lived process (the workbench) outcomes analysis and validation then
+  scored the earlier fit. A saved scorer is read again whenever its file changes.
+- **A run reads its own copy of the scorers.** The model stage records the absolute path of
+  each scorer, so a trial run scored with its parent's files and a runs folder reached under
+  another path could not score at all. Readers resolve the scorer inside the run's own
+  directory (`pool.scorer_path`).
+- **Trading mode reaches validation and the white paper** (ADR-0005). PBO and the deflated
+  Sharpe ratio are recorded under `trading` on the backtest; validation and the white paper
+  read a key that had not existed since, so PBO never weighed on the overfitting score and
+  both printed as "n/a".
+- **The model card no longer says fair-lending checks were performed when they were not.**
+  It states what the compliance stage recorded: the disparate-impact ratio when
+  `compliance.fair_lending` is on, and that no testing was run when it is off.
+- **A lasso logit fit is the same every time.** The solver shuffled its coordinates without
+  the run's seed, so two fits of one specification differed in the sixth digit.
+- The run list no longer fails when the runs folder holds a run recorded before v1.
 - A stage's status label in the stage index no longer turns sideways when the stage is clicked.
 - **Linked sources** ([ADR-0014](docs/adr/0014-linked-sources-the-join-is-proposed-and-confirmed.md)).
   `data.sources` lists several inputs of any kind (a Snowflake table and a CSV, ...). The engine

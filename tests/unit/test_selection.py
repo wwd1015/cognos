@@ -423,3 +423,80 @@ def test_every_model_gets_a_name_it_keeps():
     assert again["c9"] == "Logit 4F-C" and again["c3"] == "Probit 3F-A"
     many = selection.assign_names([(f"m{i}", "ols", 2) for i in range(28)], {})
     assert many["m25"] == "OLS 2F-Z" and many["m26"] == "OLS 2F-AA"
+
+
+# --- the memo of validation results (modeling/cv_cache.py) ---------------------------------
+def _memo_evaluator(X, y, cache=None, **kw):
+    splitter, _ = splits.make_splitter({"validation": "kfold", "folds": 4}, n=len(X),
+                                       random_state=0)
+    return selection.Evaluator(X, y, task="regression", metric="rmse", is_classification=False,
+                               splitter=splitter, cv_cache=cache, **kw)
+
+
+def test_a_validation_result_is_reused_only_for_the_same_fit_on_the_same_rows(tmp_path):
+    from cognos.modeling.cv_cache import CVCache
+
+    df = synth.make_regression_dataset(n=160)
+    X, y = df[["x1", "x2", "x3"]], df["target"].to_numpy(dtype=float)
+    cands = [Candidate(family="ols", features=["x1"]), Candidate(family="ols", features=["x1", "x2"]),
+             Candidate(family="ridge", features=["x1", "x2"], hyperparams={"alpha": 1.0})]
+    plain = [_memo_evaluator(X, y).evaluate(c) for c in cands]
+
+    path = tmp_path / "cv_cache.joblib"
+    first = CVCache(path)
+    kept = [_memo_evaluator(X, y, first).evaluate(c) for c in cands]
+    first.save()
+    assert first.hits == 0 and path.exists()
+    again = CVCache(path)  # another stage, another process: read from disk
+    reused = [_memo_evaluator(X, y, again).evaluate(c) for c in cands]
+    assert again.hits == len(cands)
+    for a, b, c in zip(plain, kept, reused, strict=True):  # the same numbers, to the last bit
+        assert a.scores == b.scores == c.scores
+        assert a.cv.fold_scores == b.cv.fold_scores == c.cv.fold_scores
+        assert np.array_equal(a.cv.oof_pred, c.cv.oof_pred, equal_nan=True)
+
+    # anything a result was computed from changes -> it is computed again
+    def hits(X2, y2, cand=cands[1], **kw):
+        cache = CVCache(path)
+        _memo_evaluator(X2, y2, cache, **kw).evaluate(cand)
+        return cache.hits
+
+    moved = X.copy()
+    moved.loc[5, "x2"] += 1e-9
+    assert hits(moved, y) == 0  # one value of one factor
+    assert hits(moved, y, cands[0]) == 1  # ... a model without that factor is untouched
+    assert hits(X, y + 1e-9) == 0  # the outcome
+    assert hits(X.iloc[::-1], y[::-1]) == 0  # the order of the rows (blocks are positions)
+    assert hits(X, y, Candidate(family="ols", features=["x2", "x1"])) == 0  # another spec
+    assert hits(X, y, Candidate(family="ridge", features=["x1", "x2"],
+                                hyperparams={"alpha": 2.0})) == 0  # another setting
+    other, _ = splits.make_splitter({"validation": "kfold", "folds": 5}, n=len(X), random_state=0)
+    cache = CVCache(path)
+    selection.Evaluator(X, y, task="regression", metric="rmse", is_classification=False,
+                        splitter=other, cv_cache=cache).evaluate(cands[1])
+    assert cache.hits == 0  # other validation blocks
+
+
+def test_an_unreadable_validation_memo_is_an_empty_one(tmp_path):
+    from cognos.modeling.cv_cache import CVCache
+
+    path = tmp_path / "cv_cache.joblib"
+    path.write_bytes(b"not a cache")
+    assert CVCache(path).entries == {}
+
+
+def test_a_lasso_logit_fit_is_the_same_every_time():
+    """liblinear shuffles its coordinates; the run's seed makes two fits of one specification
+    agree exactly, whatever the global random state."""
+    from cognos.modeling.fit import fit_full
+
+    df = synth.make_classification_dataset(n=300)
+    feats = [c for c in df.columns if c != "target" and pd.api.types.is_numeric_dtype(df[c])]
+    y = df["target"].to_numpy()
+    cand = Candidate(family="lasso_logit", features=feats, hyperparams={"C": 0.1})
+    out = []
+    for seed in (1, 2):
+        np.random.seed(seed)
+        out.append(fit_full(cand, df[feats], y, task="classification",
+                            is_classification=True).pipeline.predict_proba(df[feats])[:, 1])
+    assert np.array_equal(out[0], out[1])

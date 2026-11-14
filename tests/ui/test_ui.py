@@ -48,6 +48,15 @@ def test_app_builds_and_routes(root, completed_run):
     # one model, one main run: each is listed under its own heading, told apart by its start
     assert listed.count("Main run") == 2 and listed.count("started 2") == 2
     assert "Run 1 of" not in listed and "same model" not in listed
+    # a run recorded before v1 (a manifest, no state) is listed too, read-only
+    old = root / "20250101T000000Z-abc1234"
+    old.mkdir()
+    (old / "manifest.json").write_text(json.dumps(
+        {"project": "old_model", "mode": "autonomous", "created_at": "2025-01-01"}),
+        encoding="utf-8")
+    listed = _serialize(ui.runs_table())
+    assert "old_model" in listed and old.name in listed
+    assert f"/run/{old.name}" not in listed  # no page to open
     assert "waiting at" in listed and "Confirm the intent" in listed
     assert "finished, not signed off" in listed and "one development of one model" in _serialize(
         ui.runs_page())
@@ -596,11 +605,10 @@ def test_the_new_run_form_offers_the_providers_models(root):
 
 
 def test_focus_hides_both_side_columns_on_every_view():
-    assert ui.column_layout("workflow", None) == (True, 13, True)
-    assert ui.column_layout("workflow", True) == (False, 24, False)
-    assert ui.column_layout("audit", False) == (True, 18, False)
-    assert ui.column_layout("questions", True) == (False, 24, False)
-    assert ui.column_layout("workflow", {"left": False}) == (True, 13, True)  # an old choice
+    assert ui.column_layout(None) == (True, 18)
+    assert ui.column_layout(True) == (False, 24)
+    assert ui.column_layout(False) == (True, 18)
+    assert ui.column_layout({"left": False}) == (True, 18)  # an old choice
 
 
 def test_the_data_is_given_on_the_explore_page_after_the_intent(root, tmp_path):
@@ -651,3 +659,92 @@ def test_the_data_is_given_on_the_explore_page_after_the_intent(root, tmp_path):
                                   data_info=service.data_info(run_id)))
     assert "Data in use" in page and "loans.csv" in page
     assert service.results(run_id)["explore"].payload["target"] == "default"
+
+
+def test_a_choice_page_reads_decision_first_with_the_evidence_behind_tabs(completed_run):
+    from cognos.ui.components import section
+    from cognos.ui.panels import DECISION_FIRST, NOTE_TAB, decision_first
+
+    st, results = service.state(completed_run), service.results(completed_run)
+    page = [c for c in stage_panel("backtest", results["backtest"], st, "light") if c is not None]
+    classes = [getattr(c, "className", "") or "" for c in page]
+    gate = next(i for i, c in enumerate(classes) if "cognos-gate" in c)
+    tabs = next(i for i, c in enumerate(classes) if "stage-tabs" in c)
+    assert gate < tabs == len(page) - 1  # the decision is read before any evidence
+    assert not any("ledger-section" in c or "cognos-rec" in c for c in classes)  # all filed
+    titles = [t.children for t in page[tabs].children[0].children]
+    assert titles[0] == NOTE_TAB and "Candidates side by side" in titles and "Findings" in titles
+    assert len(page[tabs].children) == len(titles) + 1  # one panel per tab, nothing dropped
+
+    # a page built step by step keeps its own order, and so does one with nothing to file
+    assert "ideate" not in DECISION_FIRST and "explore" not in DECISION_FIRST
+    steps = stage_panel("ideate", results["ideate"], st, "light")
+    assert not any("stage-tabs" in (getattr(c, "className", "") or "") for c in steps if c is not None)
+    lone = [section("Only one", "x")]
+    assert decision_first(lone) == lone
+
+
+def test_a_waiting_design_step_folds_to_one_quiet_line():
+    from cognos.ui import design_steps as dz
+
+    built = dz.step(3, ["the body"], summary="three forms", editable=True)
+    full, line = built.children
+    assert full.id == {"type": "dz-step", "n": 3} and line.id == {"type": "dz-wait", "n": 3}
+    assert line.className == "dz-waitline" and line.style == {"display": "none"}
+    text = json.dumps(line.to_plotly_json(), cls=plotly.utils.PlotlyJSONEncoder,
+                      ensure_ascii=False)
+    assert f"3 · {dz.STEPS[3]}" in text and "Opens when step 2 is confirmed." in text
+    assert "the body" not in text and "Confirm" not in text  # the line carries nothing else
+    # a read-only page has no waiting: the step is the section itself
+    assert "ledger-section" in dz.step(3, ["b"], summary="", editable=False).className
+    assert dz.visibility([1], [1, 2, 3]) == {1: "done", 2: "open", 3: "wait"}
+
+
+def test_models_go_by_name_factors_are_chips_and_still_scenarios_are_a_sentence(completed_run):
+    import copy
+
+    from cognos.artifacts import StageResult
+    from cognos.ui.components import chips
+
+    assert chips(["a", "b"]).className == "ledger-chips"
+    assert [c.className for c in chips(["a", "b"]).children] == ["ledger-chip"] * 2
+
+    st, results = service.state(completed_run), service.results(completed_run)
+    model = _serialize(stage_panel("model", results["model"], st, "light"))
+    bt = results["backtest"]
+    page = _serialize(stage_panel("backtest", bt, st, "light"))
+    for text in (model, page):
+        assert "ledger-chips" in text and "model-name" in text
+    cands = bt.payload["candidates"]
+    first = cands[0]
+    assert first["name"] in page and f"id {first['id']}" in page  # the name, the id on hover
+    assert f'"children": "{first["id"]}"' not in page  # the id is never shown as a cell
+    assert ", ".join(first["features"]) not in page  # factors are no longer one string
+
+    # a model whose scenarios leave it where it was reads as one sentence, not a row of zeros
+    payload = copy.deepcopy(bt.payload)
+    still = payload["candidates"][0]
+    for s in still.get("scenarios") or []:
+        s["mean"], s["delta"] = still.get("scenario_baseline"), 0.0
+    for s in (payload.get("stress_testing") or {}).get("scenarios") or []:
+        s["delta_pd"] = 0.0
+    edited = StageResult(**{**bt.model_dump(), "payload": payload})
+    page = _serialize(stage_panel("backtest", edited, st, "light"))
+    sentence = f"{still['name']} has no macro factors, so the scenarios do not move its forecast."
+    assert sentence in page
+    if payload.get("stress_testing"):
+        champ = next(c for c in payload["candidates"] if c["id"] == payload["champion_id"])
+        assert f"{champ['name']} has no macro factors" in page
+
+    # every model still: only the sentences, no table
+    for c in payload["candidates"]:
+        for s in c.get("scenarios") or []:
+            s["delta"] = 0.0
+    edited = StageResult(**{**bt.model_dump(), "payload": payload})
+    from cognos.ui.panels import backtest_panel
+
+    body = backtest_panel(edited, st, "light")
+    scen = next(b for b in body if b is not None
+                and getattr(b, "data-title", None) == "Scenarios, candidate by candidate")
+    section_text = _serialize(scen)
+    assert "has no macro factors" in section_text and '"Baseline"' not in section_text

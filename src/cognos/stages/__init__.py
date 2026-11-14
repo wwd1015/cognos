@@ -6,7 +6,7 @@ orchestrator/CLI can resolve any stage by name.
 
 from __future__ import annotations
 
-from .base import STAGE_REGISTRY, Stage, all_stage_names, make_stage, register_stage
+from .base import STAGE_REGISTRY, Stage, make_stage, register_stage
 
 _STAGE_MODULES = (
     "intake",
@@ -36,6 +36,5 @@ __all__ = [
     "Stage",
     "make_stage",
     "register_stage",
-    "all_stage_names",
     "load_all",
 ]

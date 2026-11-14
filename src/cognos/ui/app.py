@@ -33,7 +33,7 @@ from ..engine.graph import (
     STAGE_OF_GATE,
     STAGES,
 )
-from ..engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, next_action, seat_label
+from ..engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, seat_label
 from ..modeling import column_transforms as ct
 from . import ask as ask_ui
 from . import design_steps, transform_review
@@ -256,7 +256,7 @@ def runs_figures() -> Any:
     rows = [r for r in service.list_runs() if not r["legacy"]]
     if not rows:
         return None
-    awaiting = [r for r in rows if r["status"] == "awaiting"]
+    awaiting = [r for r in rows if r["status"] == "awaiting" and r["waiting_on"]]
     spend = sum(r["spend_usd"] or 0 for r in rows)
     return kpis([
         ("Runs", fmt(len(rows)), None),
@@ -490,6 +490,8 @@ def run_role(r: dict) -> str:
 
 def where_it_stands(r: dict) -> str:
     """One run is at one place: the gate it is waiting at, or how it ended."""
+    if r.get("replaced"):
+        return r["replaced"]
     if r.get("trial_ended"):
         return "trial finished at the champion; it does not go to validation"
     if r.get("waiting_on"):
@@ -505,7 +507,7 @@ def workspace_page(run_id: str) -> Any:
         dcc.Store(id="ws-step", data=None),
         dcc.Store(id="ws-seat", data="developer"),
         dcc.Store(id="ws-key", data=None),
-        # Which side columns are shown; kept in the browser so the choice carries across runs.
+        # Whether the stage list is shown; kept in the browser so the choice carries across runs.
         dcc.Store(id="ws-focus", data=False, storage_type="local"),
         dmc.Group([
             dmc.Group([
@@ -516,10 +518,15 @@ def workspace_page(run_id: str) -> Any:
                           if k != "express"],
                 ),
             ], gap="sm"),
-            dmc.Tooltip(dmc.ActionIcon(icon("tabler:arrows-maximize", 18), id="ws-focus-toggle",
-                                       variant="subtle", color="gray", n_clicks=0,
-                                       **{"aria-label": "Focus on the page"}),
-                        label="Focus on the page: hide the side columns", id="ws-focus-tip"),
+            dmc.Group([
+                # The live log is one click away, not a column: the page keeps the width.
+                dmc.Button("Activity", id="ws-activity-open", variant="subtle", color="gray",
+                           size="xs", n_clicks=0, leftSection=icon("tabler:activity", 16)),
+                dmc.Tooltip(dmc.ActionIcon(icon("tabler:arrows-maximize", 18),
+                                           id="ws-focus-toggle", variant="subtle", color="gray",
+                                           n_clicks=0, **{"aria-label": "Focus on the page"}),
+                            label="Focus on the page: hide the stage list", id="ws-focus-tip"),
+            ], gap="xs"),
         ], justify="space-between", mt="xs", mb="sm"),
         # The run's views. "Stages" is the work, one stage at a time; the other two cover the
         # whole run, so they sit above the stage index, not inside a stage.
@@ -532,10 +539,11 @@ def workspace_page(run_id: str) -> Any:
             dmc.GridCol([html.Div(id="ws-head"), html.Div(id="ws-rail", className="cognos-rail")],
                         id="ws-left-col", span={"base": 24, "md": 6}),
             dmc.GridCol(html.Div(id="ws-content", className="cognos-content"),
-                        id="ws-main-col", span={"base": 24, "md": 13}),
-            dmc.GridCol(html.Div(id="ws-activity"), id="ws-activity-col",
-                        span={"base": 24, "md": 5}),
+                        id="ws-main-col", span={"base": 24, "md": 18}),
         ], gutter="lg", columns=24),
+        dmc.Drawer(html.Div(id="ws-activity"), id="ws-activity-drawer", position="right",
+                   size="md", title=dmc.Text("Activity", fw=650), keepMounted=True,
+                   zIndex=400),  # above the Ask button
         dmc.Modal(id="io-modal", size="80%", title="Agent call", children=html.Div(id="io-body")),
         trial_modal(), promote_modal(), template_modal(),
         dcc.Download(id="export-download"),
@@ -644,8 +652,8 @@ def run_header(st) -> Any:
         facts.append(("Pool", f"{fmt(model.metrics.get('n_pool'))} candidate(s)"))
     if backtest is not None and (backtest.payload or {}).get("champion_id"):
         # The champion exists once outcomes analysis has compared the pool.
-        facts += [("Champion", f"{backtest.payload['champion_id']} · "
-                               f"{backtest.metrics.get('champion', '')}"),
+        facts += [("Champion", str(backtest.payload.get("champion_name")
+                                   or backtest.payload["champion_id"])),
                   (str(backtest.payload.get("evaluation_sample", "test")).replace("_", " "),
                    fmt(backtest.metrics.get("oos_metric")))]
     if st.spend_usd:
@@ -656,7 +664,7 @@ def run_header(st) -> Any:
         html.Div(st.project, className="run-hero-name"),
         html.Div(st.run_id, className="run-hero-id"),
         html.Dl([x for k, v in facts for x in (html.Dt(k), html.Dd(v))], className="run-facts"),
-        html.Div(next_action(st)["text"], className="run-hero-next"),
+        html.Div(service.next_action(st)["text"], className="run-hero-next"),
         dmc.Alert(st.halted_reason, color="red", variant="light", mt="xs")
         if st.halted_reason and st.status in ("blocked", "rejected", "failed") else None,
         run_actions(st.run_id),
@@ -747,9 +755,7 @@ def activity(run_id: str) -> Any:
         html.Div(time.strftime("%H:%M:%S", time.localtime(e["ts"])), className="activity-time"),
         html.Div(e["message"], className="activity-text"),
     ], className="activity-item", **{"data-tone": tones.get(e["type"], "plain")}) for e in evs]
-    return dmc.Card([html.Div("Activity", className="eyebrow", style={"marginBottom": 4}),
-                     dmc.ScrollArea(items if items else empty("Nothing yet."), h=640, type="auto",
-                                    scrollbars="y")])
+    return html.Div(items if items else empty("Nothing yet."), className="activity-list")
 
 
 def questions_tab(st, seat: str = "developer") -> Any:
@@ -1137,12 +1143,15 @@ def register_callbacks(app: Dash) -> None:
                 content, full_key)
 
     @app.callback(Output("ws-left-col", "style"), Output("ws-main-col", "span"),
-                  Output("ws-activity-col", "style"),
-                  Input("ws-tab", "value"), Input("ws-focus", "data"))
-    def widen(tab, focus):
-        left, main, right = column_layout(tab, focus)
-        return ({} if left else {"display": "none"}, {"base": 24, "md": main},
-                {} if right else {"display": "none"})
+                  Input("ws-focus", "data"))
+    def widen(focus):
+        left, main = column_layout(focus)
+        return {} if left else {"display": "none"}, {"base": 24, "md": main}
+
+    @app.callback(Output("ws-activity-drawer", "opened"), Input("ws-activity-open", "n_clicks"),
+                  prevent_initial_call=True)
+    def open_activity(_clicks):
+        return True
 
     @app.callback(Output("ws-focus", "data"), Output("ws-focus-toggle", "children"),
                   Output("ws-focus-tip", "label"),
@@ -1152,7 +1161,7 @@ def register_callbacks(app: Dash) -> None:
         if ctx.triggered_id == "ws-focus-toggle":
             focused = not focused
         return (focused, icon(f"tabler:arrows-{'minimize' if focused else 'maximize'}", 18),
-                "Show the side columns" if focused else "Focus on the page: hide the side columns")
+                "Show the stage list" if focused else "Focus on the page: hide the stage list")
 
     @app.callback(Output("ws-step", "data"), Output("ws-tab", "value"),
                   Input({"type": "rail", "step": ALL}, "n_clicks"), prevent_initial_call=True)
@@ -1344,9 +1353,9 @@ def register_callbacks(app: Dash) -> None:
             return no_update, no_update
         try:
             if trig["type"] == "reopen":
-                service.reopen(run_id, trig["gate"], seat=seat)
+                service.reopen(run_id, trig["gate"], seat=seat, by=service.whoami())
                 return [notice("Gate re-opened", "Revise the decision below.", "violet")], None
-            service.retry(run_id, trig["step"])
+            service.retry(run_id, trig["step"], by=service.whoami())
             return [notice("Retrying", LABELS[trig["step"]], "blue")], None
         except GateError as exc:
             return [notice("Not possible", str(exc), "red")], no_update
@@ -1692,12 +1701,11 @@ def register_transform_callbacks(app: Dash) -> None:
         return json.dumps(decided), tr.next_open(data, decided, sel)
 
 
-def column_layout(tab: str | None, focus: bool | None) -> tuple[bool, int, bool]:
-    """(left shown, main column span of 24, right shown). Focus hides both side columns so the
-    page in the middle gets the room; a run-wide view never has the live activity."""
+def column_layout(focus: bool | None) -> tuple[bool, int]:
+    """(stage list shown, main column span of 24). Focus hides the stage list so the page
+    gets the full width; the live activity opens from its button on every view."""
     left = focus is not True
-    right = left and tab == "workflow"
-    return left, 24 - (6 if left else 0) - (5 if right else 0), right
+    return left, 24 - (6 if left else 0)
 
 
 def backend_label(provider: str | None, model: str | None) -> str:

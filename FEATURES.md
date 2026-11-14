@@ -52,7 +52,7 @@
   `outliers` (rows beyond the IQR fences), `predictive_power` (information value and Gini for a
   binary target, |Spearman| or variance share otherwise), `woe_bins`, `stability` (PSI, early
   vs late periods), `collinearity` (VIF), `scatter`, `missing_vs_target`. The offline Data
-  Analyst runs a survey round, then a drill-down into the strongest features.
+  agent runs a survey round, then a drill-down into the strongest features.
 - **Plugins**: `register(registry)` modules adding tools and data sources, by entry point,
   profile list or `COGNOS_PLUGINS`; `cognos plugins` lists them and any load problems. Example in
   `examples/plugins/`.
@@ -183,8 +183,8 @@
   the OKF bundle (`docs/decisions.md`).
 
 ## Agents (propose / dispose)
-- **Eight stage agents** — Intake agent, Data agent, Design agent, Modeling agent (+ guided-search role), Outcomes
-  Analyst, Validation agent, Compliance agent, Writing agent — each with a role prompt
+- **Eight stage agents** — Intake agent, Data agent, Design agent, Modeling agent (+ guided-search role), Backtest
+  agent, Validation agent, Compliance agent, Writing agent — each with a role prompt
   (commercial-risk playbook), a Pydantic output contract, an independence-scoped context slice,
   engine checks, and a deterministic heuristic implementation.
 - **Validate-and-retry**: a contract violation or failed engine check (unknown fact id, champion
@@ -284,7 +284,7 @@
 
 ## Modeling & statistical testing (`model`)
 - **CASH search** (combined algorithm + hyperparameter selection) as one conditional space.
-- **Ratchet search** (accept-if-better-else-discard) with an experiment ledger (`results.tsv`-style), cheap/simple candidates first, candidate + optional wall-clock budgets.
+- One experiment ledger (`ledger.tsv`) for every selection method, cheap/simple candidates first.
 - **Leakage-safe cross-validation in search + a sealed/out-of-time holdout** — all preprocessing fit inside training folds only; selection is validated against a holdout the search cannot touch.
 - **Frozen substrate**: sealed holdout + metric definitions the search cannot edit (anti-reward-hacking).
 - Traditional statistical models (OLS, Ridge, Lasso, ElasticNet, Logit, regularized logit,
@@ -383,7 +383,6 @@
 
 ## Engine, integrations, and developer experience
 - **Pluggable agent backends**: deterministic heuristic agents (offline, no API key — the substrate, not a fallback), `replay` for deterministic testing of the LLM path, `claude_cli`, `anthropic`, and OpenAI-compatible APIs; an unavailable backend is never a crash.
-- **autoforge protocol** reimplemented: `name: value` stdout parsing, experiment ledger, generic ratchet loop.
 - Typed config (Pydantic v2) with auto metric/direction resolution and YAML round-trip.
 - CLI: see *CLI* above.
 - **Demo tasks** including **`commercial`** (SR 26-2 + OOT outcomes analysis), **`cni`** — the flagship C&I showcase with an answered design brief, event timing (hazard families), Vasicek portfolio simulation, and two macro stress scenarios (ADR-0004, ADR-0008) — and **`migration`**: rating-migration loss forecasting on an S&P-style agency panel (transition matrix, term structure, EL forecast, regime conditioning; ADR-0009). The consumer fair-lending `credit` demo exercises an off-by-default module, not the primary path.

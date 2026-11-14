@@ -15,7 +15,7 @@ two files, ...). Everything here is mechanical:
   the plan says so (counted and reported; nothing is dropped silently).
 
 Who decides the plan is not decided here: the profile may state it (``data.join``), the Data
-Analyst proposes it otherwise (``data_agent_joins``), and the developer confirms or changes it at
+agent proposes it otherwise (``data_agent_joins``), and the developer confirms or changes it at
 the data gate (``overrides.join``). See stages/explore.py.
 """
 
@@ -34,7 +34,6 @@ from .fsutil import atomic_write
 
 MAX_LINKS_PER_PAIR = 4
 MIN_OVERLAP = 0.5  # share of one table's rows that must find a match for a link to be offered
-MANY = ("aggregate", "first", "refuse")
 UNMATCHED = ("keep", "drop")
 # What makes dropping unmatched rows risky (unmatched_advice): too many of them, or an outcome
 # that differs from the matched rows by more than chance.

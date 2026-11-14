@@ -19,7 +19,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import joblib
 import pandas as pd
 
 from .artifacts import ArtifactRef, StageResult
@@ -145,14 +144,6 @@ class RunContext:
         if str(path).endswith(".parquet"):
             return pd.read_parquet(path)
         return pd.read_csv(path)
-
-    def save_model(self, name: str, obj: Any) -> ArtifactRef:
-        relpath = f"models/{name}.joblib"
-        joblib.dump(obj, self.run_dir / relpath)
-        return ArtifactRef(name=name, kind="model", path=relpath)
-
-    def load_model(self, name: str) -> Any:
-        return joblib.load(self.run_dir / f"models/{name}.joblib")
 
     # --- checkpointing -----------------------------------------------------------
     def record(self, result: StageResult) -> StageResult:
@@ -343,8 +334,7 @@ class RunContext:
                 for s in self.config.stages.enabled
             },
         }
-        with open(self.manifest_path, "w", encoding="utf-8") as fh:
-            json.dump(manifest, fh, indent=2)
+        atomic_write(self.manifest_path, json.dumps(manifest, indent=2))  # never a torn file
 
     def _load_existing(self) -> None:
         for stage in self.config.stages.enabled:

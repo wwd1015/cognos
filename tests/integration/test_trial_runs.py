@@ -235,9 +235,107 @@ def test_a_trial_run_cannot_open_the_holdout_and_a_promoted_one_inherits_what_wa
     assert [e["what"] for e in rec["events"]] == ["trial", "promoted"]
     # the replaced run keeps its results and can go no further
     assert (root / run_id / "stages" / "validate" / "result.json").exists()
+    # ... not even through the decision that was waiting when it was replaced
+    assert old.status_of("gate_validation") == "awaiting"
+    with pytest.raises(GateError, match="does not run on a trial run"):
+        service.submit_gate(run_id, "gate_validation", "accept", root=root, reason="fine",
+                            background=False)
     service.engine(run_id, root).reopen("gate_champion")
     service.submit_gate(run_id, "gate_champion", "accept", root=root, reason="again",
                         background=False)
     assert service.engine(run_id, root).ready_steps() == []
     with pytest.raises(GateError, match="already the main run"):
         service.promote_trial(trial, root=root)
+
+
+def test_a_trial_run_goes_no_further_when_the_profile_switches_validation_off(tmp_path):
+    """Validation is where a trial run stops, whether or not the profile runs it: nothing
+    after it is scheduled, and no later gate takes a decision (ADR-0017)."""
+    root = tmp_path / "runs"
+    cfg = service.demo_config("regression", root, n=260, search_budget=6)
+    cfg.stages.enabled = [s for s in cfg.stages.enabled if s != "validate"]
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic", root=root)
+    _to(run_id, root, until="gate_champion")
+
+    trial = service.trial_run(run_id, "gate_champion", "another champion", root=root)
+    state = _to(trial, root)
+    assert state.status == "completed" and state.status_of("validate") == "skipped"
+    assert [state.status_of(s) for s in ("comply", "document", "review", "gate_signoff")] == [
+        "pending"] * 4
+    assert service.engine(trial, root).ready_steps() == []
+    assert not (root / trial / "stages" / "comply").exists()
+    for gate in ("gate_validation", "gate_signoff"):
+        with pytest.raises(GateError, match="does not run on a trial run"):
+            service.submit_gate(trial, gate, "accept", root=root, background=False)
+        with pytest.raises(GateError, match="does not run on a trial run"):
+            service.engine(trial, root).reopen(gate)
+
+
+def test_a_run_scores_with_its_own_copy_of_the_models_wherever_it_is(main_run):
+    """The model stage records the path each scorer was saved under. A trial run is a copy and
+    a shared runs folder is reached under more than one path, so a run reads the file inside
+    its own directory: never its parent's, and never a path that is gone."""
+    import shutil
+    from pathlib import Path
+
+    from cognos.engine.engine import Engine
+    from cognos.runtime.score import load_scorer
+
+    root, run_id = main_run
+    trial = service.trial_run(run_id, "gate_champion", "another champion", root=root)
+    ctx = service.engine(trial, root).context()
+    recorded = ctx.require("model").payload["pool"][0]["scorer_path"]
+    assert Path(recorded).is_relative_to((root / run_id).resolve())  # as its parent saved it
+    assert Path(ctx.champion()["scorer_path"]).is_relative_to((root / trial).resolve())
+
+    # the trial run becomes the main run and the run it replaced is deleted ...
+    service.promote_trial(trial, "preferred", root=root, background=False)
+    service.delete_runs([run_id], root)
+    # ... and the runs folder is reached under another path, by a process that read nothing yet
+    moved = root.parent / "elsewhere"
+    shutil.move(str(root), str(moved))
+    load_scorer.cache_clear()
+    eng = Engine.load(moved / trial)
+    backtest = eng.results()["backtest"].payload
+    other = next(c["id"] for c in backtest["candidates"] if c["id"] != backtest["champion_id"])
+    eng.submit_gate("gate_champion", "override", {"champion": other}, reason="simpler")
+    state = eng.run_until_idle()
+    assert state.status_of("backtest") == "done"  # every member was scored again
+    again = eng.results()["backtest"].payload
+    assert again["champion_id"] == other and not [c for c in again["candidates"] if c.get("error")]
+
+
+def test_a_replaced_main_run_says_it_was_replaced_instead_of_waiting(main_run, capsys,
+                                                                     monkeypatch):
+    from cognos.ui import app as ui_app
+    from cognos.ui import panels
+
+    root, run_id = main_run
+    trial = service.trial_run(run_id, "gate_champion", "the same, kept", root=root)
+    assert _to(trial, root).status == "completed"
+    old = _to(run_id, root, until="gate_validation")
+    assert "waiting for" in service.next_action(old)["text"]
+    service.promote_trial(trial, root=root, by="ana", background=False)
+
+    old = service.state(run_id, root)
+    text = f"replaced by {trial}; kept on record"
+    assert old.status_of("gate_validation") == "awaiting"
+    assert service.replaced(old) == text and trials.stands(old) == text
+    nxt = service.next_action(old)
+    assert nxt["kind"] == "replaced" and nxt["text"] == f"Replaced by {trial}; kept on record."
+    row = next(r for r in service.list_runs(root) if r["run_id"] == run_id)
+    assert row["replaced"] == text and row["waiting_on"] is None
+    assert ui_app.where_it_stands(row) == text
+    monkeypatch.setenv("COGNOS_RUNS_DIR", str(root))
+    assert f"Replaced by {trial}; kept on record." in str(ui_app.run_header(old))
+    card = str(panels.gate_block("gate_validation", old, None, seat="reviewer"))
+    assert text in card and "Accept" not in card
+    assert main(["status", "--run", run_id, "--runs-dir", str(root)]) == 0
+    assert f"next: Replaced by {trial}; kept on record." in capsys.readouterr().out
+    # the new main run is untouched by it
+    assert service.replaced(service.state(trial, root)) == ""
+
+    # a decision a trial run may still take is open again: then the run says what it waits for
+    service.reopen(run_id, "gate_champion", root, by="ana")
+    old = service.state(run_id, root)
+    assert service.replaced(old) == "" and "waiting for" in service.next_action(old)["text"]

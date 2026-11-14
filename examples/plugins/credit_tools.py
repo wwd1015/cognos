@@ -8,7 +8,7 @@ Load it by naming the module in a profile (``plugins: [credit_tools]``, with thi
     credit_tools = "credit_tools"
 
 ``cognos plugins`` then lists ``information_value`` beside the built-in tools, and the Data
-Analyst can ask for it by name. A tool is ordinary code you review once; what it reports is
+agent can ask for it by name. A tool is ordinary code you review once; what it reports is
 recorded as the engine's numbers.
 """
 

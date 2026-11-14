@@ -43,14 +43,6 @@ CRITERIA = ("validation", "in_sample", "aic", "bic", "adj_r2")
 STEP_FAMILIES = ("ols", "logit", *sorted(BINARY_GLM_LINKS))
 _MINIMIZE_CRITERIA = ("aic", "bic")
 
-METHOD_LABELS = {
-    "grid": "Grid (every family on the strongest factors and on all of them)",
-    "same_factors": "Same factors, another family",
-    "forward": "Forward selection (start from the best single factor, add one at a time)",
-    "backward": "Backward elimination (start from all, drop one at a time)",
-    "stepwise": "Stepwise (add one, then drop any that no longer helps)",
-    "best_subset": "Best subset (every combination up to the size limit)",
-}
 
 
 def candidate_id(cand: Candidate, transforms: list | None = None) -> str:
@@ -122,7 +114,7 @@ class Evaluator:
                  is_classification: bool, splitter=None, groups=None, metrics: tuple[str, ...] = (),
                  test: pd.DataFrame | None = None, y_test: np.ndarray | None = None,
                  score_test: bool = False, random_state: int = 42,
-                 time_budget_s: float | None = None):
+                 time_budget_s: float | None = None, cv_cache=None):
         self.dev, self.y = dev, np.asarray(y)
         self.task, self.metric, self.is_clf = task, metric, is_classification
         self.splitter, self.groups = splitter, groups
@@ -133,6 +125,12 @@ class Evaluator:
         self.cache: dict[str, Evaluation] = {}
         self.order: list[str] = []
         self.test_evaluations = 0
+        # A memo of validation results (modeling/cv_cache.py): reused only for an identical
+        # specification on identical rows, so it changes how long a search takes, never what
+        # it finds.
+        self.cv_cache = cv_cache
+        self._sample_key: str | None = None
+        self._column_keys: dict[str, bytes] = {}
 
     @property
     def out_of_time(self) -> bool:
@@ -148,6 +146,40 @@ class Evaluator:
                 continue
         return out
 
+    def _cv_key(self, cand: Candidate) -> str | None:
+        """The memo key of this specification's validation on this sample (None: not kept)."""
+        if self.cv_cache is None or cand.family in HAZARD_FAMILIES:
+            return None  # a hazard family reads event timing beside its factors
+        if any(f not in self.dev.columns for f in cand.features):
+            return None
+        if self._sample_key is None:
+            # the blocks exactly as cv_score will cut them
+            folds = list(self.splitter.split(self.dev, self.y if self.is_clf else None,
+                                             self.groups))
+            self._sample_key = self.cv_cache.sample_key(self.dev, self.y, folds, self.metric,
+                                                        self.is_clf)
+        for f in cand.features:
+            if f not in self._column_keys:
+                self._column_keys[f] = self.cv_cache.column_key(self.dev[f])
+        return self.cv_cache.key(self._sample_key, cand.family, list(cand.features),
+                                 dict(cand.hyperparams),
+                                 [self._column_keys[f] for f in cand.features])
+
+    def _validate(self, cand: Candidate, fit_predict) -> CVResult:
+        try:
+            key = self._cv_key(cand)
+        except Exception:  # a sample that cannot be keyed is validated the plain way
+            key = None
+        found = self.cv_cache.get(key) if key else None
+        if found is not None:
+            return found
+        cv = cv_score(fit_predict, self.dev, self.y, metric=self.metric,
+                      is_classification=self.is_clf, splitter=self.splitter,
+                      groups=self.groups, random_state=self.random_state)
+        if key:
+            self.cv_cache.put(key, cv)
+        return cv
+
     def evaluate(self, cand: Candidate, method: str = "") -> Evaluation:
         cid = candidate_id(cand)
         if cid in self.cache:
@@ -159,9 +191,7 @@ class Evaluator:
         try:
             fit_predict = make_fit_predict(cand, is_classification=self.is_clf)
             if self.splitter is not None:
-                ev.cv = cv_score(fit_predict, self.dev, self.y, metric=self.metric,
-                                 is_classification=self.is_clf, splitter=self.splitter,
-                                 groups=self.groups, random_state=self.random_state)
+                ev.cv = self._validate(cand, fit_predict)
                 ev.scores["validation"] = {self.metric: ev.cv.mean}
                 seen = ~np.isnan(ev.cv.oof_pred)
                 if len(self.metrics) > 1 and seen.any():  # the other metrics, pooled out of fold

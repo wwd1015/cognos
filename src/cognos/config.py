@@ -26,10 +26,6 @@ class TaskType(str, Enum):
     def is_classification(self) -> bool:
         return self in (TaskType.CLASSIFICATION, TaskType.ML_CLASSIFICATION)
 
-    @property
-    def is_ml(self) -> bool:
-        return self in (TaskType.ML_REGRESSION, TaskType.ML_CLASSIFICATION)
-
 
 class Direction(str, Enum):
     MINIMIZE = "minimize"
@@ -159,6 +155,11 @@ class DataConfig(BaseModel):
         return self
 
 
+# The four sponsor decisions that shape the build. A package cannot be sealed without them and
+# they cannot be assumed; every place that names them reads this one tuple.
+CORE_DESIGN = ("use_case", "horizon", "default_definition", "segment")
+
+
 class DesignConfig(BaseModel):
     """The modeling **design brief** — what the model sponsor (e.g. an MD in model development)
     has decided about the problem, before any algorithm is chosen.
@@ -177,9 +178,7 @@ class DesignConfig(BaseModel):
 
     def unanswered(self) -> list[str]:
         """Names of the design questions the sponsor has not answered yet."""
-        blanks = [name for name in ("use_case", "horizon", "default_definition", "segment")
-                  if not getattr(self, name).strip()]
-        return blanks
+        return [name for name in CORE_DESIGN if not getattr(self, name).strip()]
 
 
 class PriorArtifact(BaseModel):
@@ -438,15 +437,11 @@ class ImpactConfig(BaseModel):
     enabled: bool = True  # use the IMPACT library if importable, else built-in fallback
     entity_name: str = "ScoredEntity"
     primary_key: str | None = None  # defaults to a synthesized row id
-    extra_fields: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class BacktestConfig(BaseModel):
-    enabled: bool = True
-    scheme: str = "walk_forward"  # walk_forward | cscv | holdout
     n_splits: int = 5
     deflate_sharpe: bool = True  # Deflated Sharpe Ratio (multiple-testing correction)
-    pbo: bool = True  # Probability of Backtest Overfitting via CSCV
     returns_column: str | None = None  # if the task is a trading/return signal
 
 

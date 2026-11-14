@@ -171,6 +171,7 @@ def test_hybrid_feature_replaces_the_raw_rating(migration_run):
     assert mig["estimate"]["n_obs"] > 0
     assert mig["benchmark"]["deployed"] is False
     assert 0.5 < mig["benchmark"]["test_roc_auc"] <= 1.0
+    assert p["test_evaluations"] >= 1  # the benchmark's look at the test sample is counted
     assert all("migration_pd" in m["features"] for m in p["pool"])  # carried by every model
 
 

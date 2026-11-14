@@ -11,7 +11,7 @@ Two development modes (``engagement.kind``; distinct from the autonomous / inter
 This module is the mechanical half of intake: the intent template (render and parse), reading
 uploaded documents as text, copying them into the run (``runs/<id>/inputs/``, so a fresh process
 finds them), and a keyword scan of the prior model's artifacts. Judgment (is the intent clear,
-what must the sponsor be asked) belongs to the Intake agent agent; see ``stages/intake.py``.
+what must the sponsor be asked) belongs to the Intake agent; see ``stages/intake.py``.
 """
 
 from __future__ import annotations
@@ -24,13 +24,13 @@ import zipfile
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from .config import CORE_DESIGN
+
 KINDS = ("new", "update")
 KIND_LABEL = {"new": "New model development", "update": "Model update"}
 
 # The four sponsor decisions that shape the build (engine/process.py::CORE_DESIGN).
-CORE = ("use_case", "horizon", "default_definition", "segment")
-# Brief fields an accepted intent document writes into the effective config.
-DESIGN_FIELDS = (*CORE, "interpretability")
+CORE = CORE_DESIGN
 COMPLIANCE_FIELDS = ("intended_use", "out_of_scope_use")
 INTERPRETABILITY = ("required", "preferred", "flexible")
 

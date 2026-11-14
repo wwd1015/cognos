@@ -162,6 +162,11 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
 - **One evaluator.** Every selection method goes through `selection.Evaluator`, so a
   specification is fitted once and all models share one ledger. Candidate ids come from
   `selection.candidate_id` (a hash of the specification): never a position in a list.
+- **A memo is not a record.** Validation results are kept between the design gate's looks
+  and the search (`modeling/cv_cache.py`, `stages/model/cv_cache.joblib`), keyed by everything
+  they were computed from. It may only change how long something takes: a new input to
+  `cv_score` must join the key, a family that reads columns beyond its factors is never kept,
+  and a test must show the numbers equal with and without it.
 - **A model has a name and an id.** The id (`selection.candidate_id`) is what decisions and
   overrides store. The name (`selection.assign_names`, kept in `stages/model/names.json`,
   overridable through `overrides.names`) is what a page or a sentence shows. Never show a bare
@@ -347,11 +352,11 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   `factors.own_factor`.
 - **New screen rule** → `factors.screen` (one `apply` call: it logs counts and reasons),
   `config.FactorConfig`, the plan dict in `plan.recommend`, `plan.SCREEN_RULES` (so a change of
-  it counts as a revision), the form in `ui/design_steps.py::assessment` and a label in
+  it counts as a revision), the form in `ui/design_steps.py::variable_rules` and a label in
   `design_steps.RULE_LABELS` / `SHORT`.
 - **New model rule** → `selection.violations` (a reason text), an entry in
   `selection.MODEL_RULES` that matches it, `config.SelectionConfig`, `plan.recommend`, the form
-  in `ui/design_steps.py::assessment`.
+  in `ui/design_steps.py::model_rules`.
 - **New ranking line** → `plan.RANK_EXTRAS` and `selection.rank_value` (with its direction).
 - **New selection method** → a runner in `selection._RUNNERS` that walks through `_Run.try_`
   and records `_Run.step`, `METHODS`, the literals in `config.SelectionConfig` and

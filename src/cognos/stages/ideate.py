@@ -9,7 +9,7 @@ specifications (family + feature strategy) for the modeling stage to search, plu
 ``design_brief.md``.
 
 Everything above is deterministic (rules over the explore profile + config) so the stage runs
-offline. v1: the **Design agent** agent then decides every framework's role, ranks the slate (only
+offline. v1: the **Design agent** then decides every framework's role, ranks the slate (only
 engine-fittable families), may propose feature transforms (engine-validated, target-hidden) and
 adds sponsor questions — reasoning proposes, the engine disposes; the human reviews at gate_design.
 """
@@ -20,7 +20,7 @@ import hashlib
 import re
 
 from ..artifacts import Finding, Severity, StageResult, Verdict
-from ..config import CognosConfig
+from ..config import CORE_DESIGN, CognosConfig
 from ..context import RunContext
 from ..modeling.fit import DEFAULT_FAMILIES
 from ..modeling.transforms import TransformSpec, apply_transforms
@@ -31,7 +31,7 @@ def _qhash(text: str) -> str:
     return hashlib.sha1(text.strip().encode()).hexdigest()[:6]
 
 
-_DESIGN_FIELDS = ("use_case", "horizon", "default_definition", "segment")
+_DESIGN_FIELDS = CORE_DESIGN
 
 
 def _gap_spec(q: dict) -> dict:

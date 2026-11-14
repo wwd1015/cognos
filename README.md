@@ -32,7 +32,7 @@ its work as charts. It can call analysis tools, including ones you add as **plug
 Python on the fly; the engine runs that code restricted, and every script is kept, shown to you
 at the data gate, re-run by validation and printed in the white paper.
 
-In both, an **Intake agent** agent reads the documents, restates the goal, and **interviews**
+In both, an **Intake agent** reads the documents, restates the goal, and **interviews**
 you wherever the intent is not clear, before any data is touched.
 
 At every judgment step an **LLM agent recommends** — which columns may be inputs, which econometric
@@ -358,13 +358,13 @@ src/cognos/
   analysis/      built-in tools (tools.py, eda.py), chart specs, the restricted code runner, the executor
   engagement.py  development modes, the intent template, document reading, ingest into the run
   stages/        the 9 stages + stat_tests battery (engine work; judgment via ctx.recommend)
-  modeling/      metrics, fitters (GLM links incl. probit/cloglog), ratchet search, hazard,
+  modeling/      metrics, fitters (GLM links incl. probit/cloglog), plan + selection, hazard,
                  structural (Merton), migration, simulate (Vasicek + stress), credit_metrics,
                  transforms (target-hidden), guided (agent-guided search), ensemble
   ui/            the Dash + Mantine workbench
   service.py     the boundary the CLI and UI use
   cli.py  config.py  context.py  artifacts.py  orchestrator.py (compat)  okf.py  synth.py
-  integrations/  impact_adapter, autoforge_loop
+  integrations/  impact_adapter, impact_tools
   runtime/       deployment scorer (IMPACT derived-field entry point)
 src/cognos/templates/ (built-in model templates)  examples/  evals/  tests/  docs/adr/ (0001–0020)
 docs/templates/ (intent document)  CONTEXT.md (glossary)

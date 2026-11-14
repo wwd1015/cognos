@@ -20,6 +20,7 @@ from ..engine.process import CORE_DESIGN, SEAT_OF_GATE, preparation_of, seat_lab
 from ..engine.state import RunState
 from . import charts, transform_review
 from .components import (
+    chips,
     empty,
     findings_table,
     fmt,
@@ -262,6 +263,10 @@ def gate_block(gate: str, state: RunState, res: StageResult | None, body: list |
     if status == "stale":
         return dmc.Card([header, empty("The stage is re-running; this gate re-opens with the new "
                                        "recommendation.")], className="cognos-gate")
+    replaced = service.replaced(state) if status == "awaiting" else ""
+    if replaced:  # a main run another run replaced: the engine refuses the decision here
+        return dmc.Card([header, empty(f"Not decided here: {replaced}.")],
+                        className="cognos-gate")
     if status == "blocked":
         return dmc.Card([header, dmc.Alert("The reviewed stage BLOCKed and this run is autonomous. "
                                            "Re-run interactively to send the work back.",
@@ -1345,9 +1350,11 @@ def _words(v: Any) -> str:
 
 
 def _who(c: dict) -> Any:
-    """A candidate as it is referred to on every page: its name, with the id beside it."""
-    return dmc.Group([dmc.Text(c.get("name") or c.get("label") or c["id"], size="sm", fw=600),
-                      dmc.Code(c["id"])], gap=6, wrap="nowrap")
+    """A candidate as it is referred to on every page: its name, the id in a tooltip (the id
+    is what decisions store; a person tells models apart by name)."""
+    return dmc.Tooltip(dmc.Text(c.get("name") or c.get("label") or c["id"], size="sm", fw=600,
+                                className="model-name"),
+                       label=f"id {c['id']}", openDelay=300, withArrow=True)
 
 
 def _sign_badge(sign: str, expected: str | None) -> Any:
@@ -1389,12 +1396,12 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
 
     leader_rows = [[c.get("rank") or "", _who(c),
                     dmc.Text(c["family"], ff="monospace", size="sm"),
-                    dmc.Text(", ".join(c["features"]), size="xs", ff="monospace"),
+                    chips(c["features"]),
                     fmt(c.get("score")), dmc.Text(" + ".join(_words(m) for m in c.get("methods") or []),
                                                   size="xs"),
                     tags(c)] for c in leaders]
     pool_rows = [[_who(m), dmc.Text(m["label"], size="sm"),
-                  dmc.Text(", ".join(m["features"]), size="xs", ff="monospace"),
+                  chips(m["features"]),
                   fmt(m.get("score")), fmt(m.get("max_p_value"), 3),
                   f"{m['diagnostics_passed']}/{m['diagnostics_run']}",
                   dmc.Text("; ".join(m.get("violations") or []) or "none", size="xs")]
@@ -1418,7 +1425,7 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
     path_blocks = []
     for path in p.get("paths") or []:
         steps = [[s["step"], s["action"], dmc.Text(s.get("factor") or "", ff="monospace", size="sm"),
-                  dmc.Text(", ".join(s["factors"]), size="xs", ff="monospace"), fmt(s.get("criterion")),
+                  chips(s["factors"]), fmt(s.get("criterion")),
                   f"{s['change']:+.4g}" if s.get("change") is not None else "",
                   f"{s['tried']} tried, {s['rejected_by_constraints']} rejected"]
                  for s in path.get("steps") or []]
@@ -1468,8 +1475,8 @@ def model_panel(res: StageResult, state: RunState, scheme: str, seat: str = "dev
                 dmc.Checkbox(value=c["id"], label=None),
                 dmc.TextInput(id=_field("gate_candidates", f"name::{c['id']}"),
                               value=c.get("name") or "", size="xs", w=150),
-                dmc.Text(f"{c['family']} · {', '.join(c['features'])}", size="xs",
-                         ff="monospace", style={"flex": 1}),
+                dmc.Group([dmc.Text(c["family"], size="xs", ff="monospace"),
+                           chips(c["features"])], gap=6, style={"flex": 1}),
                 dmc.Text(f"{fmt(c.get('score'))}", size="xs", ff="monospace"),
                 dmc.Badge("breaks a constraint", color="red", size="xs", variant="light")
                 if c.get("violations") else None,
@@ -1643,7 +1650,7 @@ def _champion_proposal(p: dict, cands: list, metric: str, sample: str) -> str | 
     champ = next((c for c in cands if c["id"] == p.get("champion_id")), None)
     if not champ:
         return None
-    return (f"{champ.get('name') or champ['id']} ({champ['label']}): the "
+    return (f"{champ.get('name') or champ['id']}: the "
             f"{_words(p.get('champion_source', 'engine'))}'s choice, compared with "
             f"{len(cands) - 1} other candidate(s) on the {sample} sample.")
 
@@ -1658,6 +1665,16 @@ def _champion_evidence(p: dict, cands: list, metric: str) -> list[tuple[str, str
         [metric, "gini", "ks", "psi", "rmse"]) if k and m.get(k) is not None][:4]
     out.append(("flags", fmt(len(champ.get("flags") or []))))
     return out
+
+
+def _unmoved(scenarios: list[dict], key: str) -> bool:
+    """Every scenario left the forecast where it was (a model with no macro factors)."""
+    return all(abs(float(s.get(key) or 0.0)) < 1e-12 for s in scenarios)
+
+
+def _unmoved_note(name: str) -> Any:
+    return dmc.Text(f"{name} has no macro factors, so the scenarios do not move its forecast.",
+                    size="sm", c="dimmed", mt="xs")
 
 
 def backtest_panel(res: StageResult, state: RunState, scheme: str, seat: str = "developer") -> list:
@@ -1682,16 +1699,21 @@ def backtest_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
                              dmc.Badge("analyst pick", color="blue", size="xs", variant="light")
                              if c["id"] == p.get("recommended_id") and c["id"] != champion
                              else None], gap=4),
-                  dmc.Text(", ".join(c.get("features") or []), size="xs", ff="monospace"),
+                  chips(c.get("features")),
                   fmt(c.get("development_score")),
                   *[fmt(((c.get("outcomes") or {}) | (c.get("metrics") or {})).get(k)) for k in keys],
                   dmc.Text("; ".join(c.get("flags") or []) or (c.get("error") or ""), size="xs")]
                  for c in cands]
     names = list(dict.fromkeys(s["name"] for c in cands for s in c.get("scenarios") or []))
+    moved = [c for c in cands if c.get("scenarios") and not _unmoved(c["scenarios"], "delta")]
+    still = [c for c in cands if c.get("scenarios") and _unmoved(c["scenarios"], "delta")]
     scen_rows = [[_who(c), fmt(c.get("scenario_baseline")),
                   *[next((f"{fmt(s['mean'])}  ({s['delta']:+.4g})" for s in c.get("scenarios") or []
                           if s["name"] == n), "—") for n in names]]
-                 for c in cands if c.get("scenarios")]
+                 for c in moved]
+    champ_name = next((c.get("name") for c in cands if c["id"] == champion), None) \
+        or p.get("champion_name") or "The champion"
+    stress_still = bool(stress) and _unmoved(stress, "delta_pd")
     gate = gate_block("gate_champion", state, res, seat=seat, body=[
         dmc.RadioGroup(dmc.Stack([
             dmc.Radio(label=f"{c.get('name') or c['id']} · {c['label']} — {sample} {metric} "
@@ -1711,7 +1733,7 @@ def backtest_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
         proposal=_champion_proposal(p, cands, metric, sample),
         evidence=_champion_evidence(p, cands, metric))
     head = [("Champion", str(p.get("champion_name") or champion or "—"),
-             f"{champion} · chosen by the {p.get('champion_source', 'engine')}"),
+             f"chosen by the {p.get('champion_source', 'engine')}"),
             ("Candidates compared", fmt(len(cands)), f"on the {sample} sample")]
     if oa:
         head += [("Gini", fmt(oa.get("gini"), 3), "discrimination"),
@@ -1746,9 +1768,10 @@ def backtest_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
                 description="Candidates that rank together on the development sample can part "
                             "ways here.") if _forecast_spec(state.run_id, p) else None,
         section("Scenarios, candidate by candidate",
-                table(["Candidate", "Baseline", *names], scen_rows),
+                table(["Candidate", "Baseline", *names], scen_rows) if scen_rows else None,
+                *[_unmoved_note(c.get("name") or c.get("label") or c["id"]) for c in still],
                 description="Mean forecast under each scenario (change on the baseline).")
-        if scen_rows else None,
+        if moved or still else None,
         section("Champion: calibration by score band",
                 graph(charts.calibration(oa.get("calibration_table") or [], scheme), "n/a"),
                 description=f"Evaluation sample: {sample}"
@@ -1758,9 +1781,11 @@ def backtest_panel(res: StageResult, state: RunState, scheme: str, seat: str = "
             ("Expected loss", pct(port.get("expected_loss"), 2), "share of EAD"),
             (f"VaR {fmt(port.get('confidence'), 3)}", pct(port.get("var"), 2), None),
             ("Expected shortfall", pct(port.get("es"), 2), None)])) if port else None,
-        section("Champion: stress scenarios", table(["Scenario", "Mean PD", "Δ PD"],
-                                                    [[s["name"], pct(s.get("mean_pd"), 2),
-                                                      f"{s.get('delta_pd', 0):+.2%}"] for s in stress]))
+        section("Champion: stress scenarios",
+                _unmoved_note(champ_name) if stress_still else
+                table(["Scenario", "Mean PD", "Δ PD"],
+                      [[s["name"], pct(s.get("mean_pd"), 2), f"{s.get('delta_pd', 0):+.2%}"]
+                       for s in stress]))
         if stress and oa else None,
         section("Findings", findings_table(_findings(res))),
     ]
@@ -2060,6 +2085,38 @@ def compare_page(c: dict) -> list:
     ]
 
 
+# Pages that end on a choice among things already measured: the decision is read first and
+# the evidence sits behind tabs, one open at a time. A page whose decision is a form filled
+# step by step (intake, explore, ideate) keeps its own order.
+DECISION_FIRST = frozenset({"model", "backtest", "validate", "comply", "document", "review"})
+NOTE_TAB = "The agent's note"
+
+
+def _has_class(component: Any, name: str) -> bool:
+    return name in (getattr(component, "className", None) or "").split()
+
+
+def decision_first(body: list) -> list:
+    """Lay a stage page out with the decision on top: the gate, the figure strip, anything
+    that is neither, then the agent's note and every section as tabs. Nothing is dropped and
+    nothing is added; a page with fewer than two things to file keeps its order."""
+    gate = [b for b in body if _has_class(b, "cognos-gate")]
+    figures = [b for b in body if _has_class(b, "ledger-kpis")]
+    filed = [(NOTE_TAB, b) for b in body if _has_class(b, "cognos-rec")] + [
+        (str(getattr(b, "data-title", "") or "More"), b) for b in body
+        if _has_class(b, "ledger-section")]
+    if len(filed) < 2:
+        return body
+    placed = {id(b) for b in (*gate, *figures, *(b for _, b in filed))}
+    loose = [b for b in body if id(b) not in placed]
+    values = [f"t{i}" for i in range(len(filed))]
+    tabs = dmc.Tabs([
+        dmc.TabsList([dmc.TabsTab(title, value=v) for v, (title, _) in zip(values, filed, strict=True)]),
+        *[dmc.TabsPanel(b, value=v, pt="md") for v, (_, b) in zip(values, filed, strict=True)],
+    ], value=values[0], className="stage-tabs")
+    return [*gate, *figures, *loose, tabs]
+
+
 def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: str,
                 changes: dict | None = None, seat: str = "developer",
                 data_info: dict | None = None) -> list:
@@ -2102,7 +2159,9 @@ def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: st
                            color="yellow", variant="light", icon=icon("tabler:refresh-alert"))
     else:
         notice = rerun_note(stage, state, changes)
-    body = PANELS[stage](res, state, scheme, seat)
-    return [head, before, notice, stage_questions(stage, state, seat),
-            *[b for b in body if b is not None], *tools_section(res, state, scheme),
-            stage_challenges(stage, state)]
+    body = [b for b in [*PANELS[stage](res, state, scheme, seat),
+                        *tools_section(res, state, scheme), stage_challenges(stage, state)]
+            if b is not None]
+    if stage in DECISION_FIRST:
+        body = decision_first(body)
+    return [head, before, notice, stage_questions(stage, state, seat), *body]

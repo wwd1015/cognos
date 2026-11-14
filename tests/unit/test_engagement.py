@@ -1,5 +1,5 @@
 """Engagements: the intent template, reading documents, the config rules, and the Intake
-Analyst's contract (the deterministic agent must pass the engine's checks)."""
+agent's contract (the deterministic agent must pass the engine's checks)."""
 
 from __future__ import annotations
 

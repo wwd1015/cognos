@@ -6,7 +6,7 @@ distributions, correlations) and flags data-quality risks the downstream stages 
 especially **target-leakage suspects** (features near-perfectly correlated with the target), the
 #1 way automated systems silently overfit.
 
-The **Data agent** agent reads the data against the confirmed business intent in two steps.
+The **Data agent** reads the data against the confirmed business intent in two steps.
 First it *requests analyses* — a registered tool (built in or from a plugin) or Python it writes
 — and the engine runs them, keeping every result and every script as an artifact
 (``stages/explore/analyses/``). When the profile leaves the dependent variable open, the analyst
@@ -282,7 +282,7 @@ class ExploreStage(Stage):
         tools = [{"name": t.name, "description": t.description, "params": t.params,
                   "needs_target": t.needs_target, "origin": t.origin}
                  for t in reg.tools_for("explore")]
-        author = f"the Data agent agent ({ctx.runner.provider['id']})"
+        author = f"the Data agent ({ctx.runner.provider['id']})"
         with_missing = [c for c in df.columns if df[c].isna().any()]
         described = dictionary(base, list(df.columns))
         records: list[dict] = []
