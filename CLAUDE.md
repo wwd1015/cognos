@@ -121,6 +121,8 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
   (samples → factor library → single-factor screen → selection methods → ranked ledger) and
   finalizes every pool member. `backtest` compares the pool on the test sample and the
   Backtest agent recommends the champion. Do not put a champion back on the model payload.
+  The stage is `stages/model.py`; choosing the leaders, the engine's pool and finalizing a
+  member are `stages/pool_builder.py` (not a stage, never registered).
 - **Read the champion through `ctx.champion()`** (`pool.view`): the model payload with the
   champion in force laid over it. A stage after `backtest` never reads
   `ctx.require("model").payload` for champion fields. Results-only readers use
@@ -362,7 +364,8 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   and records `_Run.step`, `METHODS`, the literals in `config.SelectionConfig` and
   `contracts.PlanChoice`.
 - **New statistical test** → `stages/stat_tests.py` with H0, severity, and a `_safe` wrapper.
-- **New gate action** → `engine/gates.py::ACTIONS` + handler + a UI control in `ui/panels.py`.
+- **New gate action** → `engine/gates.py::ACTIONS` + handler + a UI control on the stage's page
+  (`ui/panels/<stage>.py`; send-back and the gate card are `ui/panels/gate.py`).
 - **New brief field** → `engagement.FIELDS` (label, hint, aliases, required), the `BriefFieldId`
   literals in `agents/contracts.py`, a question in `engagement.QUESTIONS` if required, then
   regenerate `docs/templates/` (`render_template`).
@@ -375,7 +378,7 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   `analysis/consult.py::_inputs`.
 - **New join rule** (another way to reduce several rows, an as-of join) → `linking.apply` /
   `_one_row_per_key`, the `many` literals in `config.JoinStep` and `contracts.JoinChoice`, the
-  gate form in `ui/panels.py`, and the prompt.
+  gate form in `ui/panels/explore.py`, and the prompt.
 - **New data source** → a `DataSource` in `datasources.BUILTIN` or a plugin; `available()` must
   explain what is missing instead of raising at import.
 - **New compliance regime** → extend `stages/comply.py`; emit evidence `document`/`review` can trace.
@@ -405,6 +408,10 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 The run workspace has three views: Stages (a stage page shows only that stage's questions
 and challenges, `panels.stage_questions` / `stage_challenges`) and the run-wide Run record and
 Agent calls. Do not put run-wide content on a stage page.
+The workbench is two packages: `ui/panels/` (one module per stage page; `__init__` holds
+`stage_panel` and re-exports every name) and `ui/app/` (layout, routing, page builders and one
+`callbacks_*` module per page, registered in order by `register_callbacks`). A test that
+patches a name patches the module that defines it, not the re-export.
 UI panels are pure functions of (result, state, scheme, seat) — keep them testable without a browser
 (`tests/ui`). Never write `component or fallback`: Dash components define `__len__`, so a childless
 component is falsy — use `graph(fig, placeholder)` / explicit `is None` checks. Never pass an

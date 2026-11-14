@@ -22,6 +22,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from .artifacts import read_payload
 from .context import new_run_id
 from .engine.graph import LABELS, STAGES, STEPS, TRIAL_STOPS_BEFORE
 from .engine.process import SEAT_OF_GATE
@@ -90,8 +91,7 @@ def members(runs_root: Path, model: str) -> list[RunState]:
 
 # --- one run's line ----------------------------------------------------------------------------
 def _payload(run_dir: Path, stage: str, name: str = "result.json") -> dict[str, Any]:
-    got = read_json(Path(run_dir) / "stages" / stage / name) or {}
-    return got.get("payload") or {}
+    return read_payload(run_dir, stage, name)
 
 
 def counts(run_dir: Path) -> dict[str, Any]:

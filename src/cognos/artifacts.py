@@ -9,8 +9,11 @@ one left off.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -117,6 +120,53 @@ class StageResult(BaseModel):
     def token_line(self) -> str:
         """The deputy-style one-line, machine-parseable summary token."""
         return f"COGNOS_STAGE: {self.stage} VERDICT: {self.verdict.value} FINDINGS: {len(self.findings)}"
+
+
+# --- reading results back ------------------------------------------------------------------
+# The one place a recorded result is read from disk. A stage's last result is ``result.json``;
+# the one it replaced is ``result.prev.json``.
+def result_path(run_dir: str | Path, stage: str, name: str = "result.json") -> Path:
+    return Path(run_dir) / "stages" / stage / name
+
+
+def read_result(run_dir: str | Path, stage: str, name: str = "result.json", *,
+                tolerant: bool = False) -> StageResult | None:
+    """A stage's recorded result, or ``None`` when it has none.
+
+    A file that is there and cannot be read raises: the engine must not take a damaged result
+    for a stage that has not run. ``tolerant`` is for readers that only compare or list, where
+    an unreadable result is left out.
+    """
+    try:
+        return StageResult.model_validate_json(
+            result_path(run_dir, stage, name).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except ValueError:
+        if tolerant:
+            return None
+        raise
+
+
+def read_results(run_dir: str | Path, stages: Iterable[str], name: str = "result.json", *,
+                 tolerant: bool = False) -> dict[str, StageResult]:
+    """The recorded results of a run, in the order of ``stages``; see :func:`read_result`."""
+    return {s: r for s in stages
+            if (r := read_result(run_dir, s, name, tolerant=tolerant)) is not None}
+
+
+def read_raw(run_dir: str | Path, stage: str, name: str = "result.json") -> dict[str, Any]:
+    """A recorded result as plain data, for readers that want a field or two and must also
+    read results written by older versions. Empty when missing or unreadable."""
+    try:
+        got = json.loads(result_path(run_dir, stage, name).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return got if isinstance(got, dict) else {}
+
+
+def read_payload(run_dir: str | Path, stage: str, name: str = "result.json") -> dict[str, Any]:
+    return read_raw(run_dir, stage, name).get("payload") or {}
 
 
 class RunSummary(BaseModel):

@@ -77,11 +77,11 @@ D1 to D11 of the review were confirmed and built. What is left open from them:
 
 In the order I would do them. None changes what a run records.
 
-1. **Split the three largest modules along lines they already have.**
-   `ui/panels.py` (2,100 lines) into one module per stage page; `ui/app.py` (1,900) into
-   layout, routing and one callback module per page; `stages/model.py` (1,150) into the stage
-   and a `pool_builder` (leaders, the engine's pool, finalizing a member). Today a change to
-   one page means reading all of them.
+1. ~~Split the three largest modules.~~ Done: `ui/panels/` (one module per stage page),
+   `ui/app/` (layout, routing, one callback module per page) and `stages/pool_builder.py`.
+   Each was proved a pure move (same definitions, same callbacks and layout, same recorded
+   numbers on nine demo runs). `stages/model.py` is still 840 lines because `run` alone is
+   460; cutting `run` into steps is a further change, not a move.
 2. **Typed stage payloads.** Stages hand each other plain dictionaries. Two of the bugs fixed
    in this review (PBO, the fair-lending sentence) were a reader asking for a key the writer
    had stopped writing, and nothing noticed for months. A small pydantic model per stage
@@ -90,9 +90,9 @@ In the order I would do them. None changes what a run records.
 3. **Paths in results are relative to the run.** `scorer_path` is recorded absolute (readers
    now resolve it, see `pool.scorer_path`). Record it relative and keep the resolver for old
    runs, so nothing in a result names a machine.
-4. **One reader for "the results of a run".** `service.results`, `service._results_in`,
-   `Engine.results` and `RunContext.get` each parse `stages/*/result.json` their own way
-   (one raises on a corrupt file, one skips it). One function, one behaviour.
+4. ~~One reader for "the results of a run".~~ Done: `artifacts.read_result` /
+   `read_results` / `read_payload`. Behaviour kept: a damaged result raises for the engine
+   and the pages, and is left out of a comparison.
 5. **A check that the docs name code that exists.** `CLAUDE.md` pointed at a function removed
    two commits earlier. The script used in this review (every `` `module.symbol` `` and
    `` `path::symbol` `` in the top-level docs resolves) is forty lines; as a unit test it keeps

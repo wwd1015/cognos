@@ -60,6 +60,11 @@ versioning is SemVer.
   the choice is kept in the browser.
 
 ### Changed
+- **Structure only, nothing recorded changes.** `ui/panels.py` is the package `ui/panels/`
+  (one module per stage page), `ui/app.py` is `ui/app/` (layout, routing, one callback module
+  per page), and the end of the model stage is `stages/pool_builder.py`. Every old name is
+  still importable from where it was. Recorded results are read through one function
+  (`artifacts.read_result`, `read_results`, `read_payload`).
 - **The stage page reads decision first.** On the pages that end on a choice (candidate
   pool, champion, validation, compliance, documents, review) the decision is at the top with
   the figures under it; the agent's note and each piece of evidence sit behind tabs, one open

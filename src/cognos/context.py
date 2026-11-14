@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
-from .artifacts import ArtifactRef, StageResult
+from .artifacts import ArtifactRef, StageResult, read_payload, read_result
 from .fsutil import atomic_write
 
 if TYPE_CHECKING:
@@ -157,12 +157,10 @@ class RunContext:
     def get(self, stage: str) -> StageResult | None:
         if stage in self._results:
             return self._results[stage]
-        path = self.stages_dir / stage / "result.json"
-        if path.exists():
-            res = StageResult.model_validate_json(path.read_text(encoding="utf-8"))
+        res = read_result(self.run_dir, stage)
+        if res is not None:
             self._results[stage] = res
-            return res
-        return None
+        return res
 
     def require(self, stage: str) -> StageResult:
         res = self.get(stage)
@@ -241,11 +239,7 @@ class RunContext:
             return None, None
         if self.overrides.target:
             return self.overrides.target, self.overrides.task
-        try:
-            payload = json.loads((self.run_dir / "stages" / "explore" / "result.json").read_text(
-                encoding="utf-8")).get("payload") or {}
-        except (FileNotFoundError, ValueError):
-            return None, None
+        payload = read_payload(self.run_dir, "explore")
         return payload.get("target"), payload.get("task")
 
     @staticmethod

@@ -19,7 +19,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from .artifacts import StageResult
+from .artifacts import StageResult, read_payload, read_raw, read_results
 from .config import CognosConfig
 from .engine import Engine, RunState, events
 from .engine.gates import GateError
@@ -494,23 +494,12 @@ def is_busy(run_id: str, root: str | Path | None = None) -> bool:
 
 
 def results(run_id: str, root: str | Path | None = None) -> dict[str, StageResult]:
-    out = {}
-    for stage in STAGES:
-        path = runs_root(root) / run_id / "stages" / stage / "result.json"
-        if path.exists():
-            out[stage] = StageResult.model_validate_json(path.read_text(encoding="utf-8"))
-    return out
+    return read_results(runs_root(root) / run_id, STAGES)
 
 
 def _results_in(run_dir: Path, name: str = "result.json") -> dict[str, StageResult]:
-    out = {}
-    for stage in STAGES:
-        path = run_dir / "stages" / stage / name
-        try:
-            out[stage] = StageResult.model_validate_json(path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, ValueError):
-            continue
-    return out
+    """For comparisons: a result that cannot be read is left out, not raised."""
+    return read_results(run_dir, STAGES, name, tolerant=True)
 
 
 def _config_dict(run_dir: Path) -> dict | None:
@@ -630,21 +619,16 @@ def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
             # The champion is chosen on the outcomes analysis of the pool. A run recorded
             # before candidate pools carries it on the model stage.
             for stage in ("backtest", "model"):
-                recorded = d / "stages" / stage / "result.json"
-                if champ is None and recorded.exists():
+                if champ is None:
+                    got = read_raw(d, stage)
                     try:
-                        got = json.loads(recorded.read_text(encoding="utf-8"))
                         champ = ((got.get("payload") or {}).get("champion_name")
                                  or got["metrics"].get("champion"))
                     except Exception:
                         champ = None
             waiting = [s for s, v in st.steps.items() if v.status == "awaiting"]
-            kind = "new"
-            try:  # the development mode, as intake recorded it
-                kind = json.loads((d / "stages" / "intake" / "result.json").read_text(
-                    encoding="utf-8"))["payload"].get("kind") or "new"
-            except Exception:
-                pass
+            # the development mode, as intake recorded it
+            kind = read_payload(d, "intake").get("kind") or "new"
             lin = st.lineage
             gone = replaced(st)  # a main run another run replaced waits for no one
             if gone:
