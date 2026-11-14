@@ -287,3 +287,18 @@ def test_fair_lending_is_measured_out_of_sample_without_a_sealed_holdout(make_co
     fair = orch.ctx.require("comply").payload["fair_lending"]
     assert fair["disparate_impact"] is not None and fair["group_rates"]
     assert not [f for f in orch.ctx.require("comply").findings if f.id == "fair-lending-unavailable"]
+
+
+def test_a_scorer_path_recorded_absolute_by_an_older_run_still_resolves(tmp_path):
+    """Results name no machine now; a run recorded before that carries an absolute path."""
+    from cognos import pool
+
+    run = tmp_path / "r1"
+    (run / "models" / "candidates").mkdir(parents=True)
+    own = run / "models" / "candidates" / "abc.joblib"
+    own.write_bytes(b"x")
+    assert pool.scorer_path(run, {"scorer_path": "models/candidates/abc.joblib"}) == str(own.resolve())
+    assert pool.scorer_path(run, {"scorer_path": "/gone/elsewhere/models/candidates/abc.joblib"}) \
+        == str(own.resolve())  # the run's own file, never another run's
+    assert pool.scorer_path(run, {"scorer_path": "/gone/elsewhere/zzz.joblib"}) == "/gone/elsewhere/zzz.joblib"
+    assert pool.scorer_path(run, {}) is None

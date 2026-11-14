@@ -44,15 +44,20 @@ def detail(run_dir: str | Path, entry: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def scorer_path(run_dir: str | Path, entry: dict[str, Any] | None) -> str | None:
-    """Where a member's saved scorer is now. The payload records the path it was saved under;
-    a run that was copied (a trial run, ADR-0017) or is reached under another path (a shared
-    runs folder, ADR-0015) has the file at the same place inside its own directory, and that
-    one is read: never another run's file, never a path that is gone."""
+    """Where a member's saved scorer is now, as an absolute path. The payload records it
+    relative to the run (``models/candidates/<id>.joblib``); runs recorded before that carry
+    the absolute path it was saved under. Either way the file inside this run's own directory
+    is the one read: a run that was copied (a trial run, ADR-0017) or is reached under another
+    path (a shared runs folder, ADR-0015) never reads another run's file or a path that is
+    gone."""
     recorded = (entry or {}).get("scorer_path")
     if not recorded:
         return None
     own = Path(run_dir) / "models" / "candidates" / Path(str(recorded)).name
-    return str(own.resolve()) if own.exists() else str(recorded)
+    if own.exists():
+        return str(own.resolve())
+    given = Path(str(recorded))
+    return str(given if given.is_absolute() else (Path(run_dir) / given).resolve())
 
 
 def view(run_dir: str | Path, model: dict[str, Any] | None,

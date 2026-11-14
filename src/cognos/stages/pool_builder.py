@@ -322,7 +322,8 @@ def finalize(ctx: RunContext, e, train_df, y_train, cfg, library, hazard_meta, e
         "diagnostics_failed": list(diagnostics["failed_tests"]),
         "diagnostics_worst": diagnostics["max_failed_severity"],
         "n_transforms": len(transforms),
-        "scorer_path": str(scorer_file.resolve()),
+        # relative to the run: a result names no machine (readers go through pool.scorer_path)
+        "scorer_path": ctx.rel(scorer_file),
         "detail_path": detail_path,
     }
 

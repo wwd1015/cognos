@@ -285,7 +285,7 @@ def test_a_run_scores_with_its_own_copy_of_the_models_wherever_it_is(main_run):
     trial = service.trial_run(run_id, "gate_champion", "another champion", root=root)
     ctx = service.engine(trial, root).context()
     recorded = ctx.require("model").payload["pool"][0]["scorer_path"]
-    assert Path(recorded).is_relative_to((root / run_id).resolve())  # as its parent saved it
+    assert not Path(recorded).is_absolute()  # recorded relative to the run: names no machine
     assert Path(ctx.champion()["scorer_path"]).is_relative_to((root / trial).resolve())
 
     # the trial run becomes the main run and the run it replaced is deleted ...
