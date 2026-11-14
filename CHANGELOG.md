@@ -70,6 +70,10 @@ versioning is SemVer.
 - A pool member's saved scorer is recorded relative to the run
   (`models/candidates/<id>.joblib`), so a result names no machine. Runs recorded with an
   absolute path still load (`pool.scorer_path`).
+- Validation fits a linear specification on numeric columns without the scikit-learn
+  pipeline around it (`fit.make_fit_predict`): about half the time of a small fit, and the
+  same numbers to the last bit (a test holds the two equal for every linear family; nine
+  demo runs record the same 413 files before and after).
 - **The stage page reads decision first.** On the pages that end on a choice (candidate
   pool, champion, validation, compliance, documents, review) the decision is at the top with
   the figures under it; the agent's note and each piece of evidence sit behind tabs, one open

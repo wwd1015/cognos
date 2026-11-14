@@ -96,10 +96,10 @@ In the order I would do them. None changes what a run records.
 5. ~~A check that the docs name code that exists.~~ Done:
    `tests/unit/test_docs_name_code.py` resolves every file, `file.py::symbol` and
    `module.symbol` in the five top-level docs.
-6. **Stop fitting through the full sklearn pipeline for one-column fits.** After the memo
-   below, what is left of the single-factor analysis is about 4 ms of pipeline overhead per
-   fold for a regression on one column. A direct fit gives the same numbers to the last bit
-   in principle; it needs the same proof the memo got before it is trusted.
+6. ~~Stop fitting through the full sklearn pipeline for small linear fits.~~ Done
+   (`fit.make_fit_predict`): a linear specification on numeric columns is scaled and fitted
+   directly, with the same routines. Bit-identical in a test over every linear family, and
+   every recorded file of nine demo runs (413 files) is the same before and after.
 
 ## Proposed: speed
 
@@ -117,13 +117,22 @@ and again by the model stage: about 40% of a run, 67% on the time-series demo.
 Every recorded number of five demo runs (results, ledgers, pool, backtest, validation) is
 identical with and without it.
 
-Next, by expected gain:
+Also done: **the direct fit** (architecture item 6). Measured under the profiler on
+2026-11-13: loss forecast 9.6 s to 7.2 s, rating migration 10.2 s to 8.9 s, C&I scorecard
+6.9 s to 6.3 s for a whole run.
 
-1. **Fit the pool members in parallel** at the end of the model stage (each is independent:
-   a fit, a diagnostics battery, a saved scorer). Largest on the migration demo, where
-   finalizing is most of what is left.
-2. **One-column fits without the pipeline** (architecture item 6).
-3. **The workbench polls once a second and re-reads `state.json` each time.** Fine for one
+Looked at and dropped: *fitting the pool members in parallel*. Finalizing the whole pool
+takes 0.1 to 0.4 s of a 7 to 10 s run (measured on three demos), so there is nothing to
+gain; an earlier note here said otherwise and was wrong.
+
+Next:
+
+1. **What is left is validation itself.** After the memo and the direct fit, most of a
+   run is still `cv_score` (about 2 ms a fold, thousands of folds in the single-factor
+   analysis). The next step would be scoring a factor's folds in one vectorised pass for
+   OLS; that changes the arithmetic, so it needs agreement to a tolerance, not to the bit,
+   and therefore a decision.
+2. **The workbench polls once a second and re-reads `state.json` each time.** Fine for one
    person; on a shared folder over a network, read the file's modification time first and
    parse only when it moved.
 

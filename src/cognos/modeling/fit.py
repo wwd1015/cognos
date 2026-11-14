@@ -192,6 +192,11 @@ def make_preprocessor(X: pd.DataFrame, scale: bool) -> ColumnTransformer:
     return ColumnTransformer(transformers, remainder="drop")
 
 
+def _all_numeric(X: pd.DataFrame) -> bool:
+    """Every column goes to the scaler and none to the encoder (see ``make_preprocessor``)."""
+    return X.shape[1] > 0 and X.select_dtypes(include=["number", "bool"]).shape[1] == X.shape[1]
+
+
 def make_fit_predict(candidate: Candidate, *, is_classification: bool) -> Callable:
     """Return ``fit_predict(X_train, y_train) -> predict`` for leakage-safe CV (see metrics.cv_score)."""
     if candidate.family in HAZARD_FAMILIES:
@@ -201,18 +206,33 @@ def make_fit_predict(candidate: Candidate, *, is_classification: bool) -> Callab
 
     def fit_predict(X_train: pd.DataFrame, y_train: np.ndarray):
         Xf = X_train[candidate.features]
-        pre = make_preprocessor(Xf, scale=candidate.is_linear)
         est = _estimator(candidate.family, is_classification, candidate.hyperparams)
-        pipe = Pipeline([("pre", pre), ("est", est)])
-        pipe.fit(Xf, y_train)
+        if candidate.is_linear and _all_numeric(Xf):
+            # The pipeline below would do exactly this: scale the columns, fit the estimator.
+            # Done directly it skips the pipeline's bookkeeping, about half the time of a small
+            # fit, and validation makes thousands of them. Same routines, same numbers
+            # (tests/unit/test_modeling.py holds the two equal to the last bit).
+            scaler = StandardScaler()
+            est.fit(scaler.fit_transform(Xf), y_train)
+
+            def design(X_val: pd.DataFrame):
+                return scaler.transform(X_val[candidate.features])
+            model = est
+        else:
+            pre = make_preprocessor(Xf, scale=candidate.is_linear)
+            model = Pipeline([("pre", pre), ("est", est)])
+            model.fit(Xf, y_train)
+
+            def design(X_val: pd.DataFrame):
+                return X_val[candidate.features]
 
         def predict(X_val: pd.DataFrame):
-            Xv = X_val[candidate.features]
+            Xv = design(X_val)
             if is_classification:
-                proba = pipe.predict_proba(Xv)[:, 1]
+                proba = model.predict_proba(Xv)[:, 1]
                 point = (proba >= 0.5).astype(int)
                 return point, proba
-            return pipe.predict(Xv), None
+            return model.predict(Xv), None
 
         return predict
 

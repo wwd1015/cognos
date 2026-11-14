@@ -343,6 +343,9 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   `modeling/search.py::_hp_grid`, `DEFAULT_FAMILIES` if defaulted, and `stages/ideate.py::_engine_families`
   so the Design agent may propose it; add it to `selection.STEP_FAMILIES` only if it has
   statsmodels inference. Survival/structural/simulation extension points: ADR-0008.
+  A family in `fit.LINEAR_FAMILIES` is fitted in validation without the pipeline when its
+  columns are numeric; `test_the_direct_fit_gives_the_pipelines_numbers_to_the_last_bit` must
+  stay green for it.
 - **New metric** → `modeling/metrics.py::score` (+ `MAXIMIZE`) and `plan.METRICS` so it can be
   ranked on; expose it as a fact in `agents/facts.py` if agents should cite it.
 - **New way to split or validate** → `splits.split_samples` / `make_splitter`, the literals in
