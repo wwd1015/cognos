@@ -6,6 +6,8 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- A test that the top-level docs name code that exists
+  (`tests/unit/test_docs_name_code.py`): every file, `file.py::symbol` and `module.symbol`.
 - **The same fit on the same rows is computed once** (`modeling/cv_cache.py`). The
   single-factor analysis was computed at the design stage, again on every look at the design
   gate and again by the model stage. Validation results are now kept in a memo keyed by
@@ -65,6 +67,9 @@ versioning is SemVer.
   per page), and the end of the model stage is `stages/pool_builder.py`. Every old name is
   still importable from where it was. Recorded results are read through one function
   (`artifacts.read_result`, `read_results`, `read_payload`).
+- A pool member's saved scorer is recorded relative to the run
+  (`models/candidates/<id>.joblib`), so a result names no machine. Runs recorded with an
+  absolute path still load (`pool.scorer_path`).
 - **The stage page reads decision first.** On the pages that end on a choice (candidate
   pool, champion, validation, compliance, documents, review) the decision is at the top with
   the figures under it; the agent's note and each piece of evidence sit behind tabs, one open

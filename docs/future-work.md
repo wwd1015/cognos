@@ -87,16 +87,15 @@ In the order I would do them. None changes what a run records.
    had stopped writing, and nothing noticed for months. A small pydantic model per stage
    payload (permissive: extra keys allowed, so old runs still load) turns that into a failing
    test. Start with `backtest` and `model`, the two most read.
-3. **Paths in results are relative to the run.** `scorer_path` is recorded absolute (readers
-   now resolve it, see `pool.scorer_path`). Record it relative and keep the resolver for old
-   runs, so nothing in a result names a machine.
+3. ~~Paths in results are relative to the run.~~ Done: a member's `scorer_path` is recorded
+   as `models/candidates/<id>.joblib`; `pool.scorer_path` still resolves the absolute path an
+   older run carries.
 4. ~~One reader for "the results of a run".~~ Done: `artifacts.read_result` /
    `read_results` / `read_payload`. Behaviour kept: a damaged result raises for the engine
    and the pages, and is left out of a comparison.
-5. **A check that the docs name code that exists.** `CLAUDE.md` pointed at a function removed
-   two commits earlier. The script used in this review (every `` `module.symbol` `` and
-   `` `path::symbol` `` in the top-level docs resolves) is forty lines; as a unit test it keeps
-   the "Extending COGNOS" section honest.
+5. ~~A check that the docs name code that exists.~~ Done:
+   `tests/unit/test_docs_name_code.py` resolves every file, `file.py::symbol` and
+   `module.symbol` in the five top-level docs.
 6. **Stop fitting through the full sklearn pipeline for one-column fits.** After the memo
    below, what is left of the single-factor analysis is about 4 ms of pipeline overhead per
    fold for a regression on one column. A direct fit gives the same numbers to the last bit
