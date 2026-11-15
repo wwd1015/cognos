@@ -392,7 +392,7 @@ def model_runs_section(st) -> Any:
 
 
 def view_lede(title: str, text: str) -> Any:
-    return html.Div([html.Div(title, className="page-title", style={"fontSize": 24}),
+    return html.Div([html.Div(title, className="page-title", style={"fontSize": "1.5rem"}),
                      html.Div(text, className="page-lede")])
 
 

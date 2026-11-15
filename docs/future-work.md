@@ -38,7 +38,7 @@ number stays with the main session. Nothing is committed.
 10. **Now:** the open decisions below, one at a time with the user. `review-2026-11` is
     ahead of `main` again; merge when the user says.
 
-Still waiting for a yes or no: px to rem and darker input borders; the deck's `--ink-3`;
+Still waiting for a yes or no: the strength of input borders; the deck's `--ink-3`;
 the provenance filter; scoring a factor's folds in one pass.
 
 ## Decided and done on 2026-11-13
@@ -158,7 +158,7 @@ visible selection in forced colours; real underlines; hover actions that also sh
 keyboard focus and touch; folds that open smoothly; 24px hit areas on three small buttons.
 
 Left out, with the reason: a rule under the sticky table head when scrolled and a fade that
-ends at the last row (Chrome-only today); px to rem for about sixty font sizes and darker
-input borders (a wider change of look: ask first); parallax, scroll reveals, page
+ends at the last row (Chrome-only today); darker input borders (the user is choosing among four strengths; px to rem was
+confirmed and done on 2026-11-15); parallax, scroll reveals, page
 transitions (not this look). `docs/deck/index.html` still carries the old `--ink-3`; a
 change there needs an edition-log row.
