@@ -89,8 +89,9 @@ def register(app: Dash) -> None:
         focused = focused is True  # an older browser may hold the per-side choice
         if ctx.triggered_id == "ws-focus-toggle":
             focused = not focused
-        return (focused, icon(f"tabler:arrows-{'minimize' if focused else 'maximize'}", 18),
-                "Show the stage list" if focused else "Focus on the page: hide the stage list")
+        return (focused, icon("tabler:layout-sidebar-left-"
+                              + ("expand" if focused else "collapse"), 18),
+                "Show the stage list" if focused else "Hide the stage list")
 
     @app.callback(Output("ws-step", "data"), Output("ws-tab", "value"),
                   Input({"type": "rail", "step": ALL}, "n_clicks"), prevent_initial_call=True)

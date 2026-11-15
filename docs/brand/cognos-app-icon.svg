@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" role="img" aria-label="COGNOS">
+  <title>COGNOS</title>
+  <!-- The app tile (docs/brand: 04-D, three parts with gate). The mark at 58 of 80 on a tile with 18 corners. -->
+  <rect width="80" height="80" rx="18" fill="#7d2230"/>
+  <svg x="11" y="11" width="58" height="58" viewBox="0 0 100 100">
+    <path d="M71.92 71.92 A31 31 0 0 1 23.15 65.50" fill="none" stroke="#faf9f6" stroke-width="13"/>
+    <path d="M20.87 60.60 A31 31 0 0 1 51.08 19.02" fill="none" stroke="#faf9f6" stroke-width="13" stroke-dasharray="14.43 8.66"/>
+    <rect x="60.22" y="16.92" width="16" height="16" fill="#f2c4ca" transform="rotate(36 68.22 24.92)"/>
+  </svg>
+</svg>

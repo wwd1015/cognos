@@ -107,19 +107,14 @@ a:hover { text-decoration: underline; text-underline-offset: 0.2em; }
   border-bottom: 2px solid var(--rule);
   box-shadow: 0 3px 0 var(--bg-base), 0 4px 0 var(--line-strong);   /* the double rule */
 }
-.masthead-brand { display: flex; align-items: baseline; gap: 14px; color: var(--ink); }
+.masthead-brand { display: flex; align-items: center; gap: 14px; color: var(--ink); }
 .masthead-brand:hover { text-decoration: none; }
-.masthead-word {
-  font-family: var(--font-display); font-weight: 700; font-size: 1.6875rem; letter-spacing: 0.01em;
-  line-height: 1;
-}
-/* the mark (docs/brand/cognos-mark.svg): the creed as one C. Solid ink, the engine disposes;
-   dashed, agents recommend; the oxblood block that locks it, people decide. The ink follows
-   the text colour and the block the accent, so it holds in both themes. */
-.wm-mark { display: inline-block; position: relative; width: 1.2em; height: 1.2em; vertical-align: -0.24em; margin-right: 0.28em; }
-.wm-mark::before, .wm-mark::after { content: ""; position: absolute; inset: 0; }
-.wm-mark::before { background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Cpath%20d=%22M71.92%2071.92%20A31%2031%200%200%201%2023.15%2065.50%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22/%3E%3Cpath%20d=%22M20.87%2060.60%20A31%2031%200%200%201%2051.08%2019.02%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22%20stroke-dasharray=%2214.43%208.66%22/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Cpath%20d=%22M71.92%2071.92%20A31%2031%200%200%201%2023.15%2065.50%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22/%3E%3Cpath%20d=%22M20.87%2060.60%20A31%2031%200%200%201%2051.08%2019.02%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22%20stroke-dasharray=%2214.43%208.66%22/%3E%3C/svg%3E") center / contain no-repeat; }
-.wm-mark::after { background: var(--accent); -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Crect%20x=%2260.22%22%20y=%2216.92%22%20width=%2216%22%20height=%2216%22%20fill=%22%23000%22%20transform=%22rotate%2836%2068.22%2024.92%29%22/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Crect%20x=%2260.22%22%20y=%2216.92%22%20width=%2216%22%20height=%2216%22%20fill=%22%23000%22%20transform=%22rotate%2836%2068.22%2024.92%29%22/%3E%3C/svg%3E") center / contain no-repeat; }
+/* The app tile (docs/brand/cognos-app-icon*.svg): oxblood on paper, ink on the dark page,
+   where a hairline keeps the ink tile off the ground. */
+.wm-tile { width: 36px; height: 36px; align-self: center; flex-shrink: 0; border-radius: 8px; }
+.wm-tile-dark { display: none; }
+[data-mantine-color-scheme="dark"] .wm-tile-light { display: none; }
+[data-mantine-color-scheme="dark"] .wm-tile-dark { display: block; box-shadow: 0 0 0 1px var(--line); }
 .masthead-eyebrow, .eyebrow {
   font-family: var(--font); font-size: 0.65625rem; font-weight: 500; letter-spacing: 0.16em;
   text-transform: uppercase; color: var(--ink-2);
@@ -367,6 +362,15 @@ a:hover { text-decoration: underline; text-underline-offset: 0.2em; }
   margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--line);
   display: flex; justify-content: space-between; font-size: 0.71875rem; color: var(--ink-3);
 }
+
+/* The creed as the mark's legend: the same code as the mark, solid, dashed and oxblood. */
+.creed-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--font-mono);
+  font-size: 0.65625rem; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; }
+.creed-item { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.creed-item .sw { width: 20px; height: 0; border-top: 3px solid var(--ink); }
+.creed-item.agents .sw { border-top-style: dashed; }
+.creed-item.people { color: var(--accent); }
+.creed-item.people .sw { border-top-color: var(--accent); }
 
 @keyframes cognos-spin { to { transform: rotate(360deg); } }
 /* motion is opted into, element by element; Mantine's own follows theme.respectReducedMotion */

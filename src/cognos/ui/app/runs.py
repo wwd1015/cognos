@@ -23,6 +23,16 @@ from ..panels import (
 )
 
 
+def creed_legend() -> Any:
+    """The creed as the mark's legend (docs/brand, the stacked lockup): solid ink, the engine;
+    dashed, the agents; oxblood, a person."""
+    return html.Span([html.Span([html.Span(className=f"sw {k}"), label], className=f"creed-item {k}")
+                      for k, label in (("engine", "The engine disposes"),
+                                       ("agents", "Agents recommend"),
+                                       ("people", "People decide"))],
+                     className="creed-legend", title="What the parts of the COGNOS mark stand for")
+
+
 def start_choices(templates: list[dict]) -> list[dict]:
     """What a run can start from: a built-in template, one the team saved, or nothing."""
     groups = [("built-in", "Built-in templates"), ("team", "Team templates")]
@@ -135,8 +145,7 @@ def runs_page() -> Any:
                      className="ledger-desc"),
             html.Div(id="runs-table", children=runs_table()),
         ], mt="xl"),
-        html.Div([html.Span("The engine computes every number, agents recommend, people decide."),
-                  html.Span("Internal use")], className="page-foot"),
+        html.Div([creed_legend(), html.Span("Internal use")], className="page-foot"),
         drawer,
         delete_modal(),
         dcc.Download(id="template-download"),

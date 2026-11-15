@@ -65,10 +65,10 @@ def workspace_page(run_id: str) -> Any:
                 # The live log is one click away, not a column: the page keeps the width.
                 dmc.Button("Activity", id="ws-activity-open", variant="subtle", color="gray",
                            size="xs", n_clicks=0, leftSection=icon("tabler:activity", 16)),
-                dmc.Tooltip(dmc.ActionIcon(icon("tabler:arrows-maximize", 18),
+                dmc.Tooltip(dmc.ActionIcon(icon("tabler:layout-sidebar-left-collapse", 18),
                                            id="ws-focus-toggle", variant="subtle", color="gray",
-                                           n_clicks=0, **{"aria-label": "Focus on the page"}),
-                            label="Focus on the page: hide the stage list", id="ws-focus-tip"),
+                                           n_clicks=0, **{"aria-label": "Hide the stage list"}),
+                            label="Hide the stage list", id="ws-focus-tip"),
             ], gap="xs"),
         ], justify="space-between", mt="xs", mb="sm"),
         # The run's views. "Stages" is the work, one stage at a time; the other two cover the

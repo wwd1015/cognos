@@ -1,14 +1,13 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/cognos-logo-dark.svg">
-    <img src="docs/brand/cognos-logo.svg" alt="COGNOS" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/cognos-lockup-dark.svg">
+    <img src="docs/brand/cognos-lockup.svg" alt="COGNOS: the engine disposes, agents recommend, people decide" width="520">
   </picture>
 </p>
 
 # COGNOS
 
-**A multi-agent workbench for regulated model development: the engine disposes, agents recommend,
-people decide.**
+**A multi-agent workbench for regulated model development.**
 
 COGNOS takes a business intent and a dataset through the model-development lifecycle for
 **commercial** modeling (e.g. commercial credit risk, validated under SR 26-2, the interagency
