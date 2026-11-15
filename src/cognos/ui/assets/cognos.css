@@ -712,3 +712,50 @@ a:hover { text-decoration: underline; text-underline-offset: 0.2em; }
 .dz-wait-why { font-size: 0.75rem; font-style: italic; color: var(--ink-3); }
 /* a model is named; its id waits in the tooltip */
 .model-name { white-space: nowrap; }
+
+/* The Explore page's variable table: one line per variable, a switch to take it in or leave
+   it out, and the row opens on the agent's reason and that variable's analyses. */
+/* A short window that scrolls, its header kept in view, so the page stays short. */
+.var-table {
+  border-top: 1px solid var(--line); max-height: 460px; overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.var-head, .var-line {
+  display: grid; grid-template-columns: minmax(150px, 2fr) repeat(6, minmax(48px, 0.6fr)) 0.9fr;
+  gap: 10px; align-items: center;
+}
+.var-head {
+  display: grid; grid-template-columns: 1fr 52px; align-items: center;
+  padding: 6px 0; font-size: 0.6875rem; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ink-2); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 2; background: var(--bg-base);
+}
+.var-head span[title] { cursor: help; text-decoration: underline dotted var(--ink-3); text-underline-offset: 3px; }
+.var-warn { color: var(--mantine-color-yellow-8); font-weight: 600; }
+.var-head > .var-line { padding-left: 22px; }
+.var-in-head { justify-self: end; padding-right: 14px; }
+.var-row {
+  display: grid; grid-template-columns: 1fr 52px; align-items: start;
+  border-bottom: 1px solid var(--hair);
+}
+.var-row:hover { background: var(--accent-tint); }
+.var-row > details > summary { list-style: none; cursor: pointer; padding: 7px 0 7px 22px; position: relative; }
+.var-row > details > summary::-webkit-details-marker { display: none; }
+.var-row > details > summary::before {
+  content: "▸"; position: absolute; left: 6px; top: 8px; color: var(--ink-3); font-size: 0.75rem;
+}
+.var-row > details[open] > summary::before { content: "▾"; }
+.var-switch { justify-self: end; padding: 8px 8px 0 0; }
+.var-cell-name { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.var-name { font-family: var(--font-mono); font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; }
+.var-num { font-family: var(--font-mono); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.var-detail { padding: 4px 12px 14px 22px; }
+.var-row.out .var-line { opacity: 0.45; }
+.var-row.out .var-name { text-decoration: line-through; }
+.var-row.differs { box-shadow: inset 2px 0 0 var(--accent); }
+@media (max-width: 720px) {
+  .var-head { display: none; }
+  .var-line { grid-template-columns: 1fr repeat(3, auto); }
+  .var-line > span:nth-child(2), .var-line > span:nth-child(3),
+  .var-line > span:nth-child(6), .var-line > span:nth-child(7) { display: none; }
+}

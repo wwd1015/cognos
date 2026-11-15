@@ -632,6 +632,7 @@ def _source(state: RunState, payload: dict[str, Any], config: Any) -> list[str]:
         payload["data"] = given  # the decision records what was given, as it was read
     payload["catalog"] = [str(i) for i in payload.get("catalog") or []]  # the tables chosen
     if given is not None and given != state.overrides.data:
+        _set_aside(state, payload, with_exclusions=True)
         state.overrides.data = given
         state.overrides.target, state.overrides.task = target, None
         state.overrides.join, state.overrides.exclude_columns = None, []
@@ -639,12 +640,41 @@ def _source(state: RunState, payload: dict[str, Any], config: Any) -> list[str]:
         state.overrides.screen_exceptions, state.overrides.framework_roles = {}, {}
         return _changed_downstream("gate_source")
     if target and target != state.overrides.target:
+        _set_aside(state, payload, with_exclusions=False)
         state.overrides.target, state.overrides.task = target, None
         state.overrides.transforms = {}  # reviewed against another outcome
         state.overrides.screen_exceptions = {}
         state.overrides.framework_roles = {}
         return _changed_downstream("gate_source")
     return []
+
+
+def _set_aside(state: RunState, payload: dict[str, Any], *, with_exclusions: bool) -> None:
+    """Keep on the gate_source decision what new data clears from the data gate: the
+    exclusions, the forms and the dependent variable. They are offered again on the data
+    gate's form (:func:`carried_forward`) and never put in force by themselves. Data changed
+    twice before the data gate is decided again carries the first set forward."""
+    before = carried_forward(state) or {}
+    aside = {"exclude_columns": (list(state.overrides.exclude_columns) if with_exclusions
+                                 else []) or list(before.get("exclude_columns") or []),
+             "transforms": dict(state.overrides.transforms)
+             or dict(before.get("transforms") or {}),
+             "target": state.overrides.target or before.get("target")}
+    aside = {k: v for k, v in aside.items() if v}
+    if aside:
+        payload["set_aside"] = aside
+
+
+def carried_forward(state: RunState) -> dict[str, Any] | None:
+    """What the data gate decided before the data changed, when it has not been decided
+    since: ``exclude_columns``, ``transforms`` and ``target``, as recorded on the gate_source
+    decision that set them aside. A form pre-fills from it; the engine never applies it."""
+    for d in reversed(state.decisions):
+        if d.gate == "gate_data":
+            return None
+        if d.gate == "gate_source" and d.payload.get("set_aside"):
+            return dict(d.payload["set_aside"])
+    return None
 
 
 def _rename(state: RunState, model: dict[str, Any], names: dict[str, str], known: set[str]) -> bool:

@@ -42,6 +42,7 @@ STEP = {
     "done": ("green", "tabler:circle-check", "Done"),
     "awaiting": ("oxblood", "tabler:hand-stop", "Awaiting your review"),
     "stale": ("yellow", "tabler:refresh-alert", "Out of date — will re-run"),
+    "on_hold": ("gray", "tabler:player-pause", "On hold — an earlier decision is open"),
     "failed": ("red", "tabler:alert-circle", "Failed"),
     "blocked": ("red", "tabler:ban", "Blocked"),
     "skipped": ("gray", "tabler:player-skip-forward", "Skipped"),
