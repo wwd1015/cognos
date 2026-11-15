@@ -209,6 +209,21 @@ def _recordable(options: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in options.items() if not any(w in k.lower() for w in _SECRET_WORDS)}
 
 
+LEFT_OUT = "<left out of the export>"
+
+
+def redacted(options: dict[str, Any]) -> dict[str, Any]:
+    """The options as they may leave the run (export.py): a literal whose name contains a word
+    in _SECRET_WORDS becomes LEFT_OUT. An environment reference (a name ending ``_env``, or a
+    value written ``env:NAME``) is a name, not a secret, and is kept."""
+    def literal(name: str, value: Any) -> bool:
+        return not name.lower().endswith("_env") and not (isinstance(value, str)
+                                                          and value.startswith("env:"))
+
+    return {k: LEFT_OUT if any(w in k.lower() for w in _SECRET_WORDS) and literal(k, v) else v
+            for k, v in options.items()}
+
+
 def load_source(source: Any, plugin_modules: Any = ()) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Fetch one source and say where it came from. No secret is part of the provenance."""
     from . import plugins

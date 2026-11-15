@@ -39,8 +39,12 @@ number stays with the main session. Nothing is committed.
     Input borders: kept as they are. Deck grey: done. Provenance filter: yes, built.
     One-pass scoring: no.
 
-No decision is waiting. Noted, not changed: a run's saved profile (`config.yaml`) still
-carries every source option as written; only the provenance is filtered.
+**Waiting for the user:** a sealed package (`packages/vN.json`) binds the data given
+(`material.data`), source options included, and the export ships it unfiltered. Proposed:
+bind the data with literal secret-named options replaced, so the package never holds one
+and its digest still verifies. A run's own files (`config.yaml`, `state.json`) keep every source
+option as written, because the engine reads them back to fetch the data; an export replaces
+literal options named like a secret and keeps environment references (2026-11-15).
 
 ## Decided and done on 2026-11-13
 

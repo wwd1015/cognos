@@ -72,6 +72,8 @@ Comparisons (`compare.py`: run vs run, re-run vs previous) are mechanical reads 
 no judgment, nothing stored, and "better" only where the metric has a direction (`_HIGHER` / `_LOWER`,
 or the run's own metric direction). Exports (`export.py`) never include `data/`, `models/` or binary
 caches — the sealed holdout stays sealed; a new artifact type that should travel must be a text format.
+An export replaces a literal source option named like a secret (`datasources.redacted`) and keeps
+environment references; a new file that travels and can carry a source must go through the same function.
 
 ## Templates and the data step (ADR-0018)
 - **The data comes after the intent.** `gate_source` (between `gate_intent` and `explore`)
