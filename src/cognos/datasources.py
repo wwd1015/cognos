@@ -200,6 +200,15 @@ def effective_source(config: Any):
     return None
 
 
+# Options are documented as never a secret (config.SourceConfig); this is the net under that rule.
+_SECRET_WORDS = ("password", "key", "token", "secret", "credential")
+
+
+def _recordable(options: dict[str, Any]) -> dict[str, Any]:
+    """The options a provenance may record: none whose name contains a word in _SECRET_WORDS."""
+    return {k: v for k, v in options.items() if not any(w in k.lower() for w in _SECRET_WORDS)}
+
+
 def load_source(source: Any, plugin_modules: Any = ()) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Fetch one source and say where it came from. No secret is part of the provenance."""
     from . import plugins
@@ -215,8 +224,7 @@ def load_source(source: Any, plugin_modules: Any = ()) -> tuple[pd.DataFrame, di
     return df, {
         "kind": source.kind, "connector": connector.label, "origin": connector.origin,
         "location": connector.describe(source), "table": source.table, "query": source.query,
-        "limit": source.limit, "options": {k: v for k, v in source.options.items()
-                                           if "password" not in k.lower() and "key" not in k.lower()},
+        "limit": source.limit, "options": _recordable(source.options),
         "n_rows": int(len(df)), "n_cols": int(df.shape[1]),
         "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }

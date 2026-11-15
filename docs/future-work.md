@@ -32,20 +32,23 @@ number stays with the main session. Nothing is committed.
    `review-2026-11`.
 7. ~~The architecture list, one commit per item.~~ All six done on `review-2026-11`
    (2026-11-13); 445 passed, 2 skipped; ruff clean.
-8. **Waiting for the user:** merge `review-2026-11` into `main`, and the three answers
-   below.
+8. ~~Merge `review-2026-11` into `main`.~~ Merged on 2026-11-15 (`daa3338`), not pushed.
+9. ~~Two follow-ups: `ModelStage.run` cut into steps; the payload check extended to rows
+   and the gate handler.~~ Done 2026-11-15.
+10. ~~The open decisions, one at a time.~~ Run record: yes, built. px to rem: yes, done.
+    Input borders: kept as they are. Deck grey: done. Provenance filter: yes, built.
+    One-pass scoring: no.
 
-Still waiting for a yes or no (none blocks the list): listing re-opens and retries in the
-run record; px to rem and darker input borders; the deck's `--ink-3`.
+No decision is waiting. Noted, not changed: a run's saved profile (`config.yaml`) still
+carries every source option as written; only the provenance is filtered.
 
 ## Decided and done on 2026-11-13
 
 D1 to D11 of the review were confirmed and built. What is left open from them:
 
-- **The run record does not list re-opens and retries.** Both now record who asked (the
-  step's stamp, and `events.jsonl`, which travels in the export), but `process.journal`
-  reads only decisions, lineage and the package. Listing them needs a durable stamp on
-  `RunState`; that is a change to what a run records, so it waits for a yes.
+- ~~The run record does not list re-opens and retries.~~ Confirmed and built on
+  2026-11-15: `state.actions` keeps each re-open, retry and take-over (who, when, which
+  step) and `process.journal` lists them. Runs recorded before show none.
 - **A replaced main run names its successor by run id**, not by name: the runs of one model
   usually share a name.
 - **`examples/live_commercial/run`** (a recorded run) cites `search.py#ratchet_search`,
@@ -54,9 +57,6 @@ D1 to D11 of the review were confirmed and built. What is left open from them:
 ## Suspected (not proven, not changed)
 
 - **ADR-0025's file name** says "six-steps"; its title says seven. Renaming breaks links.
-- **Provenance filter.** `datasources` drops options whose name contains "password" or "key"
-  from the provenance. An option named `token` would be recorded. Options are documented as
-  never a secret; the filter is narrower than the rule.
 - **Environment.** The `.venv`'s `.pth` files carry the macOS hidden flag, so Python 3.12
   skips them and `.venv/bin/python -m pytest` cannot import `cognos` without
   `PYTHONPATH=src`. `chflags nohidden .venv/lib/python3.12/site-packages/*.pth` should clear
@@ -74,15 +74,17 @@ In the order I would do them. None changes what a run records.
 1. ~~Split the three largest modules.~~ Done: `ui/panels/` (one module per stage page),
    `ui/app/` (layout, routing, one callback module per page) and `stages/pool_builder.py`.
    Each was proved a pure move (same definitions, same callbacks and layout, same recorded
-   numbers on nine demo runs). `stages/model.py` is still 840 lines because `run` alone is
-   460; cutting `run` into steps is a further change, not a move.
+   numbers on nine demo runs). `ModelStage.run` was then cut into named steps (445
+   lines to 103), with the same nine-demo proof.
 2. ~~Typed stage payloads, first step.~~ Done for `model` and `backtest`:
    `payloads.py` declares the shapes and `tests/unit/test_payload_shapes.py` fails when a
    writer records an undeclared key, when a reader asks for one, or when a key that is
    read is no longer written by any of three real runs. Nothing uses the shapes at run
-   time. Not covered yet: reads inside a pool member or a backtest candidate row; the
-   gate handler in `engine/gates.py` (one function for every gate, so its reads are not
-   attributed); the other stages' payloads. Seen on the way: `transforms` means
+   time. Reads inside a pool member or a backtest
+   candidate row and the gate handler's reads are covered too (233 payload reads and 114
+   row reads recognised). Not covered: the other stages' payloads; `_who` in
+   `ui/panels/_shared.py`, which takes both kinds of row.
+   Seen on the way: `transforms` means
    `{column: form}` on the model payload and a list of transformations in the champion's
    view; a reader of one given the other would not be caught.
 3. ~~Paths in results are relative to the run.~~ Done: a member's `scorer_path` is recorded
@@ -123,16 +125,15 @@ Looked at and dropped: *fitting the pool members in parallel*. Finalizing the wh
 takes 0.1 to 0.4 s of a 7 to 10 s run (measured on three demos), so there is nothing to
 gain; an earlier note here said otherwise and was wrong.
 
-Next:
+Decided against on 2026-11-15: *scoring a factor's folds in one vectorised pass*. It
+would be faster but agree with today's numbers to a tolerance, not to the bit. The user:
+an analysis that takes seconds or even minutes is fine; do not over-engineer it. No
+further speed work is planned.
 
-1. **What is left is validation itself.** After the memo and the direct fit, most of a
-   run is still `cv_score` (about 2 ms a fold, thousands of folds in the single-factor
-   analysis). The next step would be scoring a factor's folds in one vectorised pass for
-   OLS; that changes the arithmetic, so it needs agreement to a tolerance, not to the bit,
-   and therefore a decision.
-2. **The workbench polls once a second and re-reads `state.json` each time.** Fine for one
-   person; on a shared folder over a network, read the file's modification time first and
-   parse only when it moved.
+Also looked at and dropped: *reading `state.json` only when it moved*. A state load is
+0.15 ms and listing a run 0.45 ms (measured 2026-11-15); the page asks once a second and
+the runs list every three. On a network share a check of the file's time costs a round
+trip too, so there is little to save.
 
 ## Proposed: the workbench
 
@@ -152,7 +153,8 @@ visible selection in forced colours; real underlines; hover actions that also sh
 keyboard focus and touch; folds that open smoothly; 24px hit areas on three small buttons.
 
 Left out, with the reason: a rule under the sticky table head when scrolled and a fade that
-ends at the last row (Chrome-only today); px to rem for about sixty font sizes and darker
-input borders (a wider change of look: ask first); parallax, scroll reveals, page
-transitions (not this look). `docs/deck/index.html` still carries the old `--ink-3`; a
-change there needs an edition-log row.
+ends at the last row (Chrome-only today); darker input borders (decided against on 2026-11-15: the user compared four strengths
+side by side and kept today's; px to rem was confirmed and done the same day); parallax, scroll reveals, page
+transitions (not this look). The deck's `--ink-3` was matched on 2026-11-15 (edition 12). On the raised,
+surface and sunken backgrounds the grey sits at 4.2 to 4.4:1 in the deck and the workbench
+alike: it is measured against the base paper only.

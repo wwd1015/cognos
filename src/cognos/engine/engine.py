@@ -32,7 +32,7 @@ from .graph import (
     STEPS,
     TRIAL_STOPS_BEFORE,
 )
-from .state import Challenge, Gap, GateDecision, RunState, run_lock
+from .state import Challenge, Gap, GateDecision, RunState, StepAction, run_lock
 
 _SEVERITY_ORDER = {
     Verdict.PASS: 0, Verdict.SKIP: 0, Verdict.WARN: 1,
@@ -512,6 +512,7 @@ class Engine:
             if state.status in ("approved", "rejected"):
                 state.status = "running"
             state.set_step(gate, "awaiting", f"re-opened for revision by {by}", by=by)
+            state.actions.append(StepAction(kind="reopen", step=gate, by=by, seat=seat))
             self._save(state)
         events.publish(self.run_dir, "gate_waiting",
                        f"{LABELS[gate]}: re-opened for revision by {by}.", step=gate, by=by)
@@ -557,11 +558,14 @@ class Engine:
                     raise gates.GateError(f"{step} is running in this process; it is not stuck")
                 was = state.steps[step].by or "an unknown process"
                 what = f"taken over from {was} by {by}"
+                done = StepAction(kind="takeover", step=step, by=by, note=was)
             elif status in ("failed", "blocked"):
                 what = f"retry requested by {by}"
+                done = StepAction(kind="retry", step=step, by=by, note=status)
             else:
                 raise gates.GateError(f"{step} is {status}, not failed")
             state.set_step(step, "pending", what)
+            state.actions.append(done)
             self._save(state)
         events.publish(self.run_dir, "step_retry", f"{LABELS[step]}: {what}.", step=step, by=by)
         return self.state

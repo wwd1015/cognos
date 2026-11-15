@@ -252,6 +252,15 @@ def journal(state: RunState, results: dict[str, Any]) -> list[dict[str, str]]:
                      else decision.seat or decision.actor),
             "what": what,
         })
+    for action in state.actions:
+        label = LABELS.get(action.step, action.step)
+        what = {"reopen": f"{label}: re-opened for revision",
+                "retry": f"{label}: asked to run again after it {action.note or 'failed'}",
+                "takeover": f"{label}: taken over from {action.note or 'an unknown process'}, "
+                            "which had left it running"}[action.kind]
+        rows.append({"at": action.at, "who": "person",
+                     "name": f"{action.by} ({action.seat})" if action.seat else action.by,
+                     "what": what})
     lin = state.lineage
     if lin is not None and lin.parent:
         what = (f"Made as a trial run of {lin.parent}, to decide "

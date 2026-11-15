@@ -63,6 +63,19 @@ class GateDecision(BaseModel):
     at: str = Field(default_factory=utcnow)
 
 
+class StepAction(BaseModel):
+    """What a person did to a step outside a gate decision: re-opened a decided gate, asked
+    for a failed step again, or took over a step another process left running. Kept so the
+    run record lists it beside the decisions (``process.journal``)."""
+
+    kind: Literal["reopen", "retry", "takeover"]
+    step: str
+    by: str = ""
+    seat: str = ""  # the seat a gate was re-opened from; empty for a retry
+    note: str = ""  # a take-over says whose step it was
+    at: str = Field(default_factory=utcnow)
+
+
 class PackageSeal(BaseModel):
     """The live pointer at the newest sealed package. The file under ``packages/`` is never
     rewritten; a later change only flips this pointer to ``superseded``."""
@@ -191,6 +204,8 @@ class RunState(BaseModel):
     version: int = 0  # bumped on every save; the UI re-renders when it changes
     steps: dict[str, StepState] = Field(default_factory=lambda: {s: StepState() for s in STEPS})
     decisions: list[GateDecision] = Field(default_factory=list)
+    # Re-opens, retries and take-overs, in order. Empty on runs recorded before they were kept.
+    actions: list[StepAction] = Field(default_factory=list)
     challenges: list[Challenge] = Field(default_factory=list)
     gaps: list[Gap] = Field(default_factory=list)
     overrides: Overrides = Field(default_factory=Overrides)
