@@ -137,6 +137,9 @@ versioning is SemVer.
   re-runs when one is recorded after it; `docs/limitations.md` lists the two apart.
 
 ### Changed
+- **The run record lists re-opens, retries and take-overs.** Each is kept on the run
+  (`state.actions`: who, when, which step) and shown in order beside the decisions. Runs
+  recorded before this show none; the activity log still has theirs.
 - **Structure only, nothing recorded changes.** `ui/panels.py` is the package `ui/panels/`
   (one module per stage page), `ui/app.py` is `ui/app/` (layout, routing, one callback module
   per page), and the end of the model stage is `stages/pool_builder.py`. Every old name is

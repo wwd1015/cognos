@@ -274,7 +274,9 @@ measures.
   it. The lock is cross-process (`state.RunLock`, a lock file under `<runs>/_locks/`); never
   hold it across a stage, an agent call or anything slow.
 - **Human actions take `by`** (default `identity.whoami()`) and record it: decisions, answers,
-  package seals, re-opens. A new human action must do the same.
+  package seals, re-opens. A new human action must do the same. A re-open, a retry and a
+  take-over are also kept on `state.actions` (`StepAction`), which is what the run record
+  lists them from; a new action on a step that is not a gate decision goes there too.
 - The engine never decides a running step is dead; only `retry(step, stuck=True)` takes one
   over.
 - Run deletion goes through `service.delete_runs` (run ids only, refused while in flight).

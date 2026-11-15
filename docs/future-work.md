@@ -32,20 +32,21 @@ number stays with the main session. Nothing is committed.
    `review-2026-11`.
 7. ~~The architecture list, one commit per item.~~ All six done on `review-2026-11`
    (2026-11-13); 445 passed, 2 skipped; ruff clean.
-8. **Waiting for the user:** merge `review-2026-11` into `main`, and the three answers
-   below.
+8. ~~Merge `review-2026-11` into `main`.~~ Merged on 2026-11-15 (`daa3338`), not pushed.
+9. **Now:** two follow-ups on `review-2026-11`, to be merged when done: `ModelStage.run`
+   cut into steps, and the payload check extended to rows and the gate handler. Then the
+   open decisions below, one at a time with the user.
 
-Still waiting for a yes or no (none blocks the list): listing re-opens and retries in the
-run record; px to rem and darker input borders; the deck's `--ink-3`.
+Still waiting for a yes or no: px to rem and darker input borders; the deck's `--ink-3`;
+the provenance filter; scoring a factor's folds in one pass.
 
 ## Decided and done on 2026-11-13
 
 D1 to D11 of the review were confirmed and built. What is left open from them:
 
-- **The run record does not list re-opens and retries.** Both now record who asked (the
-  step's stamp, and `events.jsonl`, which travels in the export), but `process.journal`
-  reads only decisions, lineage and the package. Listing them needs a durable stamp on
-  `RunState`; that is a change to what a run records, so it waits for a yes.
+- ~~The run record does not list re-opens and retries.~~ Confirmed and built on
+  2026-11-15: `state.actions` keeps each re-open, retry and take-over (who, when, which
+  step) and `process.journal` lists them. Runs recorded before show none.
 - **A replaced main run names its successor by run id**, not by name: the runs of one model
   usually share a name.
 - **`examples/live_commercial/run`** (a recorded run) cites `search.py#ratchet_search`,
@@ -130,9 +131,11 @@ Next:
    analysis). The next step would be scoring a factor's folds in one vectorised pass for
    OLS; that changes the arithmetic, so it needs agreement to a tolerance, not to the bit,
    and therefore a decision.
-2. **The workbench polls once a second and re-reads `state.json` each time.** Fine for one
-   person; on a shared folder over a network, read the file's modification time first and
-   parse only when it moved.
+
+Also looked at and dropped: *reading `state.json` only when it moved*. A state load is
+0.15 ms and listing a run 0.45 ms (measured 2026-11-15); the page asks once a second and
+the runs list every three. On a network share a check of the file's time costs a round
+trip too, so there is little to save.
 
 ## Proposed: the workbench
 

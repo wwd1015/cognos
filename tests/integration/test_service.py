@@ -176,3 +176,15 @@ def test_reopen_and_retry_record_who_asked(tmp_path):
     events = service.run_events(run_id, root=root)
     assert any(e["type"] == "gate_waiting" and e.get("by") == "bo@desk" for e in events)
     assert any(e["type"] == "step_retry" and e.get("by") == "cy@desk" for e in events)
+
+    # both are kept on the run and listed in the run record, in order, beside the decisions
+    from cognos.engine.process import journal
+
+    assert [(a.kind, a.step, a.by, a.seat) for a in st.actions] == [
+        ("reopen", "gate_data", "bo@desk", "developer"), ("retry", "explore", "cy@desk", "")]
+    record = journal(st, service.results(run_id, root))
+    said = [(r["name"], r["what"]) for r in record if r["who"] == "person"]
+    reopened = next(i for i, (n, w) in enumerate(said) if "re-opened for revision" in w)
+    assert said[reopened][0] == "bo@desk (developer)"
+    assert any(n == "cy@desk" and "asked to run again after it failed" in w for n, w in said)
+    assert any("accept" in w for _, w in said[:reopened])  # the decisions before it still lead

@@ -70,6 +70,25 @@ def test_journal_orders_people_agents_and_the_engine():
     assert "keep them" in rows[0]["what"]
 
 
+def test_journal_lists_reopens_retries_and_takeovers():
+    from cognos.engine.state import StepAction
+
+    state = RunState(run_id="r")
+    assert journal(state, {}) == []  # a run recorded before actions were kept shows none
+    state.actions += [
+        StepAction(kind="retry", step="model", by="cy", note="failed", at="2026-01-03T00:00:00+00:00"),
+        StepAction(kind="reopen", step="gate_data", by="bo", seat="developer",
+                   at="2026-01-02T00:00:00+00:00"),
+        StepAction(kind="takeover", step="explore", by="di", note="al@laptop",
+                   at="2026-01-04T00:00:00+00:00")]
+    rows = journal(RunState.model_validate_json(state.model_dump_json()), {})
+    assert [r["name"] for r in rows] == ["bo (developer)", "cy", "di"]  # in the order they happened
+    assert all(r["who"] == "person" for r in rows)
+    assert "re-opened for revision" in rows[0]["what"]
+    assert "asked to run again after it failed" in rows[1]["what"]
+    assert "taken over from al@laptop" in rows[2]["what"]
+
+
 def test_reset_supersedes_a_sealed_package(make_config, runs_dir):
     eng = Engine(make_config("regression"), runs_root=runs_dir, mode="interactive")
     state = eng.state
