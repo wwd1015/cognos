@@ -33,8 +33,10 @@ is a person. The creed line reads *Engine disposes · Agents recommend · People
 "People decide" in the accent.
 
 Drawn in the Ledger palette (ink `#16140f`, oxblood `#7d2230`; on dark, `#f0ede4` and `#e0939e`).
-The name is set in Source Serif 4 (600, wide tracking) and the creed in IBM Plex Mono, with
-system fallbacks. The letters are text rather than outlines (`textLength` keeps their width
-fixed under a fallback face), so they can still be refined.
+The name is set in Source Serif 4 (600, display optical size, tracking 0.08em) and the creed in
+IBM Plex Mono (500). The letters are drawn as outlines, not text: an SVG shown as an image
+(GitHub, a slide, an email) never loads web fonts, and a fallback face or a viewer's own
+text layout moved the creed's coloured words onto the others. To change the words, edit them
+as text and outline them again with the two fonts.
 
 The seal is one colour so it can serve as a CSS mask; there the dashed part reads by its gaps.
