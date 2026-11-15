@@ -11,6 +11,7 @@ from dash import ALL, Dash, Input, Output, State, ctx, no_update
 from ... import service
 from ...modeling import column_transforms as ct
 from .. import transform_review
+from ..panels.explore import var_row_class
 
 
 def register_transform_callbacks(app: Dash) -> None:
@@ -217,3 +218,19 @@ def register_transform_callbacks(app: Dash) -> None:
             return no_update, no_update  # unreadable knots: the refit says why
         decided = {**tr.decisions(value), sel: spec}
         return json.dumps(decided), tr.next_open(data, decided, sel)
+
+    @app.callback(Output({"type": "gate-field", "gate": "gate_data", "field": "exclude"}, "value"),
+                  Output("var-count", "children"),
+                  Output({"type": "var-row", "col": ALL}, "className"),
+                  Input({"type": "var-in", "col": ALL}, "checked"),
+                  State("var-advised", "data"), prevent_initial_call=True)
+    def switch_variables(checked, advised):
+        # The Explore page's In/Out switches are the data gate's exclusions: the list of
+        # transformations follows them at once (it listens to the same field).
+        cols = [s["id"]["col"] for s in ctx.inputs_list[0]]
+        inside = [bool(c) for c in checked or []]
+        out = [col for col, on in zip(cols, inside, strict=False) if not on]
+        advised_out = set(advised or [])
+        return (out, f"{len(cols) - len(out)} in · {len(out)} out",
+                [var_row_class(col, on, advised_out)
+                 for col, on in zip(cols, inside, strict=False)])

@@ -15,6 +15,7 @@ import dash_mantine_components as dmc
 
 from ...artifacts import StageResult
 from ...engine.graph import LABELS
+from ...engine.process import shown_status
 from ...engine.state import RunState
 from ..components import empty, icon, step_badge, verdict_badge
 
@@ -188,7 +189,7 @@ def stage_panel(stage: str, res: StageResult | None, state: RunState, scheme: st
         dmc.Stack([dmc.Title(LABELS[stage], order=3),
                    dmc.Text(STAGE_BLURB[stage], size="sm", c="dimmed", maw=760)], gap=2),
         dmc.Group([verdict_badge(res.verdict.value) if res is not None and status != "running"
-                   else None, step_badge(status, "md")], gap="xs"),
+                   else None, step_badge(shown_status(state, stage), "md")], gap="xs"),
     ], justify="space-between", align="flex-start")
     if status == "failed":
         msg = state.steps[stage].message or "The step failed."

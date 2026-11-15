@@ -20,7 +20,7 @@ from ...engine.graph import (
     STAGE_OF_GATE,
     STAGES,
 )
-from ...engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, seat_label
+from ...engine.process import SEAT_LABEL, SEAT_OF_GATE, journal, seat_label, waits_on
 from .. import ask as ask_ui
 from ..components import (
     empty,
@@ -260,6 +260,11 @@ def rail(st, selected: str | None) -> Any:
             right = verdict_badge(st.steps[stage].verdict, "xs")
         desc = LABELS[gate] + " — " + gstatus.replace("_", " ") if gstatus and gstatus not in (
             "pending", "skipped") else step_badge_text(status)
+        held = waits_on(st, gate) if gate else None
+        if held or (gstatus != "awaiting" and waits_on(st, stage)):
+            # finished work an open earlier decision may change: say which one
+            status = "on_hold"
+            desc = "On hold — waits on " + LABELS[held or waits_on(st, stage)]
         if status == "stale" and st.steps[stage].rerun_reason:  # say what made it out of date
             why = st.steps[stage].rerun_reason
             desc = "Out of date — " + (why if len(why) <= 70 else why[:69].rstrip() + "…")

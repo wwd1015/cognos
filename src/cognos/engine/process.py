@@ -25,7 +25,7 @@ from ..agents.contracts import FRIENDLY
 from ..config import CORE_DESIGN
 from ..datasources import redacted_data
 from ..fsutil import atomic_write
-from .graph import LABELS, STAGES, STEPS
+from .graph import GATES, LABELS, STAGES, STEPS, descendants
 from .state import PackageSeal, RunState, utcnow
 
 SEAT_OF_GATE = {
@@ -187,6 +187,22 @@ def supersede(state: RunState, why: str) -> None:
     state.package.superseded_because = why
     if state.status == "approved":
         state.status = "running"
+
+
+def waits_on(state: RunState, step: str) -> str | None:
+    """The earlier gate a finished step waits on: a gate upstream that a person re-opened.
+    The step's work stands until that gate is decided again (the same decision changes
+    nothing; a changed one marks it stale). Computed on read, never stored."""
+    if state.status_of(step) != "done":
+        return None
+    return next((g for g in GATES if g != step and state.status_of(g) == "awaiting"
+                 and step in descendants(g)), None)
+
+
+def shown_status(state: RunState, step: str) -> str:
+    """The status a page shows for a step: ``on_hold`` for finished work that an open
+    earlier decision may change (:func:`waits_on`), else the stored status."""
+    return "on_hold" if waits_on(state, step) else state.status_of(step)
 
 
 def next_action(state: RunState) -> dict[str, str]:

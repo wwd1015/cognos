@@ -369,7 +369,10 @@ class Engine:
                                f"{LABELS[gate]}: waiting for the data.", step=gate)
                 return
             stage = STAGE_OF_GATE[gate]
-            if state.mode == "autonomous":
+            last = state.last_decision(gate)
+            # Express preparation never replaces a person's decision: a gate a person
+            # decided comes back to a person when the work under it changes.
+            if state.mode == "autonomous" and not (last and last.actor == "human"):
                 if state.status_of(stage) == "blocked":
                     state.set_step(gate, "blocked", "the reviewed stage BLOCKed")
                     self._save(state)

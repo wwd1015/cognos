@@ -334,7 +334,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 12, "system_version": "1.0.0", "date": "2026-11-15"}</script>
+<script type="application/json" id="edition">{"edition": 13, "system_version": "1.0.0", "date": "2026-11-15"}</script>
 
 <div class="stage" id="stage">
 
@@ -596,7 +596,7 @@ body.moving .chrome { opacity: 1; }
       <div class="pips reveal d1"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><span>07 / 08</span></div>
       <div class="kicker reveal d1">A change always says why</div>
       <h2 class="reveal d1">Change the sauce, and every dish that uses it goes back on the stove, with the reason on the ticket.</h2>
-      <div class="gloss reveal d2"><span>In COGNOS</span><p>A decision is stored beside the profile, never in it. Everything after it is marked out of date with the reason and runs again, and the previous result is kept to compare.</p></div>
+      <div class="gloss reveal d2"><span>In COGNOS</span><p>A decision is stored beside the profile, never in it. Everything after it is marked out of date with the reason and runs again, and the previous result is kept to compare. Re-opening a decision puts what follows on hold: the same decision again leaves it standing, a changed one sends it back to a person with the earlier choices offered.</p></div>
     </div>
     <div class="fig reveal d3" id="sauce">
       <span class="corner c-fig">Fig 9</span><span class="corner c-title">Change the sauce</span>
@@ -720,6 +720,7 @@ body.moving .chrome { opacity: 1; }
         <tr><td class="mono">10</td><td class="mono">v1.0.0</td><td class="mono">2026-11-08</td><td>The design stage in six confirmed steps: model form (each framework's role can be changed with a reason, and a form the engine cannot fit proposed), data treatment, variables, assessment plan, single-factor analysis, summary. The single-factor analysis is seen before the search, after the rules; every look is kept, revised rules are counted and exceptions carry a reason. Models are filtered by rules including variance inflation and ranked in order or by a weighted blend (ADR-0025).</td></tr>
         <tr><td class="mono">11</td><td class="mono">v1.0.0</td><td class="mono">2026-11-08</td><td>A variable can enter in several forms at once (as it is and its log; a driver lagged and as its change), each a variable of its own in the single-factor screen. Every form is decided at the data gate; the design gate fits only shapes and expressions and shows the variables and their forms as one table (ADR-0026). The design stage has seven steps: the variable rules come before the single-factor analysis and the model rules and ranking after it (ADR-0025).</td></tr>
         <tr><td class="mono">12</td><td class="mono">v1.0.0</td><td class="mono">2026-11-15</td><td>Small grey text meets 4.5:1 contrast in both themes, matching the workbench.</td></tr>
+        <tr><td class="mono">13</td><td class="mono">v1.0.0</td><td class="mono">2026-11-15</td><td>Re-opening a decision puts the decisions after it on hold instead of leaving them looking settled; new data sends the data gate back with the earlier exclusions and forms offered where they still apply, and express preparation never replaces a person's decision. On the Explore page the outcome sits with the join and every variable is one line with its numbers (correlation, information value, stability, collinearity) and a switch to take it in or leave it out.</td></tr>
       </tbody>
     </table>
     </div>

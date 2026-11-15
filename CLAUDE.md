@@ -62,7 +62,12 @@ definition and segment cannot be assumed, and `approve` refuses while any of the
 `approve` writes `packages/vN.json` once (a digest of recorded facts). The data it binds has
 literal source options named like a secret replaced (`datasources.redacted_data`), so a package
 never holds one. A later invalidation supersedes the live pointer and does not rewrite the file. Autonomous acceptance is seat
-`express` — preparation, not a signature, and it does not seal a package. The record
+`express` — preparation, not a signature, and it does not seal a package. Express never replaces a
+person's decision: a gate a person decided waits for a person when the work under it changes.
+Re-opening a gate changes nothing downstream until it is decided again; meanwhile a finished
+step after it shows *on hold* (`process.waits_on`, computed on read). New data sets the data
+gate's exclusions, forms and target aside on the gate_source decision (`set_aside`); the form
+offers them again (`gates.carried_forward`), the engine never applies them. The record
 (`process.journal`) is computed on read from stamps the run already carries.
 
 Every `state.invalidate(steps, why)` must say **why** (use `gates.why(...)` for a gate decision): the

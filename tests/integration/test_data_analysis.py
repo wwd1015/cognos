@@ -230,7 +230,7 @@ def test_plugin_tool_is_requested_by_name_and_shown_with_its_origin(make_config,
                        cls=plotly.utils.PlotlyJSONEncoder)
     assert "Plugin tool (credit_tools)" in panel and "Built-in tool" not in panel and '"type": "Graph"' in panel
     assert "Weight of evidence by band of leverage" in panel or "Weight of evidence" in panel
-    assert "Dependent variable" in panel and "Outcome and variables" in panel
+    assert "Dependent variable" in panel and "Variables" in panel and "var-in" in panel
     assert '"c": null' not in panel
     assert ui.gate_payload("gate_data", "edit", {"exclude": [], "target": "default"}, eng.run_id)[0] == {
         "exclude_columns": [], "target": "default"}

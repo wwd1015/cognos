@@ -10,7 +10,7 @@ from dash import html
 from ... import service
 from ...artifacts import StageResult
 from ...engine.graph import LABELS, SEND_BACK_TARGETS
-from ...engine.process import SEAT_OF_GATE, seat_label
+from ...engine.process import SEAT_OF_GATE, seat_label, shown_status, waits_on
 from ...engine.state import RunState
 from ..components import (
     empty,
@@ -66,7 +66,7 @@ def gate_block(gate: str, state: RunState, res: StageResult | None, body: list |
         dmc.Group([dmc.ThemeIcon(icon("tabler:user-check", 16), variant="light", radius="xl",
                                  color="oxblood"),
                    dmc.Text(f"{LABELS[gate]} — {seat_label(owner)}", fw=650)], gap="xs"),
-        step_badge(status),
+        step_badge(shown_status(state, gate)),
     ], justify="space-between", mb="xs")
     if status == "skipped":
         return None
@@ -101,6 +101,13 @@ def gate_block(gate: str, state: RunState, res: StageResult | None, body: list |
             dmc.Text([dmc.Text(last.action.replace("_", " "), fw=650, span=True), f" by {who}",
                       f" — {last.reason}" if last.reason else ""], size="sm"),
         ], className="gate-done")] if last else [empty("Decided.")]
+        held = waits_on(state, gate)
+        if held:  # an earlier decision is open: this one stands or comes back, never silently
+            return dmc.Card([header, *rec, dmc.Alert(
+                f"{LABELS[held]} is open again. If it stays as it was, this decision stands. "
+                "If it changes, this decision comes back to you, with your choices filled "
+                "in where they still apply.", color="gray", variant="light", mt="xs",
+                icon=icon("tabler:player-pause"))], className="cognos-gate")
         revise = (dmc.Group([dmc.Button("Revise decision", id={"type": "reopen", "gate": gate},
                                         variant="subtle", size="xs",
                                         leftSection=icon("tabler:edit"))], mt="xs")
