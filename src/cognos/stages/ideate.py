@@ -290,7 +290,7 @@ def _open_questions(cfg: CognosConfig, profile: dict, structure: dict) -> list[d
         q.append({"id": "data-leakage", "source": "data",
                   "question": f"Explore flagged {', '.join(leaks)} as possible target leakage — "
                               "confirm whether each is in the information set at prediction time; "
-                              "if not, add it to data.drop_columns and re-run."})
+                              "if not, exclude it at the data gate (re-open it if it is already decided)."})
     if structure["shape"] == "cross_sectional" and cfg.task.value != "timeseries":
         datey = _match_hints(list(profile.get("dtypes", {}).keys()), _DATE_HINTS)
         datey = [c for c in datey if c != cfg.data.target]

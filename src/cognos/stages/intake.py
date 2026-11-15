@@ -79,8 +79,9 @@ class IntakeStage(Stage):
                    for a in ctx.sponsor_answers()}
         answered: dict[str, str] = {}
         for f in fields:
-            if f.id in ctx.overrides.design or f.id in ctx.overrides.compliance:
-                answered[f.id] = ctx.overrides.design.get(f.id) or ctx.overrides.compliance[f.id]
+            decided = ctx.overrides.design.get(f.id) or ctx.overrides.compliance.get(f.id)
+            if decided:
+                answered[f.id] = decided
             elif question_id(f.id, "") in answers:
                 answered[f.id] = answers[question_id(f.id, "")]
 

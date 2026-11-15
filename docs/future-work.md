@@ -53,15 +53,7 @@ D1 to D11 of the review were confirmed and built. What is left open from them:
 
 ## Suspected (not proven, not changed)
 
-- **Stale question text.** The design stage's leakage question tells the sponsor to edit
-  `data.drop_columns` and re-run. Exclusions are a data-gate decision now.
-- **Stale config docstrings.** `StructuralConfig` and `MigrationConfig` say the benchmark is
-  scored "on the sealed holdout"; it is scored on the test sample. `ColumnTransform` cites
-  `modeling/transforms.py` for what lives in `column_transforms.py`. (Docstrings only.)
 - **ADR-0025's file name** says "six-steps"; its title says seven. Renaming breaks links.
-- **`CHANGELOG.md` → Unreleased** repeats "Added" and "Changed" headings.
-- **`intake.py`**: `ctx.overrides.design.get(f.id) or ctx.overrides.compliance[f.id]` raises
-  `KeyError` if a design override were ever stored empty. No path stores one today.
 - **Provenance filter.** `datasources` drops options whose name contains "password" or "key"
   from the provenance. An option named `token` would be recorded. Options are documented as
   never a secret; the filter is narrower than the rule.

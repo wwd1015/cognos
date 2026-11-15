@@ -287,7 +287,7 @@ class EvaluationConfig(BaseModel):
 
 
 class ColumnTransform(BaseModel):
-    """How one column enters the model (ADR-0024, ``modeling/transforms.py``).
+    """How one column enters the model (ADR-0024, ``modeling/column_transforms.py``).
 
     Decided in two steps: at the data gate *whether* the column is transformed and by which
     ``kind`` (``as_is`` keeps it as it is); at the design gate *how*, by the parameters below.
@@ -373,8 +373,8 @@ class StructuralConfig(BaseModel):
     """Merton structural model support (modeling/structural.py) — needs market observables.
 
     When enabled and the three columns exist, the engine solves for distance-to-default and adds it
-    as an engineered feature (hybrid mode), and scores the pure structural PD on the sealed holdout
-    as a labelled challenger benchmark.
+    as an engineered feature (hybrid mode), and scores the pure structural PD on the test sample
+    as a labelled challenger benchmark (a counted look, never the sealed holdout).
     """
 
     enabled: bool = False
@@ -391,7 +391,7 @@ class MigrationConfig(BaseModel):
     When enabled and the rating/next-rating columns exist, the model stage estimates a cohort
     transition matrix on the training partition (NR-adjusted, Laplace-smoothed), swaps the raw
     rating for the horizon cumulative PD it implies (``migration_pd``, the hybrid feature), scores
-    the pure-migration PD on the sealed holdout as a labelled challenger benchmark, and reports a
+    the pure-migration PD on the test sample as a labelled challenger benchmark (a counted look), and reports a
     by-rating expected-loss forecast. ``next_rating_col`` is outcome data — like the target, it is
     never a feature.
     """
