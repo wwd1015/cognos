@@ -1,7 +1,7 @@
 # COGNOS
 
-COGNOS is a governed model-development system. **Agents recommend**, people **decide** in named
-seats, and a **deterministic engine** grounds, verifies, and records every result. The reasoning
+COGNOS is a governed model-development system. A **deterministic engine** grounds, verifies, and
+records every result, **agents recommend**, and people **decide** in named seats. The reasoning
 layer automates judgment. It does not remove the decision. Finishing a run is not a signature.
 The determinism is what keeps the reasoning honest (it is the anti-hallucination mechanism).
 

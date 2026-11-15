@@ -966,7 +966,8 @@ class DocumentStage(Stage):
                              else f"{rec.get('provider', '')}:{rec.get('model', '')}",
                              str(rec.get("output", {}).get("summary", "")).replace("|", "/")])
         log = ["# Decision log", "",
-               "Agents recommend. A person decides in a seat: the model developer, the "
+               "The engine computes and checks every number. Agents recommend. A person "
+               "decides in a seat: the model developer, the "
                "independent reviewer, or the approver. Express preparation accepts gates so a "
                "run can finish; that is not a signature. A sealed package is the signature.", "",
                "## Agent recommendations", "",

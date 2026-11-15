@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>COGNOS: how it works and why it is built this way</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%20role%3D%22img%22%20aria-label%3D%22COGNOS%22%3E%3Ctitle%3ECOGNOS%3C/title%3E%3Ccircle%20cx%3D%2230%22%20cy%3D%2250%22%20r%3D%2219%22%20fill%3D%22none%22%20stroke%3D%22%2316140f%22%20stroke-width%3D%228%22%20stroke-dasharray%3D%228.5%205.4%22/%3E%3Ccircle%20cx%3D%2271%22%20cy%3D%2250%22%20r%3D%2223%22%20fill%3D%22%237d2230%22/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%20role=%22img%22%20aria-label=%22COGNOS%22%3E%3Ctitle%3ECOGNOS%3C/title%3E%3Cpath%20d=%22M71.92%2071.92%20A31%2031%200%200%201%2023.15%2065.50%22%20fill=%22none%22%20stroke=%22%2316140f%22%20stroke-width=%2213%22/%3E%3Cpath%20d=%22M20.87%2060.60%20A31%2031%200%200%201%2051.08%2019.02%22%20fill=%22none%22%20stroke=%22%2316140f%22%20stroke-width=%2213%22%20stroke-dasharray=%2214.43%208.66%22/%3E%3Crect%20x=%2260.22%22%20y=%2216.92%22%20width=%2216%22%20height=%2216%22%20fill=%22%237d2230%22%20transform=%22rotate%2836%2068.22%2024.92%29%22/%3E%3C/svg%3E">
 <!--
   The COGNOS deck. One self-contained file: open it in a browser, no build step.
 
@@ -179,13 +179,15 @@ h3 { font-family: var(--font); font-weight: 600; font-size: 28px; line-height: 1
 .title-slide { padding-top: 0; padding-bottom: 0; }
 .title-grid { flex: 1; display: grid; grid-template-columns: 1fr 640px; gap: 120px; align-items: center; }
 .title-grid h1 { margin: 28px 0 0; }
-/* the logo (docs/brand/cognos-logo.svg): the two O's are the creed, dashed for the agents and solid
-   for the person who decides */
+.title-grid h1.wordmark { white-space: nowrap; font-size: 168px; }
+.title-grid h1 .wm-mark { width: 0.82em; height: 0.82em; vertical-align: -0.06em; margin-right: 0.16em; }
+/* the logo (docs/brand/cognos-logo.svg): the creed as one C, in its order. Solid ink, the
+   engine disposes; dashed, agents recommend; the oxblood block that locks it, people decide */
 .wordmark { font-weight: 600; letter-spacing: 0.02em; }
-.wm-o { display: inline-block; width: 0.7em; height: 0.7em; margin: 0 0.04em; border-radius: 50%; box-sizing: border-box; }
-.wm-o.agent { background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2233%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2211%22%20stroke-dasharray%3D%2216%209.9%22/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2233%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2211%22%20stroke-dasharray%3D%2216%209.9%22/%3E%3C/svg%3E") center / contain no-repeat; }
-.wm-o.person { background: var(--accent); }
+.wm-mark { display: inline-block; position: relative; width: 1.2em; height: 1.2em; vertical-align: -0.24em; margin-right: 0.28em; }
+.wm-mark::before, .wm-mark::after { content: ""; position: absolute; inset: 0; }
+.wm-mark::before { background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Cpath%20d=%22M71.92%2071.92%20A31%2031%200%200%201%2023.15%2065.50%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22/%3E%3Cpath%20d=%22M20.87%2060.60%20A31%2031%200%200%201%2051.08%2019.02%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22%20stroke-dasharray=%2214.43%208.66%22/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Cpath%20d=%22M71.92%2071.92%20A31%2031%200%200%201%2023.15%2065.50%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22/%3E%3Cpath%20d=%22M20.87%2060.60%20A31%2031%200%200%201%2051.08%2019.02%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22%20stroke-dasharray=%2214.43%208.66%22/%3E%3C/svg%3E") center / contain no-repeat; }
+.wm-mark::after { background: var(--accent); -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Crect%20x=%2260.22%22%20y=%2216.92%22%20width=%2216%22%20height=%2216%22%20fill=%22%23000%22%20transform=%22rotate%2836%2068.22%2024.92%29%22/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Crect%20x=%2260.22%22%20y=%2216.92%22%20width=%2216%22%20height=%2216%22%20fill=%22%23000%22%20transform=%22rotate%2836%2068.22%2024.92%29%22/%3E%3C/svg%3E") center / contain no-repeat; }
 .title-rule { height: 3px; width: 360px; background: var(--accent); margin: 52px 0 44px; }
 .title-slide .lede { font-size: 32px; max-width: 880px; color: var(--ink-2); }
 .creed { border-top: 1px solid var(--line-strong); }
@@ -334,7 +336,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 13, "system_version": "1.0.0", "date": "2026-11-15"}</script>
+<script type="application/json" id="edition">{"edition": 14, "system_version": "1.0.0", "date": "2026-11-15"}</script>
 
 <div class="stage" id="stage">
 
@@ -344,7 +346,7 @@ body.moving .chrome { opacity: 1; }
   <div class="title-grid">
     <div>
       <div class="kicker reveal d1">How it works, and why it is built this way</div>
-      <h1 class="reveal d2 wordmark" aria-label="COGNOS">C<span class="wm-o agent"></span>GN<span class="wm-o person"></span>S</h1>
+      <h1 class="reveal d2 wordmark" aria-label="COGNOS"><span class="wm-mark" aria-hidden="true"></span>COGNOS</h1>
       <div class="title-rule draw"></div>
       <p class="lede reveal d3">A multi-agent workbench for developing models that have to stand up to validation, audit and a regulator.</p>
     </div>
@@ -721,6 +723,7 @@ body.moving .chrome { opacity: 1; }
         <tr><td class="mono">11</td><td class="mono">v1.0.0</td><td class="mono">2026-11-08</td><td>A variable can enter in several forms at once (as it is and its log; a driver lagged and as its change), each a variable of its own in the single-factor screen. Every form is decided at the data gate; the design gate fits only shapes and expressions and shows the variables and their forms as one table (ADR-0026). The design stage has seven steps: the variable rules come before the single-factor analysis and the model rules and ranking after it (ADR-0025).</td></tr>
         <tr><td class="mono">12</td><td class="mono">v1.0.0</td><td class="mono">2026-11-15</td><td>Small grey text meets 4.5:1 contrast in both themes, matching the workbench.</td></tr>
         <tr><td class="mono">13</td><td class="mono">v1.0.0</td><td class="mono">2026-11-15</td><td>Re-opening a decision puts the decisions after it on hold instead of leaving them looking settled; new data sends the data gate back with the earlier exclusions and forms offered where they still apply, and express preparation never replaces a person's decision. On the Explore page the outcome sits with the join and every variable is one line with its numbers (correlation, information value, stability, collinearity) and a switch to take it in or leave it out.</td></tr>
+        <tr><td class="mono">14</td><td class="mono">v1.0.0</td><td class="mono">2026-11-15</td><td>The three-part C mark replaces the two-O wordmark on the title slide and the tab icon: solid ink, the engine disposes; dashed, agents recommend; the oxblood block that locks the C, people decide.</td></tr>
       </tbody>
     </table>
     </div>

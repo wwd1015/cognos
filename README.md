@@ -7,8 +7,8 @@
 
 # COGNOS
 
-**A multi-agent workbench for regulated model development: agents recommend, you decide, the
-engine disposes.**
+**A multi-agent workbench for regulated model development: the engine disposes, agents recommend,
+people decide.**
 
 COGNOS takes a business intent and a dataset through the model-development lifecycle for
 **commercial** modeling (e.g. commercial credit risk, validated under SR 26-2, the interagency
@@ -35,12 +35,12 @@ at the data gate, re-run by validation and printed in the white paper.
 In both, an **Intake agent** reads the documents, restates the goal, and **interviews**
 you wherever the intent is not clear, before any data is touched.
 
-At every judgment step an **LLM agent recommends** — which columns may be inputs, which econometric
-framework fits, which champion to ship, what a validator would challenge. **People decide in seats**:
-the model developer at intent, data, design and champion; an independent reviewer at validation; an approver
-at sign-off. A seat cannot act on another seat's gate. A **deterministic engine disposes**: it
-computes every number, keeps the sealed holdout sealed, checks every agent answer (and makes the
-agent retry when it fails), and is the only thing that can BLOCK.
+A **deterministic engine disposes**: it computes every number, keeps the sealed holdout sealed,
+checks every agent answer (and makes the agent retry when it fails), and is the only thing that can
+BLOCK. At every judgment step an **LLM agent recommends** — which columns may be inputs, which
+econometric framework fits, which champion to ship, what a validator would challenge. **People
+decide in seats**: the model developer at intent, data, design and champion; an independent
+reviewer at validation; an approver at sign-off. A seat cannot act on another seat's gate.
 
 Finishing the analysis is not a signature. Autonomous mode is express preparation: the gates are
 accepted and marked as such, and no package is sealed. An approver seals one only after use,
@@ -320,7 +320,7 @@ are chosen. Use a real network share, not a syncing folder
 
 ## What makes it trustworthy
 
-- **Agents recommend; the engine disposes.** Every agent answer is validated against a contract and
+- **The engine disposes; agents recommend.** Every agent answer is validated against a contract and
   engine checks (unknown fact ids, a pool or a champion outside the candidates on the page, a non-fittable family, an
   excluded target, a typed metric value…) and retried with the errors; failures are visible, never
   silent.

@@ -1,6 +1,6 @@
 # COGNOS architecture
 
-> v1.0: **agents recommend, humans decide, the engine disposes**
+> v1.0: **the engine disposes, agents recommend, people decide**
 > ([ADR-0010](docs/adr/0010-agents-recommend-humans-decide.md)).
 > v1.1: **development modes and intake** — a run starts from the sponsor's business intent, as a new
 > model or as an update of an existing one ([ADR-0011](docs/adr/0011-development-modes-and-intake.md)).

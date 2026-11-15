@@ -1,7 +1,7 @@
 # CLAUDE.md — principles for working on COGNOS itself
 
 These are binding design principles when editing COGNOS. They keep the system coherent, testable, and
-trustworthy. v1.0 architecture: **agents recommend, humans decide, the engine disposes** (ADR-0010).
+trustworthy. v1.0 architecture: **the engine disposes, agents recommend, people decide** (ADR-0010).
 
 ## Non-negotiables
 1. **Always offline-runnable.** Every stage runs with the deterministic (heuristic) agents — no key, no

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cognos"
 version = "1.0.0"
-description = "COGNOS — agents recommend, humans decide, the engine disposes: multi-agent model development"
+description = "COGNOS — the engine disposes, agents recommend, people decide: multi-agent model development"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

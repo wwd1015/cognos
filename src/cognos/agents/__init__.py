@@ -1,4 +1,4 @@
-"""The agent layer: agents *recommend*; the engine checks and disposes; humans decide at gates.
+"""The agent layer: the engine checks and disposes; agents *recommend*; people decide at gates.
 
 - ``contracts``  typed output per agent (Pydantic, extra="forbid")
 - ``prompts/``   role prompts (the domain playbooks) + shared rules
