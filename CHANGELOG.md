@@ -137,6 +137,14 @@ versioning is SemVer.
   re-runs when one is recorded after it; `docs/limitations.md` lists the two apart.
 
 ### Changed
+- An export replaces a source option whose name contains "password", "key", "token",
+  "secret" or "credential" with `<left out of the export>` in the exported `config.yaml` and
+  `state.json`, unless it is an environment reference (a name ending `_env`, or a value
+  written `env:NAME`). The run's own files are not changed.
+- A sealed package binds the data given with the same options replaced
+  (`datasources.redacted_data`), so the package file never holds one and its digest verifies
+  against its own content. A run with no such option binds exactly what it did; packages
+  already sealed are not rewritten.
 - A snapshot's provenance (`data/source.json`) also leaves out source options whose name
   contains "token", "secret" or "credential", as well as "password" or "key" as before.
   Everything else recorded is unchanged; existing runs are not rewritten.

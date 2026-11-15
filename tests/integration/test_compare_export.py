@@ -221,3 +221,69 @@ def test_export_is_readable_complete_and_never_contains_the_data(make_config, ru
         assert not any(n.endswith(".parquet") for n in z.namelist())
     assert not list(tmp_path.glob(".*.tmp"))  # written atomically: no temp file left behind
     assert main(["export", "nope", "--runs-dir", runs_dir]) == 1
+
+
+_OPTS = {"warehouse": "W", "api_token": "abc123", "password_env": "MY_PW",
+         "client_secret": "env:MY_SECRET", "private_key": "-----BEGIN"}
+_LEFT = {**_OPTS, "api_token": "<left out of the export>", "private_key": "<left out of the export>"}
+
+
+def test_redacted_keeps_environment_references_and_replaces_literals():
+    from cognos.datasources import LEFT_OUT, redacted
+    assert redacted(_OPTS) == _LEFT and LEFT_OUT == "<left out of the export>"
+    assert redacted({"Password": "x", "role": "r"}) == {"Password": LEFT_OUT, "role": "r"}
+    assert redacted({}) == {}
+
+
+def _exported(path, run_id, name):
+    with zipfile.ZipFile(path) as z:
+        return z.read(f"{run_id}/{name}")
+
+
+def test_an_export_leaves_out_secret_options_of_the_profile_source(make_config, runs_dir):
+    import yaml
+
+    from cognos.config import CognosConfig
+    raw = make_config("classification").model_dump(mode="json")
+    raw["data"] = {**raw["data"], "path": None,
+                   "source": {"kind": "file", "path": raw["data"]["path"], "options": _OPTS}}
+    eng = Engine(CognosConfig.from_dict(raw), runs_root=runs_dir)
+    before = {f: (eng.run_dir / f).read_bytes() for f in ("config.yaml", "state.json")}
+
+    path = service.export_run(eng.run_id, root=runs_dir)
+    cfg = yaml.safe_load(_exported(path, eng.run_id, "config.yaml"))
+    assert cfg["data"]["source"]["options"] == _LEFT
+    assert cfg["data"]["source"]["path"] == raw["data"]["source"]["path"]  # nothing else changes
+    assert _exported(path, eng.run_id, "state.json") == before["state.json"]  # nothing to hide
+    # the run keeps every option: the engine reads them back to fetch the data
+    assert {f: (eng.run_dir / f).read_bytes() for f in before} == before
+
+
+def test_an_export_leaves_out_secret_options_given_at_the_source_gate(make_config, runs_dir):
+    csv = make_config("classification").data.path
+    cfg = service.template_config("built-in:pd_logistic_scorecard", "pd", root=runs_dir)
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic", root=runs_dir)
+    service.run_until_idle(run_id, runs_dir)
+    service.submit_gate(run_id, "gate_intent", "accept", reason="t", root=runs_dir, background=False)
+    service.run_until_idle(run_id, runs_dir)
+    service.submit_gate(run_id, "gate_source", "accept",
+                        {"data": {"source": {"kind": "file", "path": csv, "options": _OPTS}}},
+                        root=runs_dir, background=False)
+    run_dir = service.runs_root(runs_dir) / run_id
+    before = {f: (run_dir / f).read_bytes() for f in ("config.yaml", "state.json")}
+    assert json.loads(before["state.json"])["overrides"]["data"]["source"]["options"] == _OPTS
+
+    path = service.export_run(run_id, root=runs_dir)
+    state = json.loads(_exported(path, run_id, "state.json"))
+    assert state["overrides"]["data"]["source"]["options"] == _LEFT
+    decision = next(d for d in state["decisions"] if d["gate"] == "gate_source")
+    assert decision["payload"]["data"]["source"]["options"] == _LEFT
+    assert _exported(path, run_id, "config.yaml") == before["config.yaml"]
+    assert {f: (run_dir / f).read_bytes() for f in before} == before
+
+
+def test_an_export_with_nothing_to_hide_copies_the_two_files_byte_for_byte(make_config, runs_dir):
+    eng = Engine(make_config("classification"), runs_root=runs_dir)
+    path = service.export_run(eng.run_id, root=runs_dir)
+    for f in ("config.yaml", "state.json"):
+        assert _exported(path, eng.run_id, f) == (eng.run_dir / f).read_bytes(), f

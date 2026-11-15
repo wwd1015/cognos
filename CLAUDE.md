@@ -59,8 +59,9 @@ finding per item; `document` lists the two apart). A new way to close a gap must
 Seats (`engine/process.py`): developer on intent, source, data, design, candidates and champion; reviewer on validation;
 approver on sign-off. The engine refuses a seat on another seat's gate. Use, horizon, default
 definition and segment cannot be assumed, and `approve` refuses while any of them is open.
-`approve` writes `packages/vN.json` once (a digest of recorded facts). A later invalidation
-supersedes the live pointer and does not rewrite the file. Autonomous acceptance is seat
+`approve` writes `packages/vN.json` once (a digest of recorded facts). The data it binds has
+literal source options named like a secret replaced (`datasources.redacted_data`), so a package
+never holds one. A later invalidation supersedes the live pointer and does not rewrite the file. Autonomous acceptance is seat
 `express` — preparation, not a signature, and it does not seal a package. The record
 (`process.journal`) is computed on read from stamps the run already carries.
 
@@ -72,6 +73,8 @@ Comparisons (`compare.py`: run vs run, re-run vs previous) are mechanical reads 
 no judgment, nothing stored, and "better" only where the metric has a direction (`_HIGHER` / `_LOWER`,
 or the run's own metric direction). Exports (`export.py`) never include `data/`, `models/` or binary
 caches — the sealed holdout stays sealed; a new artifact type that should travel must be a text format.
+An export replaces a literal source option named like a secret (`datasources.redacted`) and keeps
+environment references; a new file that travels and can carry a source must go through the same function.
 
 ## Templates and the data step (ADR-0018)
 - **The data comes after the intent.** `gate_source` (between `gate_intent` and `explore`)

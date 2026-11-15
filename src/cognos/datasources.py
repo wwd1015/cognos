@@ -209,6 +209,46 @@ def _recordable(options: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in options.items() if not any(w in k.lower() for w in _SECRET_WORDS)}
 
 
+LEFT_OUT = "<left out of the export>"
+
+
+def redacted(options: dict[str, Any]) -> dict[str, Any]:
+    """The options as they may leave the run (export.py): a literal whose name contains a word
+    in _SECRET_WORDS becomes LEFT_OUT. An environment reference (a name ending ``_env``, or a
+    value written ``env:NAME``) is a name, not a secret, and is kept."""
+    def literal(name: str, value: Any) -> bool:
+        return not name.lower().endswith("_env") and not (isinstance(value, str)
+                                                          and value.startswith("env:"))
+
+    return {k: LEFT_OUT if any(w in k.lower() for w in _SECRET_WORDS) and literal(k, v) else v
+            for k, v in options.items()}
+
+
+def redacted_data(data: Any) -> tuple[Any, bool]:
+    """A ``data`` mapping (a profile's data section, or the data given at gate_source) with
+    ``redacted`` applied to the options of its ``source`` and of each of its ``sources``, and
+    whether anything was replaced. The input is never changed; when nothing is replaced it is
+    returned as it is (export.py re-serialises only then, a package binds it as before)."""
+    if not isinstance(data, dict):
+        return data, False
+
+    def one(src: Any) -> tuple[Any, bool]:
+        if isinstance(src, dict) and isinstance(src.get("options"), dict):
+            new = redacted(src["options"])
+            if new != src["options"]:
+                return {**src, "options": new}, True
+        return src, False
+
+    out, changed = dict(data), False
+    if "source" in data:
+        out["source"], changed = one(data["source"])
+    if isinstance(data.get("sources"), list):
+        pairs = [one(s) for s in data["sources"]]
+        if any(c for _, c in pairs):
+            out["sources"], changed = [s for s, _ in pairs], True
+    return (out, True) if changed else (data, False)
+
+
 def load_source(source: Any, plugin_modules: Any = ()) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Fetch one source and say where it came from. No secret is part of the provenance."""
     from . import plugins

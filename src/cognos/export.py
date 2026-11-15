@@ -3,7 +3,9 @@
 The bundle is everything a reader needs and nothing they must not have: the documents (OKF
 bundle), each stage's result and its small evidence tables, the run state with every decision,
 challenge and question, the effective config, and the agent audit log. **Never** the data
-directory — the sealed holdout stays sealed — and no fitted models or binary caches.
+directory — the sealed holdout stays sealed — and no fitted models or binary caches. In the
+exported ``config.yaml`` and ``state.json`` a literal source option named like a secret is
+replaced (``datasources.redacted``); the run's own files keep it.
 
 ``EXPORT.json`` lists every file with its SHA-256, so a recipient can check that what they are
 reading is what was exported.
@@ -11,14 +13,18 @@ reading is what was exported.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
-from . import __version__
+import yaml
+
+from . import __version__, datasources
 
 # Top-level entries that are part of the record.
 _FILES = ("state.json", "config.yaml", "summary.json", "summary.txt", "manifest.json", "events.jsonl")
@@ -28,6 +34,51 @@ _DIRS = ("docs", "stages", "packages", "asks")
 _TEXT = {".json", ".md", ".tsv", ".csv", ".txt", ".yaml", ".yml", ".jsonl", ".py"}
 NOT_INCLUDED = ("data/ (training data and the sealed holdout)", "models/ (fitted scorers)",
                 "binary caches under stages/ (.parquet, .joblib, .npz)")
+
+
+def _redact_in(holder: Any, key: str = "data") -> bool:
+    """Replace ``holder[key]`` (a ``data`` mapping) by ``datasources.redacted_data`` of it;
+    says whether anything was replaced."""
+    if not isinstance(holder, dict):
+        return False
+    new, changed = datasources.redacted_data(holder.get(key))
+    if changed:
+        holder[key] = new
+    return changed
+
+
+def redact_profile(raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """A loaded ``config.yaml`` as it may leave the run, and whether anything was replaced."""
+    out = copy.deepcopy(raw)
+    return out, _redact_in(out)
+
+
+def redact_state(raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """A loaded ``state.json`` as it may leave the run: the data given at gate_source sits in
+    ``overrides.data`` and on each gate_source decision's payload."""
+    out = copy.deepcopy(raw)
+    changed = _redact_in(out.get("overrides"))
+    for d in out.get("decisions") or []:
+        if isinstance(d, dict) and d.get("gate") == "gate_source":
+            changed = _redact_in(d.get("payload")) or changed
+    return out, changed
+
+
+def _exported_bytes(p: Path, rel: str) -> bytes:
+    """The file as it goes into the export: config.yaml and state.json with secret-named
+    literal source options replaced (re-serialised only when something was), all else as is."""
+    data = p.read_bytes()
+    if rel == "config.yaml":
+        raw = yaml.safe_load(data.decode("utf-8"))
+        if isinstance(raw, dict):
+            out, changed = redact_profile(raw)
+            if changed:
+                return yaml.safe_dump(out, sort_keys=False, allow_unicode=True).encode("utf-8")
+    elif rel == "state.json":
+        out, changed = redact_state(json.loads(data.decode("utf-8")))
+        if changed:
+            return json.dumps(out, indent=1, ensure_ascii=False).encode("utf-8")
+    return data
 
 
 def _members(run_dir: Path, agent_io: bool) -> list[Path]:
@@ -58,8 +109,8 @@ def export_run(run_dir: str | Path, dest: str | Path | None = None, *, agent_io:
     try:
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
             for p in files:
-                data = p.read_bytes()
                 rel = p.relative_to(run_dir).as_posix()
+                data = _exported_bytes(p, rel)
                 z.writestr(f"{run_dir.name}/{rel}", data)
                 listing.append({"path": rel, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
             from . import trials
