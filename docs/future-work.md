@@ -33,9 +33,10 @@ number stays with the main session. Nothing is committed.
 7. ~~The architecture list, one commit per item.~~ All six done on `review-2026-11`
    (2026-11-13); 445 passed, 2 skipped; ruff clean.
 8. ~~Merge `review-2026-11` into `main`.~~ Merged on 2026-11-15 (`daa3338`), not pushed.
-9. **Now:** two follow-ups on `review-2026-11`, to be merged when done: `ModelStage.run`
-   cut into steps, and the payload check extended to rows and the gate handler. Then the
-   open decisions below, one at a time with the user.
+9. ~~Two follow-ups: `ModelStage.run` cut into steps; the payload check extended to rows
+   and the gate handler.~~ Done 2026-11-15.
+10. **Now:** the open decisions below, one at a time with the user. `review-2026-11` is
+    ahead of `main` again; merge when the user says.
 
 Still waiting for a yes or no: px to rem and darker input borders; the deck's `--ink-3`;
 the provenance filter; scoring a factor's folds in one pass.
@@ -75,15 +76,17 @@ In the order I would do them. None changes what a run records.
 1. ~~Split the three largest modules.~~ Done: `ui/panels/` (one module per stage page),
    `ui/app/` (layout, routing, one callback module per page) and `stages/pool_builder.py`.
    Each was proved a pure move (same definitions, same callbacks and layout, same recorded
-   numbers on nine demo runs). `stages/model.py` is still 840 lines because `run` alone is
-   460; cutting `run` into steps is a further change, not a move.
+   numbers on nine demo runs). `ModelStage.run` was then cut into named steps (445
+   lines to 103), with the same nine-demo proof.
 2. ~~Typed stage payloads, first step.~~ Done for `model` and `backtest`:
    `payloads.py` declares the shapes and `tests/unit/test_payload_shapes.py` fails when a
    writer records an undeclared key, when a reader asks for one, or when a key that is
    read is no longer written by any of three real runs. Nothing uses the shapes at run
-   time. Not covered yet: reads inside a pool member or a backtest candidate row; the
-   gate handler in `engine/gates.py` (one function for every gate, so its reads are not
-   attributed); the other stages' payloads. Seen on the way: `transforms` means
+   time. Reads inside a pool member or a backtest
+   candidate row and the gate handler's reads are covered too (233 payload reads and 114
+   row reads recognised). Not covered: the other stages' payloads; `_who` in
+   `ui/panels/_shared.py`, which takes both kinds of row.
+   Seen on the way: `transforms` means
    `{column: form}` on the model payload and a list of transformations in the champion's
    view; a reader of one given the other would not be caught.
 3. ~~Paths in results are relative to the run.~~ Done: a member's `scorer_path` is recorded
