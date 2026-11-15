@@ -587,8 +587,7 @@ def _cmd_status(args) -> int:
           f"status={st.status}  spend=${st.spend_usd:.2f}")
     if st.halted_reason:
         print(f"  halted: {st.halted_reason}")
-    from .engine.process import next_action
-    nxt = next_action(st)
+    nxt = service.next_action(st)
     print(f"  next: {nxt['text']}")
     if st.package is not None:
         print(f"  package v{st.package.version} {st.package.status} {st.package.digest[:12]}")
@@ -639,7 +638,8 @@ def _cmd_retry(args) -> int:
     from .engine import GateError
 
     try:
-        service.retry(args.run, args.step, args.runs_dir, background=False, stuck=args.stuck)
+        service.retry(args.run, args.step, args.runs_dir, background=False, stuck=args.stuck,
+                      by=service.whoami())
     except GateError as exc:
         print(f"refused: {exc}")
         return 1
@@ -683,6 +683,8 @@ def _cmd_list_runs(args) -> int:
         print(f"No runs under {service.runs_root(args.runs_dir)}")
     for r in rows:
         wait = f" waiting={r['waiting_on']}" if r["waiting_on"] else ""
+        if r["replaced"]:
+            wait = f" ({r['replaced']})"
         print(f"{r['run_id']}  project={r['project']}  status={r['status']}  "
               f"agents={r['provider']}{wait}")
     return 0

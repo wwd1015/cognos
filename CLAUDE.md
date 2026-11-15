@@ -121,6 +121,8 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
   (samples → factor library → single-factor screen → selection methods → ranked ledger) and
   finalizes every pool member. `backtest` compares the pool on the test sample and the
   Backtest agent recommends the champion. Do not put a champion back on the model payload.
+  The stage is `stages/model.py`; choosing the leaders, the engine's pool and finalizing a
+  member are `stages/pool_builder.py` (not a stage, never registered).
 - **Read the champion through `ctx.champion()`** (`pool.view`): the model payload with the
   champion in force laid over it. A stage after `backtest` never reads
   `ctx.require("model").payload` for champion fields. Results-only readers use
@@ -162,6 +164,11 @@ caches — the sealed holdout stays sealed; a new artifact type that should trav
 - **One evaluator.** Every selection method goes through `selection.Evaluator`, so a
   specification is fitted once and all models share one ledger. Candidate ids come from
   `selection.candidate_id` (a hash of the specification): never a position in a list.
+- **A memo is not a record.** Validation results are kept between the design gate's looks
+  and the search (`modeling/cv_cache.py`, `stages/model/cv_cache.joblib`), keyed by everything
+  they were computed from. It may only change how long something takes: a new input to
+  `cv_score` must join the key, a family that reads columns beyond its factors is never kept,
+  and a test must show the numbers equal with and without it.
 - **A model has a name and an id.** The id (`selection.candidate_id`) is what decisions and
   overrides store. The name (`selection.assign_names`, kept in `stages/model/names.json`,
   overridable through `overrides.names`) is what a page or a sentence shows. Never show a bare
@@ -305,7 +312,9 @@ artifacts under `runs/<id>/stages/<name>/`, and obtains judgment only via
 `ctx.recommend(agent, data, fresh={stage: provisional_result}, check=...)` (after
 `ctx.consult_tools`, see Stage tools; the champion's record via `ctx.champion()`), recording it with
 `attach_recommendation(payload, ctx, agent, out)`. Questions for the sponsor go in
-`payload["questions"]` (the engine syncs them to gaps). Register with `@register_stage` and add to
+`payload["questions"]` (the engine syncs them to gaps). A key added to the `model` or `backtest`
+payload is declared in `payloads.py` (`tests/unit/test_payload_shapes.py` holds writers and
+readers to it). Register with `@register_stage` and add to
 `stages/__init__._STAGE_MODULES`.
 
 ## Agents (agents/)
@@ -336,6 +345,9 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   `modeling/search.py::_hp_grid`, `DEFAULT_FAMILIES` if defaulted, and `stages/ideate.py::_engine_families`
   so the Design agent may propose it; add it to `selection.STEP_FAMILIES` only if it has
   statsmodels inference. Survival/structural/simulation extension points: ADR-0008.
+  A family in `fit.LINEAR_FAMILIES` is fitted in validation without the pipeline when its
+  columns are numeric; `test_the_direct_fit_gives_the_pipelines_numbers_to_the_last_bit` must
+  stay green for it.
 - **New metric** → `modeling/metrics.py::score` (+ `MAXIMIZE`) and `plan.METRICS` so it can be
   ranked on; expose it as a fact in `agents/facts.py` if agents should cite it.
 - **New way to split or validate** → `splits.split_samples` / `make_splitter`, the literals in
@@ -347,17 +359,18 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   `factors.own_factor`.
 - **New screen rule** → `factors.screen` (one `apply` call: it logs counts and reasons),
   `config.FactorConfig`, the plan dict in `plan.recommend`, `plan.SCREEN_RULES` (so a change of
-  it counts as a revision), the form in `ui/design_steps.py::assessment` and a label in
+  it counts as a revision), the form in `ui/design_steps.py::variable_rules` and a label in
   `design_steps.RULE_LABELS` / `SHORT`.
 - **New model rule** → `selection.violations` (a reason text), an entry in
   `selection.MODEL_RULES` that matches it, `config.SelectionConfig`, `plan.recommend`, the form
-  in `ui/design_steps.py::assessment`.
+  in `ui/design_steps.py::model_rules`.
 - **New ranking line** → `plan.RANK_EXTRAS` and `selection.rank_value` (with its direction).
 - **New selection method** → a runner in `selection._RUNNERS` that walks through `_Run.try_`
   and records `_Run.step`, `METHODS`, the literals in `config.SelectionConfig` and
   `contracts.PlanChoice`.
 - **New statistical test** → `stages/stat_tests.py` with H0, severity, and a `_safe` wrapper.
-- **New gate action** → `engine/gates.py::ACTIONS` + handler + a UI control in `ui/panels.py`.
+- **New gate action** → `engine/gates.py::ACTIONS` + handler + a UI control on the stage's page
+  (`ui/panels/<stage>.py`; send-back and the gate card are `ui/panels/gate.py`).
 - **New brief field** → `engagement.FIELDS` (label, hint, aliases, required), the `BriefFieldId`
   literals in `agents/contracts.py`, a question in `engagement.QUESTIONS` if required, then
   regenerate `docs/templates/` (`render_template`).
@@ -370,7 +383,7 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
   `analysis/consult.py::_inputs`.
 - **New join rule** (another way to reduce several rows, an as-of join) → `linking.apply` /
   `_one_row_per_key`, the `many` literals in `config.JoinStep` and `contracts.JoinChoice`, the
-  gate form in `ui/panels.py`, and the prompt.
+  gate form in `ui/panels/explore.py`, and the prompt.
 - **New data source** → a `DataSource` in `datasources.BUILTIN` or a plugin; `available()` must
   explain what is missing instead of raising at import.
 - **New compliance regime** → extend `stages/comply.py`; emit evidence `document`/`review` can trace.
@@ -400,6 +413,10 @@ attempt to `runs/<id>/agents/` and enforces time and spend limits.
 The run workspace has three views: Stages (a stage page shows only that stage's questions
 and challenges, `panels.stage_questions` / `stage_challenges`) and the run-wide Run record and
 Agent calls. Do not put run-wide content on a stage page.
+The workbench is two packages: `ui/panels/` (one module per stage page; `__init__` holds
+`stage_panel` and re-exports every name) and `ui/app/` (layout, routing, page builders and one
+`callbacks_*` module per page, registered in order by `register_callbacks`). A test that
+patches a name patches the module that defines it, not the re-export.
 UI panels are pure functions of (result, state, scheme, seat) — keep them testable without a browser
 (`tests/ui`). Never write `component or fallback`: Dash components define `__len__`, so a childless
 component is falsy — use `graph(fig, placeholder)` / explicit `is None` checks. Never pass an

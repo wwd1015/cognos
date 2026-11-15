@@ -9,7 +9,7 @@ specifications (family + feature strategy) for the modeling stage to search, plu
 ``design_brief.md``.
 
 Everything above is deterministic (rules over the explore profile + config) so the stage runs
-offline. v1: the **Design agent** agent then decides every framework's role, ranks the slate (only
+offline. v1: the **Design agent** then decides every framework's role, ranks the slate (only
 engine-fittable families), may propose feature transforms (engine-validated, target-hidden) and
 adds sponsor questions — reasoning proposes, the engine disposes; the human reviews at gate_design.
 """
@@ -20,7 +20,7 @@ import hashlib
 import re
 
 from ..artifacts import Finding, Severity, StageResult, Verdict
-from ..config import CognosConfig
+from ..config import CORE_DESIGN, CognosConfig
 from ..context import RunContext
 from ..modeling.fit import DEFAULT_FAMILIES
 from ..modeling.transforms import TransformSpec, apply_transforms
@@ -31,7 +31,7 @@ def _qhash(text: str) -> str:
     return hashlib.sha1(text.strip().encode()).hexdigest()[:6]
 
 
-_DESIGN_FIELDS = ("use_case", "horizon", "default_definition", "segment")
+_DESIGN_FIELDS = CORE_DESIGN
 
 
 def _gap_spec(q: dict) -> dict:
@@ -290,7 +290,7 @@ def _open_questions(cfg: CognosConfig, profile: dict, structure: dict) -> list[d
         q.append({"id": "data-leakage", "source": "data",
                   "question": f"Explore flagged {', '.join(leaks)} as possible target leakage — "
                               "confirm whether each is in the information set at prediction time; "
-                              "if not, add it to data.drop_columns and re-run."})
+                              "if not, exclude it at the data gate (re-open it if it is already decided)."})
     if structure["shape"] == "cross_sectional" and cfg.task.value != "timeseries":
         datey = _match_hints(list(profile.get("dtypes", {}).keys()), _DATE_HINTS)
         datey = [c for c in datey if c != cfg.data.target]

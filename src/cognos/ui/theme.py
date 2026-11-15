@@ -17,9 +17,9 @@ SEQ_LIGHT_STEP = {"light": "#dcbcc2", "dark": "#5a2a33"}  # ordinal-safe light s
 
 CHROME = {
     "light": {"surface": "#fffefb", "page": "#faf9f6", "ink": "#16140f", "ink2": "#6b6557",
-              "muted": "#8d8775", "grid": "#e9e6dc", "axis": "#cfcbbd"},
+              "muted": "#777160", "grid": "#e9e6dc", "axis": "#cfcbbd"},
     "dark": {"surface": "#201d16", "page": "#171510", "ink": "#f0ede4", "ink2": "#9a937f",
-             "muted": "#7d7767", "grid": "#2b271e", "axis": "#3d382c"},
+             "muted": "#857f6e", "grid": "#2b271e", "axis": "#3d382c"},
 }
 
 STATUS = {"good": "#2e8063", "warning": "#b08415", "serious": "#b0673f", "critical": "#a8232f"}
@@ -81,7 +81,7 @@ COLORS = {
     "yellow": ramp("#9a6b00"), "green": ramp("#1a5e45"), "teal": ramp("#2a6a62"),
     "blue": ramp("#27506e"), "grape": ramp("#5b4a8a"), "violet": ramp("#5b4a8a"),
     "indigo": ramp("#7d2230"),
-    "gray": ["#faf9f6", "#f5f3ee", "#eceae2", "#dedbd0", "#c9c5b7", "#a8a393", "#8d8775",
+    "gray": ["#faf9f6", "#f5f3ee", "#eceae2", "#dedbd0", "#c9c5b7", "#a8a393", "#777160",
              "#6b6557", "#3d392f", "#16140f"],
     "dark": ["#f0ede4", "#cfcabb", "#9a937f", "#6f6957", "#3d382c", "#2b271e", "#201d16",
              "#171510", "#121009", "#0c0a06"],
@@ -91,6 +91,8 @@ MANTINE_THEME = {
     "primaryColor": "oxblood",
     "primaryShade": {"light": 6, "dark": 3},
     "autoContrast": True,
+    # Mantine's own slides and fades stop when the person asked for reduced motion
+    "respectReducedMotion": True,
     "luminanceThreshold": 0.36,
     "colors": COLORS,
     "white": "#fffefb",
@@ -99,7 +101,8 @@ MANTINE_THEME = {
     "fontFamilyMonospace": MONO,
     "defaultRadius": "sm",
     "radius": {"xs": "2px", "sm": "3px", "md": "4px", "lg": "6px", "xl": "6px"},
-    "headings": {"fontFamily": DISPLAY, "fontWeight": "600"},
+    # titles break into even lines (Mantine owns text-wrap on Title through this token)
+    "headings": {"fontFamily": DISPLAY, "fontWeight": "600", "textWrap": "balance"},
     "components": {
         "Card": {"defaultProps": {"withBorder": False, "radius": 0, "padding": 0}},
         "Badge": {"defaultProps": {"radius": "xs"}},

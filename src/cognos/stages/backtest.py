@@ -19,6 +19,8 @@ to choose, so only a sealed holdout, scored at validation, gives a number nobody
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 
 from .. import pool as pool_mod
@@ -48,6 +50,8 @@ class BacktestStage(Stage):
         members = list(stage_model.get("pool") or [])
         if not members:
             raise RuntimeError("The model stage left no candidate pool; re-run it.")
+        # each member's scorer as this run holds it (a trial run reads its own copy)
+        members = [{**m, "scorer_path": pool_mod.scorer_path(ctx.run_dir, m)} for m in members]
         metric = stage_model["metric"]
         is_clf = stage_model["is_classification"]
         plan_ev = (stage_model.get("plan") or {}).get("evaluation") or {}
@@ -169,7 +173,8 @@ class BacktestStage(Stage):
         ctx.save_df("stages/backtest/scored.parquet", impact_res.scored_df)
         if impact_res.config_path:
             res.add_artifact(ctx.save_text(
-                "stages/backtest/impact_entity.yaml", open(impact_res.config_path, encoding="utf-8").read(), kind="text"))
+                "stages/backtest/impact_entity.yaml",
+                Path(impact_res.config_path).read_text(encoding="utf-8"), kind="text"))
         if impact_res.validation.get("error_count", 0):
             res.add_finding(Finding(id="impact-validation", severity=Severity.MEDIUM, category="data-quality",
                                     message=f"IMPACT reported {impact_res.validation['error_count']} validation error(s)."))

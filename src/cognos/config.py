@@ -26,10 +26,6 @@ class TaskType(str, Enum):
     def is_classification(self) -> bool:
         return self in (TaskType.CLASSIFICATION, TaskType.ML_CLASSIFICATION)
 
-    @property
-    def is_ml(self) -> bool:
-        return self in (TaskType.ML_REGRESSION, TaskType.ML_CLASSIFICATION)
-
 
 class Direction(str, Enum):
     MINIMIZE = "minimize"
@@ -159,6 +155,11 @@ class DataConfig(BaseModel):
         return self
 
 
+# The four sponsor decisions that shape the build. A package cannot be sealed without them and
+# they cannot be assumed; every place that names them reads this one tuple.
+CORE_DESIGN = ("use_case", "horizon", "default_definition", "segment")
+
+
 class DesignConfig(BaseModel):
     """The modeling **design brief** — what the model sponsor (e.g. an MD in model development)
     has decided about the problem, before any algorithm is chosen.
@@ -177,9 +178,7 @@ class DesignConfig(BaseModel):
 
     def unanswered(self) -> list[str]:
         """Names of the design questions the sponsor has not answered yet."""
-        blanks = [name for name in ("use_case", "horizon", "default_definition", "segment")
-                  if not getattr(self, name).strip()]
-        return blanks
+        return [name for name in CORE_DESIGN if not getattr(self, name).strip()]
 
 
 class PriorArtifact(BaseModel):
@@ -288,7 +287,7 @@ class EvaluationConfig(BaseModel):
 
 
 class ColumnTransform(BaseModel):
-    """How one column enters the model (ADR-0024, ``modeling/transforms.py``).
+    """How one column enters the model (ADR-0024, ``modeling/column_transforms.py``).
 
     Decided in two steps: at the data gate *whether* the column is transformed and by which
     ``kind`` (``as_is`` keeps it as it is); at the design gate *how*, by the parameters below.
@@ -374,8 +373,8 @@ class StructuralConfig(BaseModel):
     """Merton structural model support (modeling/structural.py) — needs market observables.
 
     When enabled and the three columns exist, the engine solves for distance-to-default and adds it
-    as an engineered feature (hybrid mode), and scores the pure structural PD on the sealed holdout
-    as a labelled challenger benchmark.
+    as an engineered feature (hybrid mode), and scores the pure structural PD on the test sample
+    as a labelled challenger benchmark (a counted look, never the sealed holdout).
     """
 
     enabled: bool = False
@@ -392,7 +391,7 @@ class MigrationConfig(BaseModel):
     When enabled and the rating/next-rating columns exist, the model stage estimates a cohort
     transition matrix on the training partition (NR-adjusted, Laplace-smoothed), swaps the raw
     rating for the horizon cumulative PD it implies (``migration_pd``, the hybrid feature), scores
-    the pure-migration PD on the sealed holdout as a labelled challenger benchmark, and reports a
+    the pure-migration PD on the test sample as a labelled challenger benchmark (a counted look), and reports a
     by-rating expected-loss forecast. ``next_rating_col`` is outcome data — like the target, it is
     never a feature.
     """
@@ -438,15 +437,11 @@ class ImpactConfig(BaseModel):
     enabled: bool = True  # use the IMPACT library if importable, else built-in fallback
     entity_name: str = "ScoredEntity"
     primary_key: str | None = None  # defaults to a synthesized row id
-    extra_fields: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class BacktestConfig(BaseModel):
-    enabled: bool = True
-    scheme: str = "walk_forward"  # walk_forward | cscv | holdout
     n_splits: int = 5
     deflate_sharpe: bool = True  # Deflated Sharpe Ratio (multiple-testing correction)
-    pbo: bool = True  # Probability of Backtest Overfitting via CSCV
     returns_column: str | None = None  # if the task is a trading/return signal
 
 

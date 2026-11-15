@@ -145,15 +145,3 @@ def parse_concept(text: str, name: str = "") -> OKFConcept:
         body=body.strip(),
         extra=extra,
     )
-
-
-def is_conformant(text: str) -> bool:
-    """A concept is OKF-conformant iff its frontmatter parses and ``type`` is non-empty."""
-    m = _FRONTMATTER_RE.match(text)
-    if not m:
-        return False
-    try:
-        fm = yaml.safe_load(m.group(1)) or {}
-    except yaml.YAMLError:
-        return False
-    return bool(str(fm.get("type", "")).strip())

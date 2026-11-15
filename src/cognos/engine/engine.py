@@ -25,14 +25,12 @@ from ..identity import stamp, whoami
 from . import events, gates, process
 from .graph import (
     GATE_BEFORE_STAGE,
-    GATE_OF_STAGE,
     GATES,
     LABELS,
     STAGE_OF_GATE,
     STAGES,
     STEPS,
     TRIAL_STOPS_BEFORE,
-    descendants,
 )
 from .state import Challenge, Gap, GateDecision, RunState, run_lock
 
@@ -41,6 +39,15 @@ _SEVERITY_ORDER = {
     Verdict.OPEN_QUESTIONS: 2, Verdict.FAIL: 3, Verdict.BLOCK: 4, Verdict.ERROR: 5,
 }
 _executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="cognos-step")
+# What a trial run never does (ADR-0017): validation, where the sealed holdout is scored, and
+# every step after it, sign-off included.
+_BEYOND_A_TRIAL = frozenset(STEPS[STEPS.index(TRIAL_STOPS_BEFORE):])
+
+
+def _refuse_on_trial(state: RunState, step: str) -> None:
+    if state.is_trial and step in _BEYOND_A_TRIAL:
+        raise gates.GateError(
+            f"{LABELS[step]} does not run on a trial run: make it the main run first.")
 
 
 class Engine:
@@ -162,8 +169,8 @@ class Engine:
         for step in STEPS:
             if state.status_of(step) not in ("pending", "stale") or step in self._inflight:
                 continue
-            if step == TRIAL_STOPS_BEFORE and state.is_trial:
-                continue  # a trial run never opens the sealed holdout (ADR-0017)
+            if state.is_trial and step in _BEYOND_A_TRIAL:
+                continue  # a trial run never opens the sealed holdout or goes past it (ADR-0017)
             if step in GATES:
                 if self._gate_ready(state, step):
                     out.append(step)
@@ -452,6 +459,7 @@ class Engine:
         with self.lock:
             state = self.state
             answered = self._answered(state)
+            _refuse_on_trial(state, gate)
             if state.status_of(gate) != "awaiting":
                 raise gates.GateError(f"{gate} is not awaiting a decision "
                                       f"(it is {state.status_of(gate)})")
@@ -495,6 +503,7 @@ class Engine:
         by = by or whoami()
         with self.lock:
             state = self.state
+            _refuse_on_trial(state, gate)
             if state.status_of(gate) != "done":
                 raise gates.GateError(f"{gate} is {state.status_of(gate)}; only a decided gate "
                                       "can be re-opened")
@@ -502,7 +511,7 @@ class Engine:
                                      f"{process.seat_label(seat)}")
             if state.status in ("approved", "rejected"):
                 state.status = "running"
-            state.set_step(gate, "awaiting", "re-opened for revision")
+            state.set_step(gate, "awaiting", f"re-opened for revision by {by}", by=by)
             self._save(state)
         events.publish(self.run_dir, "gate_waiting",
                        f"{LABELS[gate]}: re-opened for revision by {by}.", step=gate, by=by)
@@ -534,10 +543,12 @@ class Engine:
                        f"Question {gap_id} {how} by {by}.", by=by)
         return self.state
 
-    def retry(self, step: str, *, stuck: bool = False) -> RunState:
+    def retry(self, step: str, *, stuck: bool = False, by: str | None = None) -> RunState:
         """Run a failed or blocked step again. ``stuck`` also takes over a step left
         ``running`` by a process that died (a closed laptop on a shared runs folder): the
-        engine cannot tell a dead process from a slow one, so a person has to say so."""
+        engine cannot tell a dead process from a slow one, so a person has to say so.
+        ``by`` is the person who asked (default ``whoami()``)."""
+        by = by or whoami()
         with self.lock:
             state = self.state
             status = state.status_of(step)
@@ -545,12 +556,14 @@ class Engine:
                 if step in self._inflight:
                     raise gates.GateError(f"{step} is running in this process; it is not stuck")
                 was = state.steps[step].by or "an unknown process"
-                state.set_step(step, "pending", f"taken over from {was} by {whoami()}")
+                what = f"taken over from {was} by {by}"
             elif status in ("failed", "blocked"):
-                state.set_step(step, "pending", "retry requested")
+                what = f"retry requested by {by}"
             else:
                 raise gates.GateError(f"{step} is {status}, not failed")
+            state.set_step(step, "pending", what)
             self._save(state)
+        events.publish(self.run_dir, "step_retry", f"{LABELS[step]}: {what}.", step=step, by=by)
         return self.state
 
     def reset(self) -> RunState:
@@ -570,9 +583,7 @@ class Engine:
     def run_stage(self, stage: str) -> StageResult:
         with self.lock:
             state = self.state
-            if state.is_trial and STEPS.index(stage) >= STEPS.index(TRIAL_STOPS_BEFORE):
-                raise gates.GateError(
-                    f"{LABELS[stage]} does not run on a trial run: make it the main run first.")
+            _refuse_on_trial(state, stage)
             open_ids = [c.id for c in state.open_challenges(stage)]
             state.set_step(stage, "running", by=stamp())
             self._save(state)
@@ -639,11 +650,3 @@ class Engine:
             ctx.save_text("summary.txt", summ.token_block())
         except Exception:  # a summary is a convenience; never let it break a run
             pass
-
-
-def gate_for(stage: str) -> str | None:
-    return GATE_OF_STAGE.get(stage)
-
-
-def downstream(step: str) -> list[str]:
-    return descendants(step)

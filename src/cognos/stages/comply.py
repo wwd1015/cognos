@@ -103,7 +103,7 @@ class ComplyStage(Stage):
                 "Outstanding: ongoing monitoring requires a production monitoring plan — drift/PSI "
                 "alert thresholds, performance-decay triggers, exception reporting, cadence and owner."
                 + (" Backtest produced monitoring-ready baselines (calibration/stability)."
-                   if getattr(cfg.backtest, "enabled", False) else "")
+                   if has_backtest else "")
             ),
         }
 

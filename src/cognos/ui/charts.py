@@ -19,7 +19,7 @@ def _num(v) -> float | None:
 
 
 def ledger(records: list[dict], metric: str, champion_label: str | None, scheme: str) -> go.Figure:
-    """Every experiment the ratchet tried: kept (new best) vs discarded, champion ringed."""
+    """Every experiment the search tried: kept (new best) vs discarded, champion ringed."""
     s, c = SERIES[scheme], CHROME[scheme]
     ok = [r for r in records if r.get("status") != "crash"]
     fig = go.Figure()

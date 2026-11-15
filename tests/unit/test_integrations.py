@@ -1,15 +1,12 @@
-"""Integration adapters: autoforge protocol, IMPACT adapter, runtime scorer."""
+"""Integration adapters: IMPACT adapter, runtime scorer."""
 
 from __future__ import annotations
 
+import os
+
+import numpy as np
+
 from cognos import synth
-from cognos.integrations.autoforge_loop import (
-    ExperimentLedger,
-    LedgerRow,
-    format_metrics,
-    parse_metrics,
-    run_ratchet,
-)
 from cognos.integrations.impact_adapter import (
     build_entity_config,
     impact_available,
@@ -17,32 +14,6 @@ from cognos.integrations.impact_adapter import (
 )
 from cognos.modeling import Candidate, fit_full
 from cognos.runtime.score import load_scorer, save_scorer, score_frame, score_row
-
-
-def test_parse_and_format_metrics_roundtrip():
-    text = "noise line\nrmse:    0.123456\nr2:    0.870000\nnot a metric: hello\n"
-    m = parse_metrics(text)
-    assert m == {"rmse": 0.123456, "r2": 0.87}
-    again = parse_metrics(format_metrics({"rmse": 0.5}))
-    assert abs(again["rmse"] - 0.5) < 1e-9
-
-
-def test_run_ratchet_keeps_best_and_logs_crash():
-    exps = [lambda: {"rmse": 1.0}, lambda: {"rmse": 0.5}, lambda: (_ for _ in ()).throw(ValueError("boom")),
-            lambda: {"rmse": 0.7}]
-    champ, ledger = run_ratchet(exps, metric="rmse", labels=["a", "b", "c", "d"])
-    assert champ == 0.5
-    statuses = [r.status for r in ledger.rows]
-    assert statuses == ["keep", "keep", "crash", "discard"]
-    assert "commit\tmetric_value\tstatus\tdescription" in ledger.to_tsv()
-
-
-def test_experiment_ledger_extra_columns():
-    led = ExperimentLedger(metric="rmse", extra_columns=["cv_std"])
-    led.append(LedgerRow(commit="c1", metric_value=0.5, status="keep", description="d", extras={"cv_std": 0.1}))
-    tsv = led.to_tsv()
-    assert "cv_std" in tsv.splitlines()[0]
-    assert len(led.kept) == 1
 
 
 def _make_scorer(tmp_path):
@@ -63,6 +34,32 @@ def test_runtime_scorer_roundtrip(tmp_path):
     assert preds.shape == (len(df),)
     one = score_row(df.iloc[0], path)
     assert abs(one - preds[0]) < 1e-6
+
+
+def test_a_scorer_saved_again_at_the_same_path_is_read_again(tmp_path):
+    """A pool member fitted again keeps its id, so its file keeps its path: the scores must
+    come from the fit on disk, never from the one a long-lived process read before."""
+    df, feats, path = _make_scorer(tmp_path)
+    first = score_frame(df, path)
+    assert load_scorer(path) is load_scorer(path)  # an unchanged file is read once
+
+    half = df.iloc[: len(df) // 2]  # the same specification on another development sample
+    refit = fit_full(Candidate(family="ols", features=feats), half[feats],
+                     half["target"].astype(float).to_numpy(), task="regression",
+                     is_classification=False)
+    save_scorer(path, refit)
+    second = score_frame(df, path)
+    assert np.allclose(second, refit.pipeline.predict(df[feats]))
+    assert not np.allclose(second, first)
+
+    # ... and a file another process replaced (no save in this one) is noticed as well
+    other = str(tmp_path / "other.joblib")
+    save_scorer(other, fit_full(Candidate(family="ols", features=feats[:2]), df[feats[:2]],
+                                df["target"].astype(float).to_numpy(), task="regression",
+                                is_classification=False))
+    load_scorer(path)
+    os.replace(other, path)
+    assert load_scorer(path).raw_features == feats[:2]
 
 
 def test_build_entity_config_has_derived_score(tmp_path):

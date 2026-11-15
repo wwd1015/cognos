@@ -144,7 +144,7 @@ def test_agent_written_code_is_kept_reviewed_validated_and_delivered(make_config
     assert "KeyError" in a3["error"] and any(f.id == "analysis-failed" for f in res.findings)
     # the script is an artifact: the code as written, under a header saying who wrote it and why
     saved = (eng.run_dir / a1["code_path"]).read_text(encoding="utf-8")
-    assert saved.startswith("# COGNOS analysis script") and "Written by: the Data agent agent" in saved
+    assert saved.startswith("# COGNOS analysis script") and "Written by: the Data agent" in saved
     assert SCRIPT.strip() in saved and a1["code_sha256"] == sandbox.sha256(SCRIPT.strip())
     result = json.loads((eng.run_dir / a1["artifact"]).read_text(encoding="utf-8"))
     assert result["charts"][0]["title"] == "High-leverage default rate by sector"
@@ -190,6 +190,7 @@ def test_agent_written_code_is_kept_reviewed_validated_and_delivered(make_config
     again = eng.run_stage("validate")
     finding = next(f for f in again.findings if f.id == "analysis-not-reproduced-a1")
     assert "hash differs" in finding.message and finding.severity.value == "MEDIUM"
+    assert again.verdict.value != "PASS"  # like every other MEDIUM finding, it lowers the verdict
 
 
 def test_code_can_be_switched_off_and_a_failed_request_round_does_not_fail_the_stage(

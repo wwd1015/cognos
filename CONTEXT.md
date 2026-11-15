@@ -176,8 +176,8 @@ The models the search carries to outcomes analysis. The model stage ends on the 
 _Avoid_: "admissible set" (the earlier one-standard-error set a champion was picked from).
 
 **Champion**:
-The pool member in force: the developer's choice at the champion gate, else the Outcomes
-Analyst's recommendation. It exists only once outcomes analysis has compared the pool.
+The pool member in force: the developer's choice at the champion gate, else the Backtest
+agent's recommendation. It exists only once outcomes analysis has compared the pool.
 
 **Run**:
 One development of one model. It stands at one place in the workflow at a time.

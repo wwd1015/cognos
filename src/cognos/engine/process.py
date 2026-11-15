@@ -19,13 +19,13 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from ..agents.contracts import FRIENDLY
+
+# The four sponsor decisions a package cannot be sealed without (data questions may be
+# accepted as assumptions; these may not). Defined once, in config; read here by the gates.
+from ..config import CORE_DESIGN
 from ..fsutil import atomic_write
 from .graph import LABELS, STAGES, STEPS
 from .state import PackageSeal, RunState, utcnow
-
-# The four sponsor decisions a package cannot be sealed without. Data questions
-# may be accepted as assumptions; these may not.
-CORE_DESIGN = ("use_case", "horizon", "default_definition", "segment")
 
 SEAT_OF_GATE = {
     "gate_intent": "developer",
@@ -44,16 +44,6 @@ SEAT_LABEL = {
     "approver": "approver",
     "express": "express preparation",
 }
-
-# One map, in order. The graph in graph.py is still what runs. This is only how
-# the workbench says who a page belongs to.
-MAP = (
-    ("Intent", ("intake", "gate_intent"), "developer"),
-    ("Data & design", ("gate_source", "explore", "gate_data", "ideate", "gate_design"), "developer"),
-    ("Model", ("model", "gate_candidates", "backtest", "gate_champion"), "developer"),
-    ("Challenge", ("validate", "gate_validation"), "reviewer"),
-    ("Decision", ("comply", "document", "review", "gate_signoff"), "approver"),
-)
 
 
 def _refuse(message: str) -> NoReturn:
@@ -121,12 +111,22 @@ def material(config: Any, state: RunState, results: dict[str, Any]) -> dict[str,
                                    if r["run_id"] != state.run_id),
               "test_evaluations_model": trials.get("test_evaluations")}
              if trials.get("n_other_runs") else {})
+    ov = state.overrides
     return {
         **tried,
         "design": effective_design(config, state),
-        "exclude_columns": sorted(state.overrides.exclude_columns),
-        "slate": state.overrides.slate,
-        "plan": state.overrides.plan,
+        # What the data are and how they enter: given, joined, aimed at, excluded, formed.
+        "data": ov.data,
+        "target": ov.target or getattr(config.data, "target", None) or None,
+        "task": ov.task or getattr(getattr(config, "task", None), "value", None),
+        "join": (payload_of("explore").get("linking") or {}).get("plan") or ov.join,
+        "exclude_columns": sorted(ov.exclude_columns),
+        "column_forms": ov.transforms,
+        # What the developer set at the design gate beyond the plan.
+        "model_form": {"roles": ov.framework_roles, "proposed": ov.proposed_forms},
+        "screen_exceptions": ov.screen_exceptions,
+        "slate": ov.slate,
+        "plan": ov.plan,
         "pool": list(model.get("pool_ids") or []),
         "champion_id": backtest.get("champion_id"),
         "test_metric": backtest.get("oos_metric"),

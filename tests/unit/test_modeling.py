@@ -1,4 +1,4 @@
-"""Modeling core: metrics, fitters, ratchet search, ensemble, backtest statistics."""
+"""Modeling core: metrics, fitters, the candidate space, ensemble, backtest statistics."""
 
 from __future__ import annotations
 
@@ -11,10 +11,8 @@ from cognos.modeling import (
     cv_score,
     fit_full,
     greedy_ensemble,
-    holdout_split,
     is_better,
     make_fit_predict,
-    ratchet_search,
     score,
 )
 from cognos.modeling.backtest_stats import (
@@ -34,14 +32,6 @@ def test_metric_score_and_direction():
     assert is_better("rmse", 1.0, None)  # first candidate always accepted
 
 
-def test_holdout_split_time_ordered():
-    df = synth.make_timeseries_dataset(n=100)
-    train, hold = holdout_split(df, holdout_fraction=0.2, datetime_col="date", random_state=1)
-    assert len(hold) == 20 and len(train) == 80
-    # time-ordered: every holdout date is after every training date
-    assert train["date"].max() <= hold["date"].min()
-
-
 def test_cv_score_oof_shape_and_leakage_safe():
     df = synth.make_regression_dataset(n=120)
     X = df[["x1", "x2", "x3"]]
@@ -51,18 +41,6 @@ def test_cv_score_oof_shape_and_leakage_safe():
                   metric="rmse", is_classification=False, folds=4)
     assert cv.oof_pred.shape == (120,)
     assert cv.n_folds == 4 and cv.mean > 0
-
-
-def test_ratchet_search_regression_finds_signal():
-    df = synth.make_regression_dataset(n=200)
-    X = df[["x1", "x2", "x3", "region"]]
-    y = coerce_target_reg(df)
-    sr = ratchet_search(X, y, task="regression", metric="rmse", is_classification=False,
-                        max_candidates=8, folds=3)
-    assert sr.champion is not None
-    assert sr.champion_cv.mean < 1.5  # real signal recovered
-    assert any(r.status == "keep" for r in sr.ledger)
-    assert "idx\tlabel" in sr.ledger_tsv()
 
 
 def test_fit_full_ols_has_coefficients():
@@ -144,3 +122,43 @@ def test_inference_design_is_full_rank():
 
 def coerce_target_reg(df):
     return df["target"].astype(float).to_numpy()
+
+
+def test_the_direct_fit_gives_the_pipelines_numbers_to_the_last_bit(monkeypatch):
+    """A linear specification on numeric columns is scaled and fitted without the pipeline
+    (validation makes thousands of such fits). It may only be faster, never different."""
+    import pandas as pd
+    import pytest
+
+    from cognos.modeling import fit
+
+    rng = np.random.default_rng(7)
+    n = 240
+    X = pd.DataFrame({"a": rng.normal(size=n), "b": rng.gamma(2.0, size=n),
+                      "flag": rng.random(n) > 0.6, "k": rng.integers(0, 9, size=n)})
+    signal = X["a"] - 0.5 * X["b"] + X["flag"]
+    targets = {True: (signal + rng.normal(size=n) > 0).astype(int).to_numpy(),
+               False: np.exp(0.2 * signal + 0.1 * rng.normal(size=n)).to_numpy()}
+    train, held = X.iloc[:180], X.iloc[180:]
+    families = sorted(fit.LINEAR_FAMILIES - set(fit.HAZARD_FAMILIES))
+    checked = 0
+    for family in families:
+        is_clf = family in {"logit", "ridge_logit", "lasso_logit", *fit.BINARY_GLM_LINKS}
+        y = targets[is_clf][:180]
+        for features in (["a"], ["a", "b", "flag", "k"]):
+            cand = fit.Candidate(family=family, features=features)
+            direct = fit.make_fit_predict(cand, is_classification=is_clf)(train, y)(held)
+            with monkeypatch.context() as m:
+                m.setattr(fit, "_all_numeric", lambda X: False)  # the pipeline, as before
+                piped = fit.make_fit_predict(cand, is_classification=is_clf)(train, y)(held)
+            for got, want in zip(direct, piped, strict=True):
+                assert (got is None and want is None) or np.array_equal(got, want), (family, features)
+            checked += 1
+    assert checked == 2 * len(families) and checked >= 20
+
+    # a text column still goes through the encoder, so it keeps the pipeline
+    mixed = train.assign(seg=np.where(train["a"] > 0, "x", "y"))
+    assert not fit._all_numeric(mixed[["a", "seg"]]) and fit._all_numeric(mixed[["a", "flag"]])
+    with pytest.raises(KeyError):
+        fit.make_fit_predict(fit.Candidate(family="ols", features=["a"]),
+                             is_classification=False)(train, targets[False][:180])(held[["b"]])

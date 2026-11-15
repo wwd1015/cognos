@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cognos.okf import OKF_VERSION, OKFBundle, OKFConcept, is_conformant, parse_concept
+from cognos.okf import OKF_VERSION, OKFBundle, OKFConcept, parse_concept
 
 
 def test_concept_render_roundtrip():
@@ -43,7 +43,3 @@ def test_bundle_finalize_writes_index_and_log(tmp_path):
     assert names == {"overview", "model"}  # index/log excluded
 
 
-def test_is_conformant():
-    assert is_conformant("---\ntype: model\n---\nbody")
-    assert not is_conformant("---\ntitle: no type\n---\nbody")
-    assert not is_conformant("no frontmatter")

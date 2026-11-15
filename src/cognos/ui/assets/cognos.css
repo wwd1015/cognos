@@ -13,7 +13,7 @@
 
   --ink: #16140f;
   --ink-2: #6b6557;
-  --ink-3: #8d8775;
+  --ink-3: #777160;   /* 4.6:1 on --bg-base: small grey text needs 4.5:1 */
 
   --accent: #7d2230;
   --accent-hover: #6a1c29;
@@ -43,7 +43,7 @@
 
   --ink: #f0ede4;
   --ink-2: #9a937f;
-  --ink-3: #7d7767;
+  --ink-3: #857f6e;   /* 4.6:1 on --bg-base */
 
   --accent: #d98b96;
   --accent-hover: #e3a3ac;
@@ -56,6 +56,18 @@
   --line-strong: rgba(240, 237, 228, 0.34);
 
   --shadow-menu: 0 10px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* "Increase contrast" asked for: firmer rules and greys (the dark rule must come second) */
+@media (prefers-contrast: more) {
+  :root {
+    --hair: rgba(22, 20, 15, 0.18); --line: rgba(22, 20, 15, 0.32); --line-strong: rgba(22, 20, 15, 0.55);
+    --ink-3: var(--ink-2);
+  }
+  [data-mantine-color-scheme="dark"] {
+    --hair: rgba(240, 237, 228, 0.20); --line: rgba(240, 237, 228, 0.34); --line-strong: rgba(240, 237, 228, 0.60);
+    --ink-3: var(--ink-2);
+  }
 }
 
 /* ── Page ── */
@@ -79,7 +91,9 @@ html, body {
 .cognos-page { max-width: 1520px; margin: 0 auto; padding: 4px 16px 56px; }
 ::selection { background: var(--accent-tint); }
 a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; text-underline-offset: 3px; }
+a:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+/* one focus ring for every keyboard stop; components that reset outline keep their own rule */
+:where(a:any-link, button, summary, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Masthead ── */
 .mantine-AppShell-header { background: var(--bg-base); border: 0; }
@@ -112,9 +126,10 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .masthead-tools { display: flex; align-items: center; gap: 18px; }
 .masthead-link {
   font-size: 13px; color: var(--ink); padding: 2px 0;
-  border-bottom: 1px solid var(--line); transition: border-color 0.2s var(--ease);
+  text-decoration: underline solid var(--line-strong) max(1px, 0.08em); text-underline-offset: 0.3em;
+  transition: text-decoration-color 0.2s var(--ease);
 }
-.masthead-link:hover { border-bottom-color: var(--ink); text-decoration: none; }
+.masthead-link:hover { text-decoration: underline solid var(--ink) max(1px, 0.08em); text-underline-offset: 0.3em; }
 .masthead-meta { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
 
 /* ── Type ── */
@@ -122,6 +137,11 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .page-title { font-family: var(--font-display); font-weight: 600; font-size: 30px; line-height: 1.15; }
 .page-lede { color: var(--ink-2); font-size: 14.5px; max-width: 760px; margin-top: 4px; }
 .num, .mantine-Table-td .mantine-Code-root { font-family: var(--font-mono); }
+/* titles break into even lines; prose avoids a lone last word (Mantine's Title: theme.py headings) */
+.page-title, .ledger-title, .run-hero-name, .cognos-md :is(h1, h2, h3),
+.mantine-Drawer-title, .mantine-Modal-title { text-wrap: balance; }
+.page-lede, .ledger-desc, .run-hero-next, .gate-proposal, .cognos-rec .rec-summary,
+.cognos-md :is(p, li, blockquote), .src-detail p, .ask-text { text-wrap: pretty; }
 
 /* ── Panels: a rule and a serif title, never a box ── */
 .mantine-Card-root {
@@ -208,8 +228,9 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-radius: 0; background: transparent !important;
 }
 .mantine-Tabs-tab:hover { color: var(--ink); border-color: var(--line-strong); }
-.mantine-Tabs-tab[data-active] { color: var(--ink); font-weight: 600; border-color: var(--ink); }
-.mantine-Tabs-tab:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+/* the weight never changes: a bolder active tab would shift the row sideways */
+.mantine-Tabs-tab[data-active] { color: var(--ink); border-color: var(--ink); }
+.mantine-Tabs-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mantine-Tabs-tab:focus:not(:focus-visible) { outline: 0; }
 
 /* ── Segmented control: bordered strip, ink fill when active ── */
@@ -312,6 +333,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* ── Markdown (white paper, brief) ── */
 .cognos-md { font-size: 14px; line-height: 1.65; }
+.cognos-md > :is(p, ul, ol, blockquote) { max-inline-size: 75ch; }
 .cognos-md h1, .cognos-md h2, .cognos-md h3 { font-family: var(--font-display); font-weight: 600; }
 .cognos-md h1 { font-size: 1.55rem; border-bottom: 2px solid var(--rule); padding-bottom: 6px; }
 .cognos-md h2 { font-size: 1.2rem; margin-top: 1.5em; border-top: 1px solid var(--line); padding-top: 12px; }
@@ -335,15 +357,19 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .mantine-Accordion-content { padding-left: 0; padding-right: 0; }
 .mantine-Skeleton-root::after { background: var(--bg-sunken); }
 .mantine-Notification-root { background: var(--bg-raised); border: 1px solid var(--line); box-shadow: var(--shadow-menu); }
-.mantine-ScrollArea-thumb { background: var(--line-strong); }
+.mantine-ScrollArea-thumb { background: var(--ink-3); }
+/* native scrollbars in key with the paper; the thumb keeps 3:1, the width stays the browser's */
+.tx-list, .dz-table, .dz-forms-scroll, .src-hits, .ask-thread, .jc-tile ul, .mantine-Code-root[data-block] {
+  scrollbar-color: var(--ink-3) transparent;
+}
 .page-foot {
   margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--line);
   display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-3);
 }
 
 @keyframes cognos-spin { to { transform: rotate(360deg); } }
-.spin { animation: cognos-spin 1.2s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } * { transition: none !important; } }
+/* motion is opted into, element by element; Mantine's own follows theme.respectReducedMotion */
+@media (prefers-reduced-motion: no-preference) { .spin { animation: cognos-spin 1.2s linear infinite; } }
 
 /* Document drop zones in the new-run drawer. */
 .cognos-upload {
@@ -371,7 +397,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .jc-svg-host, .jc-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .jc-line { fill: none; stroke-width: 1.4; vector-effect: non-scaling-stroke; transition: stroke 0.25s var(--ease); }
 .jc-line.measured { stroke: var(--ink-3); stroke-dasharray: 1 4; stroke-linecap: round; }
-.jc-line.proposed { stroke: var(--accent); stroke-dasharray: 6 5; animation: jc-flow 1.4s linear infinite; }
+.jc-line.proposed { stroke: var(--accent); stroke-dasharray: 6 5; }
+@media (prefers-reduced-motion: no-preference) { .jc-line.proposed { animation: jc-flow 1.4s linear infinite; } }
 .jc-line.chosen { stroke: var(--ink); stroke-width: 2; }
 .jc-line.off, .jc-chip[hidden] { display: none; }
 @keyframes jc-flow { to { stroke-dashoffset: -22; } }
@@ -391,9 +418,16 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .jc-tile li.jc-target::after { content: "● target"; }
 .jc-tile li.jc-more { color: var(--ink-3); }
 .jc-make-base { margin: 2px 10px 8px; padding: 2px 0; font: 500 11px var(--font-mono); letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--ink-3); background: none; border: 0; border-bottom: 1px dotted var(--line-strong); cursor: pointer; }
-.jc-make-base:hover:not(:disabled) { color: var(--accent); border-bottom-color: var(--accent); }
-.jc-tile.base .jc-make-base { color: var(--ink); border-bottom-color: transparent; cursor: default; }
+  text-transform: uppercase; color: var(--ink-3); background: none; border: 0; cursor: pointer;
+  text-decoration: underline dotted var(--line-strong) 1px; text-underline-offset: 0.35em; position: relative; }
+.jc-make-base:hover:not(:disabled) { color: var(--accent); text-decoration-color: var(--accent); }
+.jc-tile.base .jc-make-base { color: var(--ink); text-decoration-color: transparent; cursor: default; }
+/* a 24px hit area around small controls, drawn by nothing */
+.jc-make-base::after, .jc-insp-x::after, .src-x::after {
+  content: ""; position: absolute; inset: 50% auto auto 50%; translate: -50% -50%;
+  min-inline-size: max(100%, 24px); min-block-size: max(100%, 24px);
+}
+.jc-insp-x, .src-x { position: relative; }
 .jc-chip { position: absolute; transform: translate(-50%, -50%); z-index: 2; white-space: nowrap; cursor: pointer;
   font: 500 11px var(--font-mono); padding: 3px 8px; background: var(--bg-base); color: var(--ink-2);
   border: 1px solid var(--line-strong); transition: background 0.2s var(--ease), color 0.2s, border-color 0.2s; }
@@ -437,7 +471,6 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .jc-flash { position: absolute; left: 8px; top: 8px; z-index: 6; max-width: calc(100% - 16px); padding: 6px 10px;
   background: var(--bg-raised); border: 1px solid var(--line-strong); box-shadow: var(--shadow-menu); font-size: 12.5px; }
 .jc-chip:disabled, .jc-make-base:disabled { cursor: default; }
-.jc-chip:focus-visible, .jc-make-base:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .jc-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 12px; color: var(--ink-2); }
 .jc-legend i { display: inline-block; width: 24px; height: 0; vertical-align: middle; margin-right: 7px; border-top: 2px solid var(--ink); }
 .jc-legend i.m { border-top: 2px dotted var(--ink-3); }
@@ -456,7 +489,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .src-base, .src-make-base { flex: none; width: 74px; font: 500 10.5px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; text-align: left; }
 .src-base { color: var(--accent); }
 .src-make-base { background: none; border: 0; padding: 0; color: var(--ink-3); cursor: pointer; opacity: 0; transition: opacity 0.15s; }
-.src-sum:hover .src-make-base, .src-make-base:focus-visible { opacity: 1; }
+.src-sum:is(:hover, :focus-within) .src-make-base { opacity: 1; }
+@media (hover: none) { .src-make-base { opacity: 1; } }
 .src-make-base:hover { color: var(--accent); }
 .src-id { font: 500 12.5px var(--font-mono); color: var(--ink); white-space: nowrap; }
 .src-title { font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -486,7 +520,6 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .src-hit:disabled .src-add { color: var(--ink-3); }
 .src-more { margin-top: 14px; }
 @media (max-width: 640px) { .src-title { display: none; } .src-detail { padding-left: 4px; } }
-@media (prefers-reduced-motion: reduce) { .jc-line.proposed { animation: none; } }
 
 /* ── The decision as one card (panels.gate_block): what accepting means, the engine's
    figures as evidence, then the reason and the buttons. Choosing differently folds away. ── */
@@ -499,17 +532,23 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .gate-fold::-webkit-details-marker { display: none; }
 .gate-fold::before { content: "+ "; color: var(--accent); }
 .gate-more[open] > .gate-fold::before { content: "− "; }
-.gate-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gate-more[open] > .gate-fold { margin-bottom: 8px; }
+/* folds slide open where the browser can size to auto; elsewhere they open at once */
+:is(.gate-more, .src-row, .src-cols)::details-content { interpolate-size: allow-keywords; overflow: clip; contain: layout; }
+:is(.gate-more, .src-row, .src-cols):not([open])::details-content { block-size: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  :is(.gate-more, .src-row, .src-cols)::details-content {
+    transition: block-size 0.2s var(--ease), content-visibility 0.2s; transition-behavior: allow-discrete;
+  }
+}
 .gate-done { display: grid; gap: 6px; justify-items: start; }
 .gate-stamp { display: inline-block; font: 500 11.5px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--accent); border: 1.5px solid var(--accent); padding: 4px 10px; transform: rotate(-2deg);
-  animation: gate-stamp 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+  color: var(--accent); border: 1.5px solid var(--accent); padding: 4px 10px; transform: rotate(-2deg); }
+@media (prefers-reduced-motion: no-preference) { .gate-stamp { animation: gate-stamp 0.45s cubic-bezier(0.22, 1, 0.36, 1); } }
 .gate-stamp.sealed { display: inline-flex; align-items: center; gap: 8px; }
 .gate-stamp.sealed::before { content: ""; width: 26px; height: 26px; margin: -6px 0 -6px -4px; background: var(--accent);
   -webkit-mask: url("seal.svg") center / contain no-repeat; mask: url("seal.svg") center / contain no-repeat; }
 @keyframes gate-stamp { from { transform: rotate(-6deg) scale(1.4); opacity: 0; } to { transform: rotate(-2deg) scale(1); opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .gate-stamp { animation: none; } }
 
 /* --- Ask: a floating chat with the page's agent (ADR-0021) ---------------------------- */
 .ask-dock { position: fixed; right: 20px; bottom: 20px; z-index: 300; display: flex;
@@ -535,7 +574,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .ask-text { white-space: pre-line; }
 .ask-facts { display: flex; flex-wrap: wrap; gap: 4px; }
 .ask-fact { font-family: var(--font-mono); font-size: 11px; color: var(--accent);
-  border-bottom: 1px dotted var(--accent-border); overflow-wrap: anywhere; }
+  text-decoration: underline dotted var(--accent-border) 1px; text-underline-offset: 0.3em; overflow-wrap: anywhere; }
 .ask-suggest { border-top: 1px solid var(--line); padding-top: 6px; }
 .ask-empty { color: var(--ink-2); }
 .ask-empty p { margin: 0 0 8px; }
@@ -618,6 +657,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
           align-items: center; padding: 5px 6px; border-bottom: 1px solid var(--hair); font-size: 12.5px; cursor: pointer; }
 .dz-row:hover { background: var(--bg-sunken); }
 .dz-row.sel { background: var(--accent-tint); box-shadow: inset 2px 0 0 var(--accent); }
+/* High Contrast drops the tint and the inset rule: an outline keeps the selection */
+@media (forced-colors: active) { .tx-row.sel, .dz-row.sel { outline: 2px solid Highlight; outline-offset: -2px; } }
 .dz-row.gone { color: var(--ink-3); }
 .dz-head { cursor: default; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2);
            position: sticky; top: 0; background: var(--bg-base); }
@@ -651,3 +692,23 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .dz-forms-scroll { max-height: 340px; overflow-y: auto; border-bottom: 1px solid var(--line); }
 .dz-forms-scroll.long { mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
 .dz-forms-scroll thead th { background: var(--bg-base); }
+
+/* ── The stage page: the decision first, the evidence behind tabs (one open at a time) ── */
+/* the tab already says the title: the section under it starts at its description */
+.stage-tabs > .mantine-Tabs-panel > .ledger-section { border-top: 0; padding-top: 0; }
+.stage-tabs > .mantine-Tabs-panel > .ledger-section > :first-child .ledger-title { display: none; }
+.stage-tabs > .mantine-Tabs-panel > .ledger-section > :first-child .ledger-desc { margin-top: 0; }
+
+/* ── Factors as chips: mono, a hairline, no fill ── */
+.ledger-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ledger-chip { font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5; padding: 0 5px;
+  border: 1px solid var(--line-strong); border-radius: 2px; background: none; color: var(--ink);
+  white-space: nowrap; }
+
+/* ── A design step that is not open yet: one quiet line until its turn ── */
+.dz-waitline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
+  padding: 10px 0; border-top: 1px solid var(--line); }
+.dz-wait-title { font-family: var(--font-display, inherit); font-size: 15px; color: var(--ink-3); }
+.dz-wait-why { font-size: 12px; font-style: italic; color: var(--ink-3); }
+/* a model is named; its id waits in the tooltip */
+.model-name { white-space: nowrap; }

@@ -7,7 +7,7 @@ traceability anchors. On top of the white paper this stage also produces a Googl
 documentation pack. Every methodology/scoring claim is anchored to the code that implements it
 (``{@code:...#symbol}``) so the consistency-review stage can verify the docs match the deployment.
 
-v1: the **Writing agent** agent drafts the narrative sections with ``{{fact:<id>}}``
+v1: the **Writing agent** drafts the narrative sections with ``{{fact:<id>}}``
 placeholders that the engine renders (an agent never types a metric), and the bundle gains a
 **decision log** — every agent recommendation, every human gate decision, and every challenge with
 its response — so the white paper records who recommended what and who decided.
@@ -36,6 +36,20 @@ def _fmt(value: Any, nd: int = 4) -> str:
     if f != f:  # NaN
         return "n/a"
     return f"{f:.{nd}f}"
+
+
+_COMPARED_ON = {
+    "test": "the test sample",
+    "out_of_time": "the out-of-time test sample (cut by date)",
+    "development": "the development sample (no test sample was held back)",
+}
+
+
+def _compared_on(sample) -> str:
+    """The sample the backtest compared the pool on (``evaluation_sample``), worded for a reader."""
+    if not sample:
+        return "not recorded"
+    return _COMPARED_ON.get(str(sample), f"the {str(sample).replace('_', ' ')} sample")
 
 
 def _oos_lines(mp: dict, bp: dict, metric_name: str) -> str:
@@ -399,18 +413,23 @@ class DocumentStage(Stage):
 
         # --- 7. backtest ---------------------------------------------------------
         if bp:
-            pbo = bp.get("pbo") or {}
-            dsr = bp.get("deflated_sharpe") or {}
+            # trading mode only (ADR-0005): the backtest reports both under ``trading``
+            trading = bp.get("trading")
+            trading_lines = ""
+            if trading:
+                pbo = trading.get("pbo") or {}
+                dsr = trading.get("deflated_sharpe") or {}
+                trading_lines = (
+                    f"- **PBO (prob. of backtest overfitting):** {_fmt(pbo.get('pbo'))}\n"
+                    f"- **Deflated Sharpe ratio:** {_fmt(dsr.get('deflated_sharpe'))}\n")
             backtest_body = (
                 "# Out-of-Sample Backtest\n\n"
-                f"- **Scheme:** {bp.get('scheme', 'n/a')}\n"
+                f"- **Compared on:** {_compared_on(bp.get('evaluation_sample'))}\n"
                 f"- **OOS {bp.get('oos_metric_name', metric_name)}:** {_fmt(bp.get('oos_metric'))}\n"
                 f"- **Scored rows:** {bp.get('scored_rows', 'n/a')}\n"
-                f"- **PBO (prob. of backtest overfitting):** {_fmt(pbo.get('pbo'))}\n"
-                f"- **Deflated Sharpe ratio:** {_fmt(dsr.get('deflated_sharpe'))}\n"
-                f"- **IMPACT used:** {bp.get('used_impact', False)} — "
+                + trading_lines
+                + f"- **IMPACT used:** {bp.get('used_impact', False)} — "
                 f"{bp.get('impact_note', 'n/a')}\n\n"
-                f"{bp.get('strategy_note', '')}\n\n"
                 "The backtest is implemented at {@code:src/cognos/stages/backtest.py}. "
                 "See [model](./model.md)."
             )
@@ -422,7 +441,8 @@ class DocumentStage(Stage):
             )
         emit(OKFConcept(
             name="backtest", type="backtest",
-            title="Backtest", description="Out-of-sample performance, PBO, and DSR.",
+            title="Backtest", description=("Out-of-sample performance on the comparison sample"
+                                    + (", PBO and DSR." if (bp or {}).get("trading") else ".")),
             resource=ctx.rel(ctx.resolve("stages/backtest/scored.parquet")),
             tags=["backtest"], body=backtest_body,
         ))
@@ -616,18 +636,33 @@ class DocumentStage(Stage):
             )
             + "\n\n"
             "## 8 Ethical Considerations\n\n"
-            + (
-                f"Fair-lending checks ({', '.join(cfg.compliance.regimes)}) were performed; "
-                f"see [compliance](./compliance.md). Verdict: "
-                f"{cp.get('verdict', 'see compliance stage')}.\n\n"
-                if cp else
-                "Protected attributes are excluded from model features (disparate-treatment "
-                "avoidance). Run the compliance stage for disparate-impact testing.\n\n"
-            )
+            + self._fair_lending_note(cfg, cp)
             + "## 9 Caveats & Recommendations\n\n"
             "Validity is bounded by the training distribution; monitor for drift and re-validate "
             "before high-stakes use. See [limitations](./limitations.md)."
         )
+
+    @staticmethod
+    def _fair_lending_note(cfg, cp: dict) -> str:
+        """What the model card says about fair lending: what the compliance stage recorded,
+        never that a check was performed when the profile left it off."""
+        excluded = ("Protected attributes are excluded from model features (disparate-treatment "
+                    "avoidance). ")
+        if not cp:
+            return excluded + "Run the compliance stage for disparate-impact testing.\n\n"
+        fair = cp.get("fair_lending") or {}
+        if not fair.get("enabled"):
+            return (excluded + "Fair-lending testing was not run for this model "
+                    "(`compliance.fair_lending` is off); see [compliance](./compliance.md).\n\n")
+        ratio = fair.get("disparate_impact")
+        found = (f"the lowest disparate-impact ratio is {_fmt(ratio, 3)}"
+                 + (f" ({fair['disparate_impact_attribute']})"
+                    if fair.get("disparate_impact_attribute") else "")
+                 + f", read against a threshold of {cfg.compliance.disparate_impact_threshold}"
+                 if ratio is not None else
+                 "no disparate-impact ratio could be computed")
+        return (f"Fair-lending checks were performed: {found}; see "
+                "[compliance](./compliance.md).\n\n")
 
     def _annex_iv_body(
         self, cfg, mp: dict, ep: dict, bp: dict, family: str, metric_name: str,
@@ -640,7 +675,8 @@ class DocumentStage(Stage):
             f"{cfg.name} (v{cfg.version}): a {family} {cfg.task.value} model. "
             f"Intended purpose: {cfg.compliance.intended_use or 'see the model card.'}\n\n"
             "## 2 Detailed description of elements and development process\n\n"
-            "Developed via the COGNOS ratchet search with leakage-safe cross-validation and a sealed "
+            "Developed by the COGNOS development plan (a single-factor screen, then the selection "
+            "methods on one ranked ledger) with leakage-safe cross-validation and a sealed "
             "frozen (out-of-time when dated) holdout. See [methodology](./methodology.md).\n\n"
             "## 3 Monitoring, functioning and control\n\n"
             "Deployment scoring is served by {@code:src/cognos/runtime/score.py#score_row}; the "
@@ -740,7 +776,7 @@ class DocumentStage(Stage):
         if scripts:
             checked = {c["id"]: c for c in vp.get("analysis_code", [])}
             parts += ["", "## Analysis code\n",
-                      "Written by the Data agent agent and executed by the engine in a "
+                      "Written by the Data agent and executed by the engine in a "
                       "restricted process. Each script was shown to the model developer at the "
                       "data gate and re-run by validation.\n"]
             for a in scripts:
@@ -911,7 +947,7 @@ class DocumentStage(Stage):
                   "use_and_monitoring": "Use and monitoring"}
         rendered = {s.section: facts_mod.render(s.markdown, facts) for s in out.sections}
         body = ["# Narrative", "",
-                "_Drafted by the Writing agent agent; every number is rendered from a recorded "
+                "_Drafted by the Writing agent; every number is rendered from a recorded "
                 "fact._", ""]
         for key in SECTIONS:
             body += [f"## {titles[key]}", "", rendered.get(key, "").strip(), ""]

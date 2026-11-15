@@ -14,6 +14,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import cognos
+
 from ..artifacts import ArtifactRef, Finding, Severity, StageResult, Verdict
 from ..context import RunContext
 from ..okf import OKFBundle
@@ -46,6 +48,35 @@ def _symbols(py_source: str) -> set[str]:
     return out
 
 
+def package_dir() -> Path:
+    """The directory of the imported ``cognos`` package: a checkout's ``src/cognos`` or a wheel's
+    ``site-packages/cognos``. Anchors are resolved here, so a review means the same thing from
+    either — a BLOCK is stale documentation, never a missing checkout."""
+    return Path(cognos.__file__).resolve().parent
+
+
+# Anchors are written repository-relative (``src/cognos/stages/backtest.py``); a package-relative
+# form (``cognos/...`` or a bare ``stages/...``) reads the same.
+_PREFIXES = ("src/cognos/", "cognos/")
+
+
+def resolve_anchor(path: str, root: Path | None = None) -> Path | None:
+    """The file a ``{@code:path}`` anchor names inside the installed package, or None when the
+    path points outside it (nothing shipped can confirm it, so it reads as stale)."""
+    root = package_dir() if root is None else root
+    rel = path.strip().replace("\\", "/").removeprefix("./")
+    if not rel or rel.startswith("/"):
+        return None
+    for prefix in _PREFIXES:
+        if rel.startswith(prefix):
+            rel = rel[len(prefix):]
+            break
+    target = (root / rel).resolve()
+    if not target.is_relative_to(root.resolve()):
+        return None
+    return target
+
+
 def _link_concept(target: str) -> str | None:
     """Resolve a bundle-relative/relative ``.md`` link to a concept name, or None if external."""
     t = target.strip()
@@ -65,7 +96,7 @@ class ReviewStage(Stage):
     description = "Verify the OKF docs bundle stays consistent with the code and artifacts it claims."
 
     def run(self, ctx: RunContext) -> StageResult:
-        repo_root = Path(__import__("cognos").__file__).resolve().parents[2]
+        pkg = package_dir()
         bundle = OKFBundle(ctx.docs_dir).load()
         concepts = bundle.concepts()
         concept_names = {c.name for c in concepts}
@@ -94,9 +125,9 @@ class ReviewStage(Stage):
             for path, symbol in c.code_anchors():
                 n_code_anchors += 1
                 total_checks += 1
-                fpath = repo_root / path
+                fpath = resolve_anchor(path, pkg)
                 anchor = f"{path}#{symbol}" if symbol else path
-                if not fpath.exists():
+                if fpath is None or not fpath.is_file():
                     missing_code_paths.append(path)
                     res.add_finding(Finding(
                         id=f"stale-path-{c.name}-{len(missing_code_paths)}", severity=Severity.HIGH,
@@ -132,12 +163,13 @@ class ReviewStage(Stage):
                         suggestion="Fix the link target or add the referenced concept.",
                     ))
 
-            # (4) Resource existence: a local-looking resource path must resolve under the run dir or repo.
+            # (4) Resource existence: a local-looking resource path must resolve under the run dir
+            # or the installed package.
             resource = str(c.resource).strip()
             if resource and "://" not in resource and not resource.startswith(("http:", "https:")):
                 total_checks += 1
-                candidates = [ctx.resolve(resource), repo_root / resource, Path(resource)]
-                if not any(p.exists() for p in candidates):
+                candidates = [ctx.resolve(resource), resolve_anchor(resource, pkg), Path(resource)]
+                if not any(p is not None and p.exists() for p in candidates):
                     res.add_finding(Finding(
                         id=f"missing-resource-{c.name}", severity=Severity.LOW, category="drift",
                         confidence=0.8, location=f"{c.name} -> {resource}",
@@ -158,7 +190,9 @@ class ReviewStage(Stage):
             "missing_symbols": missing_symbols,
             "broken_links": broken_links,
             "drift_score": drift_score,
-            "repo_root": str(repo_root),
+            # resolved against the installed package; no absolute path is recorded, since the
+            # result travels in the export (an older result may still carry ``repo_root``)
+            "anchors_resolved_against": "package",
         }
         ref: ArtifactRef = ctx.save_json("stages/review/consistency.json", payload)
         res.add_artifact(ref)

@@ -22,6 +22,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from .artifacts import read_payload
 from .context import new_run_id
 from .engine.graph import LABELS, STAGES, STEPS, TRIAL_STOPS_BEFORE
 from .engine.process import SEAT_OF_GATE
@@ -90,8 +91,7 @@ def members(runs_root: Path, model: str) -> list[RunState]:
 
 # --- one run's line ----------------------------------------------------------------------------
 def _payload(run_dir: Path, stage: str, name: str = "result.json") -> dict[str, Any]:
-    got = read_json(Path(run_dir) / "stages" / stage / name) or {}
-    return got.get("payload") or {}
+    return read_payload(run_dir, stage, name)
 
 
 def counts(run_dir: Path) -> dict[str, Any]:
@@ -144,8 +144,34 @@ CHANGE_LABELS = {"data": "the data", "exclude_columns": "excluded columns", "tar
                  "framework_roles": "the model form", "proposed_forms": "forms proposed"}
 
 
+def replaced(state: RunState) -> str:
+    """The state text of a main run another run replaced: "replaced by <run>; kept on
+    record" ('' for any other run). Read from its lineage. A replaced run waiting at a
+    decision a trial run may still take keeps its own text: that decision is still open."""
+    lin = state.lineage
+    if lin is None or not lin.trial or not lin.replaced_by:
+        return ""
+    waiting = next((s for s in STEPS if state.status_of(s) == "awaiting"), None)
+    if waiting is not None and waiting not in BEYOND:
+        return ""
+    return f"replaced by {lin.replaced_by}; kept on record"
+
+
+def next_action(state: RunState) -> dict[str, str]:
+    """``process.next_action``, except on a replaced main run: nothing there waits for
+    anyone, and it says so instead of naming a seat."""
+    from .engine.process import next_action as _next
+
+    text = replaced(state)
+    if text:
+        return {"kind": "replaced", "step": "", "seat": "", "text": text[0].upper() + text[1:] + "."}
+    return _next(state)
+
+
 def stands(state: RunState) -> str:
     """Where a run is, in a few words (the model's record keeps this for a deleted run)."""
+    if replaced(state):
+        return replaced(state)
     if state.is_trial and at_end(state):
         return "trial finished at the champion"
     waiting = next((s for s in STEPS if state.status_of(s) == "awaiting"), None)

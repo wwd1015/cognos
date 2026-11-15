@@ -122,3 +122,48 @@ def test_review_no_drift(reg_run):
     assert p["missing_code_paths"] == []
     assert p["missing_symbols"] == []
     assert p["n_code_anchors"] >= 1
+    assert "repo_root" not in p  # the result travels in the export: no machine's path
+
+
+def test_white_paper_backtest_names_the_comparison_sample(reg_run):
+    """Outside trading mode the backtest section names the sample the pool was compared on and
+    prints neither a scheme nor PBO / the deflated Sharpe ratio (ADR-0005)."""
+    ctx, _ = reg_run
+    bp = ctx.require("backtest").payload
+    assert bp["trading"] is None and bp["evaluation_sample"] == "test"
+    doc = (ctx.docs_dir / "backtest.md").read_text(encoding="utf-8")
+    assert "- **Compared on:** the test sample" in doc
+    for absent in ("Scheme", "PBO", "Deflated Sharpe", "n/a\n\n\n"):
+        assert absent not in doc
+    paper = (ctx.run_dir / "stages/document/whitepaper.md").read_text(encoding="utf-8")
+    assert "Scheme" not in paper and "Deflated Sharpe" not in paper
+
+
+def test_trading_mode_reaches_validation_and_the_white_paper(tmp_path):
+    """PBO and the deflated Sharpe ratio are computed only when the profile names a returns
+    column (ADR-0005). What the backtest records under ``trading`` is what validation weighs
+    and what the white paper prints."""
+    import numpy as np
+
+    from cognos.engine import Engine
+
+    df = synth.make_classification_dataset(n=400)
+    df["ret"] = np.random.default_rng(0).normal(0, 0.02, len(df))
+    df.to_csv(tmp_path / "d.csv", index=False)
+    cfg = CognosConfig.from_dict({
+        "name": "trading", "task": "classification",
+        "data": {"path": str(tmp_path / "d.csv"), "target": "target", "drop_columns": ["ret"]},
+        "metric": {"name": "roc_auc"}, "search": {"max_candidates": 8, "cv_folds": 3},
+        "backtest": {"returns_column": "ret"}, "runs_dir": str(tmp_path / "runs")})
+    eng = Engine(cfg, mode="autonomous", provider="heuristic")
+    eng.run_until_idle()
+    res = eng.results()
+    trading = res["backtest"].payload["trading"]
+    pbo, dsr = trading["pbo"]["pbo"], trading["deflated_sharpe"]["deflated_sharpe"]
+    assert 0.0 < pbo < 1.0
+    # the overfitting score is capped by 1 - PBO (the gap to the test sample may lower it more)
+    assert res["validate"].payload["rubric"]["overfitting"] <= 1.0 - pbo + 1e-9
+    doc = (eng.run_dir / "docs" / "backtest.md").read_text(encoding="utf-8")
+    assert f"**PBO (prob. of backtest overfitting):** {pbo:.4f}" in doc
+    assert f"**Deflated Sharpe ratio:** {dsr:.4f}" in doc
+    assert "- **Compared on:** the test sample" in doc and "Scheme" not in doc

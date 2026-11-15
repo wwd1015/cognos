@@ -11,6 +11,7 @@ if ever needed, is a thin wrapper over these functions.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import shutil
@@ -18,7 +19,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from .artifacts import StageResult
+from .artifacts import StageResult, read_payload, read_raw, read_results
 from .config import CognosConfig
 from .engine import Engine, RunState, events
 from .engine.gates import GateError
@@ -127,7 +128,9 @@ def demo_config(preset: str, root: str | Path | None = None, *, n: int | None = 
     data_dir.mkdir(parents=True, exist_ok=True)
     p = DEMO_PRESETS[preset]
     gen = synth.GENERATORS[p.get("generator", preset)]
-    df = gen(n=n) if n else gen()
+    # ``n`` is the size of the demo: rows, or obligors for the rating migration panel.
+    size = "n_obligors" if "n_obligors" in inspect.signature(gen).parameters else "n"
+    df = gen(**{size: n}) if n else gen()
     csv = data_dir / f"{preset}.csv"
     if p.get("linked"):
         data_spec = _linked_demo_sources(df, data_dir)
@@ -239,17 +242,6 @@ def config_from_data(name: str, source: dict[str, Any], *, description: str = ""
                                    **extra})
 
 
-def preview_source(source: dict[str, Any], rows: int = 5) -> dict[str, Any]:
-    """Columns and the first rows of a source, to check a connection before starting a run."""
-    from . import datasources
-
-    cfg = config_from_data("preview", {**source, "limit": rows})
-    df, provenance = datasources.load(cfg)
-    return {"columns": [{"name": c, "dtype": str(df[c].dtype)} for c in df.columns],
-            "rows": json.loads(df.head(rows).to_json(orient="records", date_format="iso")),
-            "source": provenance}
-
-
 # --- engagements: the development mode and its documents ---------------------------------------
 def intent_template(kind: str = "new", name: str = "") -> str:
     """The business intent document (or model update request) to fill in before a run."""
@@ -351,17 +343,17 @@ def answer_gap(run_id: str, gap_id: str, answer: str, *, assume: bool = False,
 
 
 def retry(run_id: str, step: str, root: str | Path | None = None,
-          background: bool = True, *, stuck: bool = False) -> RunState:
+          background: bool = True, *, stuck: bool = False, by: str | None = None) -> RunState:
     eng = engine(run_id, root)
-    state = eng.retry(step, stuck=stuck)
+    state = eng.retry(step, stuck=stuck, by=by or whoami())
     if background:
         eng.start()
     return state
 
 
 def reopen(run_id: str, gate: str, root: str | Path | None = None,
-           *, seat: str | None = None) -> RunState:
-    return engine(run_id, root).reopen(gate, seat=seat)
+           *, seat: str | None = None, by: str | None = None) -> RunState:
+    return engine(run_id, root).reopen(gate, seat=seat, by=by or whoami())
 
 
 # --- trial runs (ADR-0017) ---------------------------------------------------------------------
@@ -502,23 +494,12 @@ def is_busy(run_id: str, root: str | Path | None = None) -> bool:
 
 
 def results(run_id: str, root: str | Path | None = None) -> dict[str, StageResult]:
-    out = {}
-    for stage in STAGES:
-        path = runs_root(root) / run_id / "stages" / stage / "result.json"
-        if path.exists():
-            out[stage] = StageResult.model_validate_json(path.read_text(encoding="utf-8"))
-    return out
+    return read_results(runs_root(root) / run_id, STAGES)
 
 
 def _results_in(run_dir: Path, name: str = "result.json") -> dict[str, StageResult]:
-    out = {}
-    for stage in STAGES:
-        path = run_dir / "stages" / stage / name
-        try:
-            out[stage] = StageResult.model_validate_json(path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, ValueError):
-            continue
-    return out
+    """For comparisons: a result that cannot be read is left out, not raised."""
+    return read_results(run_dir, STAGES, name, tolerant=True)
 
 
 def _config_dict(run_dir: Path) -> dict | None:
@@ -603,6 +584,22 @@ def read_artifact(run_id: str, relpath: str, root: str | Path | None = None) -> 
     return path.read_text(encoding="utf-8")
 
 
+def replaced(st: RunState) -> str:
+    """"replaced by <run>; kept on record" for a main run another run replaced and that has
+    nothing left a trial run may decide; '' otherwise (``trials.replaced``)."""
+    from . import trials
+
+    return trials.replaced(st)
+
+
+def next_action(st: RunState) -> dict[str, str]:
+    """The single thing a run is waiting on, in a sentence. A main run another run replaced
+    says so instead of naming a seat (``trials.next_action``)."""
+    from . import trials
+
+    return trials.next_action(st)
+
+
 def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
     """Every run under the runs root, newest first. v0.x runs (no state.json) are listed as
     ``legacy`` and read-only."""
@@ -622,22 +619,20 @@ def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
             # The champion is chosen on the outcomes analysis of the pool. A run recorded
             # before candidate pools carries it on the model stage.
             for stage in ("backtest", "model"):
-                recorded = d / "stages" / stage / "result.json"
-                if champ is None and recorded.exists():
+                if champ is None:
+                    got = read_raw(d, stage)
                     try:
-                        got = json.loads(recorded.read_text(encoding="utf-8"))
                         champ = ((got.get("payload") or {}).get("champion_name")
                                  or got["metrics"].get("champion"))
                     except Exception:
                         champ = None
             waiting = [s for s, v in st.steps.items() if v.status == "awaiting"]
-            kind = "new"
-            try:  # the development mode, as intake recorded it
-                kind = json.loads((d / "stages" / "intake" / "result.json").read_text(
-                    encoding="utf-8"))["payload"].get("kind") or "new"
-            except Exception:
-                pass
+            # the development mode, as intake recorded it
+            kind = read_payload(d, "intake").get("kind") or "new"
             lin = st.lineage
+            gone = replaced(st)  # a main run another run replaced waits for no one
+            if gone:
+                waiting = []
             rows.append({"run_id": d.name, "project": st.project, "status": st.status,
                          "kind": kind,
                          "model": lin.model if lin else d.name,
@@ -646,6 +641,7 @@ def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
                          "trial_gate": lin.gate if lin else None,
                          "trial_note": lin.note if lin else "",
                          "trial_ended": bool(lin and lin.trial and st.status == "completed"),
+                         "replaced": gone,
                          "mode": st.mode, "provider": st.provider, "updated_at": st.updated_at,
                          "champion": champ, "waiting_on": waiting[0] if waiting else None,
                          "spend_usd": st.spend_usd, "legacy": False})
@@ -656,6 +652,9 @@ def list_runs(root: str | Path | None = None) -> list[dict[str, Any]]:
                 continue
             rows.append({"run_id": d.name, "project": m.get("project", ""), "status": "legacy",
                          "kind": "new",
+                         # the same keys as a v1 row: a legacy run is its own model, no trials
+                         "model": d.name, "role": "", "trial_of": None, "trial_gate": None,
+                         "trial_note": "", "trial_ended": False, "replaced": "",
                          "mode": m.get("mode", ""), "provider": "-",
                          "updated_at": m.get("created_at", ""), "champion": None,
                          "waiting_on": None, "spend_usd": 0.0, "legacy": True})

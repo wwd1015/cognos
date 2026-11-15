@@ -1,28 +1,23 @@
-"""Budget-aware ratchet search over the CASH space.
+"""The candidate space over model family, feature subset and hyperparameters.
 
-Implements the accept-if-better-else-reject hill-climb from autoresearch/autoforge as code: each
-candidate (model family + feature subset + hyperparameters) is evaluated with leakage-safe CV; if
-its parsimony-adjusted score beats the incumbent champion it is kept, otherwise it is discarded.
-Every attempt is logged to an experiment ledger (the ``results.tsv`` analogue). Candidates are
-ordered cheap/simple first (FLAML's cost-frugal spirit), and the search respects an explicit
-candidate budget and optional wall-clock budget.
+``build_search_space`` lists candidates cheap/simple first (FLAML's cost-frugal spirit); the
+selection methods (``selection.py``) evaluate them through one ``Evaluator``. ``ExperimentRecord``
+is one row of the experiment ledger (``ledger.tsv``).
 """
 
 from __future__ import annotations
 
-import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
-from .fit import DEFAULT_FAMILIES, HAZARD_FAMILIES, Candidate, make_fit_predict
-from .metrics import CVResult, cv_score, is_better, metric_direction
+from .fit import DEFAULT_FAMILIES, HAZARD_FAMILIES, Candidate
 
 
 @dataclass
 class ExperimentRecord:
-    """One row of the experiment ledger (autoforge results.tsv analogue)."""
+    """One row of the experiment ledger (``ledger.tsv``)."""
 
     idx: int
     label: str
@@ -41,23 +36,6 @@ class ExperimentRecord:
             f"{self.metric_value:.6f}\t{self.cv_std:.6f}\t{self.adjusted:.6f}\t{self.status}\t"
             f"{self.description}"
         )
-
-
-@dataclass
-class SearchResult:
-    champion: Candidate
-    champion_cv: CVResult
-    metric: str
-    ledger: list[ExperimentRecord] = field(default_factory=list)
-    evaluated: list[tuple] = field(default_factory=list)  # [(Candidate, CVResult)] survivors for ensemble
-    n_tried: int = 0
-
-    def ledger_tsv(self) -> str:
-        header = "idx\tlabel\tfamily\tn_features\tmetric\tmetric_value\tcv_std\tadjusted\tstatus\tdescription"
-        return "\n".join([header, *(r.tsv_row() for r in self.ledger)]) + "\n"
-
-    def ledger_records(self) -> list[dict]:
-        return [asdict(r) for r in self.ledger]
 
 
 def _rank_numeric_features(X: pd.DataFrame, y: np.ndarray) -> list[str]:
@@ -134,72 +112,3 @@ def build_search_space(
     # Cheap/simple first: linear families and smaller feature sets lead.
     candidates.sort(key=lambda c: (0 if c.is_linear else 1, len(c.features)))
     return candidates
-
-
-def ratchet_search(
-    X: pd.DataFrame,
-    y: np.ndarray,
-    *,
-    task: str,
-    metric: str,
-    is_classification: bool,
-    is_timeseries: bool = False,
-    families: list[str] | None = None,
-    max_candidates: int = 24,
-    folds: int = 5,
-    random_state: int = 42,
-    complexity_penalty: float = 0.0,
-    time_budget_s: float | None = None,
-    max_features: int | None = None,
-    feature_columns: list[str] | None = None,
-    hazard_meta: dict | None = None,
-) -> SearchResult:
-    # X may carry metadata columns (e.g. the hazard event-time column) that are never features;
-    # `feature_columns` scopes what candidates may use.
-    columns = feature_columns or list(X.columns)
-    space = build_search_space(task, columns, X, y, families=families,
-                              max_features=max_features, random_state=random_state,
-                              hazard_meta=hazard_meta)[:max_candidates]
-
-    direction = metric_direction(metric)
-    n_total = max(1, len(columns))
-    champion: Candidate | None = None
-    champion_cv: CVResult | None = None
-    champion_adj: float | None = None
-    ledger: list[ExperimentRecord] = []
-    evaluated: list[tuple] = []
-    start = time.monotonic()
-
-    for i, cand in enumerate(space):
-        if time_budget_s is not None and (time.monotonic() - start) > time_budget_s:
-            break
-        try:
-            cv = cv_score(
-                make_fit_predict(cand, is_classification=is_classification),
-                X, y, metric=metric, is_classification=is_classification,
-                is_timeseries=is_timeseries, folds=folds, random_state=random_state,
-            )
-            penalty = complexity_penalty * (len(cand.features) / n_total)
-            adjusted = cv.mean - penalty if direction == "maximize" else cv.mean + penalty
-            keep = is_better(metric, adjusted, champion_adj)
-            status = "keep" if keep else "discard"
-            if keep:
-                champion, champion_cv, champion_adj = cand, cv, adjusted
-            evaluated.append((cand, cv))
-            ledger.append(ExperimentRecord(
-                idx=i, label=cand.label(), family=cand.family, n_features=len(cand.features),
-                metric=metric, metric_value=cv.mean, cv_std=cv.std, adjusted=adjusted,
-                status=status, description=cand.description,
-            ))
-        except Exception as exc:  # crash => log 0 and continue (autoforge contract)
-            ledger.append(ExperimentRecord(
-                idx=i, label=cand.label(), family=cand.family, n_features=len(cand.features),
-                metric=metric, metric_value=0.0, cv_std=0.0, adjusted=0.0, status="crash",
-                description=f"{cand.description}: {type(exc).__name__}: {exc}",
-            ))
-
-    if champion is None or champion_cv is None:
-        raise RuntimeError("Search produced no viable candidate (all crashed). Check data/config.")
-
-    return SearchResult(champion=champion, champion_cv=champion_cv, metric=metric,
-                        ledger=ledger, evaluated=evaluated, n_tried=len(ledger))

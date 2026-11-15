@@ -6,6 +6,21 @@ versioning is SemVer.
 ## [Unreleased]
 
 ### Added
+- Declared shapes for the `model` and `backtest` payloads (`payloads.py`), held by tests:
+  a writer may not record an undeclared key, a reader may not ask for one, and a key that
+  is read must still be written by a real run. A contract for the tests; nothing reads it
+  at run time.
+- A test that the top-level docs name code that exists
+  (`tests/unit/test_docs_name_code.py`): every file, `file.py::symbol` and `module.symbol`.
+- **The same fit on the same rows is computed once** (`modeling/cv_cache.py`). The
+  single-factor analysis was computed at the design stage, again on every look at the design
+  gate and again by the model stage. Validation results are now kept in a memo keyed by
+  everything they were computed from (the specification, its factor columns row by row, the
+  outcome, the rows of every validation block, the metric, the library versions). A look at
+  the screen and a re-run after a changed rule take a fraction of the time; every recorded
+  number is the same with and without it.
+- `docs/future-work.md`: what the review left open, the decisions that wait, and what is
+  proposed next.
 - Catalog sources (ADR-0022): the data catalog answers search, describe, links and defaults
   behind one plugin contract (`catalog.CatalogSource`, `registry.add_catalog`,
   `COGNOS_CATALOG`), so a metadata system or a skill can supply it. The YAML catalog is the
@@ -49,49 +64,6 @@ versioning is SemVer.
 - **Focus on a run's page.** One button hides the side columns (the stage index and, on a
   stage page, the live activity) so the page in the middle uses the full width, on every view;
   the choice is kept in the browser.
-
-### Changed
-- Agent ids match their names (ADR-0023): `data_agent`, `validation_agent`, `writing_agent`,
-  ... instead of `data_analyst`, `validator`, `writer`. The run record names agents by their
-  display name. Older runs, audit files and replay recordings keep their ids and still read.
-- "Provide the data" lists only the chosen tables, one line each, and finds the rest by
-  searching (about 330 px instead of 2,000 for the default catalog). Data the catalog does
-  not have is added under a fold.
-- Clicking a link on the join canvas opens its settings (in the join, several rows per key,
-  rows with no match), set per link instead of once for all links.
-- **Agents are named for their work**: Intake, Data, Design, Modeling, Backtest, Validation,
-  Compliance and Writing agent. Job titles are kept for the people (developer, reviewer,
-  approver). Ids are unchanged.
-- The Agent calls table shows each call's time and short code instead of a cut-off id.
-- **SR 26-2 replaces SR 11-7** ([ADR-0019](docs/adr/0019-sr-26-2-replaces-sr-11-7.md)). The
-  interagency model risk guidance of April 17, 2026 (Fed SR 26-2, OCC Bulletin 2026-13, FDIC
-  FIL-15-2026) superseded SR 11-7. The default regime is `SR26-2`, the readiness report's
-  evidence is `sr26_2` (facts `comply.sr26_2.*`), and stages, prompts, templates and docs cite
-  SR 26-2. A profile or run that names `SR11-7` is read as `SR26-2`; results recorded earlier
-  still display.
-- **The new-run form no longer asks for data or offers demos.** It asks for the model's name
-  and what to start from. Demos are runs (`cognos demo`). `projects/` is removed; its examples
-  live on as the demo presets and the built-in templates.
-- **Workbench redesign.** The workbench adopts the "Ledger" design system used by IRIS-D: paper
-  and warm-black themes, serif display type, mono numerals, one oxblood accent, ruled panels
-  instead of boxed cards, a masthead, figure strips, a numbered stage index and a plain activity
-  feed. Still pure Dash + Mantine; no behaviour changed.
-
-### Changed
-- **The model stage ends on a candidate pool; the champion is chosen on outcomes**
-  ([ADR-0016](docs/adr/0016-development-plan-candidate-pool-champion-on-outcomes.md)). New gate
-  `gate_candidates` after `model`; `gate_champion` now follows `backtest`. The Modeler
-  recommends the pool (`pool`, not `champion`), the Outcomes Analyst recommends the champion.
-  Later stages read the champion through `ctx.champion()`. What used to be the sealed holdout
-  is now the *test* sample (`data/test.parquet`), because the pool is compared on it; a sealed
-  holdout is a third sample the plan keeps when the data can spare it, scored at validation.
-  The model stage's payload and metrics changed (`pool`, `leaders`, `best_score`;
-  `champion`, `cv_mean` and `holdout_metric` moved to `ctx.champion()`, `backtest` and
-  `validate`). Candidate ids are hashes of the specification.
-- Recorded agent answers from before this change do not replay: the `live_commercial` example
-  needs re-recording, and its replay test is skipped until then.
-
-### Added
 - **Trial runs** ([ADR-0017](docs/adr/0017-trial-runs-a-decision-taken-differently.md)): copy
   a run at a developer gate and decide it differently without losing the result that was
   there (`cognos trial`, "Try a different decision" in the workbench). A trial run stops
@@ -164,7 +136,141 @@ versioning is SemVer.
   for each (an assumption: show the sensitivity; a limitation: say how it is mitigated) and
   re-runs when one is recorded after it; `docs/limitations.md` lists the two apart.
 
+### Changed
+- **Structure only, nothing recorded changes.** `ui/panels.py` is the package `ui/panels/`
+  (one module per stage page), `ui/app.py` is `ui/app/` (layout, routing, one callback module
+  per page), and the end of the model stage is `stages/pool_builder.py`. Every old name is
+  still importable from where it was. Recorded results are read through one function
+  (`artifacts.read_result`, `read_results`, `read_payload`).
+- A pool member's saved scorer is recorded relative to the run
+  (`models/candidates/<id>.joblib`), so a result names no machine. Runs recorded with an
+  absolute path still load (`pool.scorer_path`).
+- Validation fits a linear specification on numeric columns without the scikit-learn
+  pipeline around it (`fit.make_fit_predict`): about half the time of a small fit, and the
+  same numbers to the last bit (a test holds the two equal for every linear family; nine
+  demo runs record the same 413 files before and after).
+- **The stage page reads decision first.** On the pages that end on a choice (candidate
+  pool, champion, validation, compliance, documents, review) the decision is at the top with
+  the figures under it; the agent's note and each piece of evidence sit behind tabs, one open
+  at a time. The live activity opens from a button and no longer takes a column, so the page
+  is wider. Waiting design steps fold to a line, models are shown by name (the id in a
+  tooltip), factor lists are chips, and a scenario table says in a sentence when nothing moved.
+- **The package digest binds every decision.** It now also covers the data given, the target
+  and task, the join, the column forms, the model form and the screen exceptions. A package
+  already sealed keeps its file and digest; a new seal of the same run has a different digest.
+- **A script that does not reproduce lowers the verdict.** Validation raised the finding
+  after the verdict was set, so a run could read PASS with a MEDIUM finding. It is WARN now,
+  like every other MEDIUM finding.
+- **The benchmark's look at the test sample is counted.** The pure structural and pure
+  migration benchmarks are scored on the test sample; each adds one to `test_evaluations`.
+- **The review stage works from an installed package.** Code anchors are resolved against
+  the installed `cognos` package, not a repository checkout, so a wheel install no longer
+  BLOCKs on every anchor. The result no longer records the machine's `repo_root`.
+- **A replaced main run says so**: "replaced by <run>; kept on record" in place of
+  "waiting for ...", in the run list, the run header, the gate and `cognos status`.
+- **The white paper's backtest section** names the sample the pool was compared on in place
+  of a "Scheme" line that always read "n/a", and shows PBO and the deflated Sharpe ratio
+  only in trading mode.
+- `service.reopen` and `service.retry` take `by` and record who asked (the step's stamp and
+  the activity log). `service.demo_config("migration", n=...)` takes `n` as the number of
+  obligors.
+- **The model stage ends on a candidate pool; the champion is chosen on outcomes**
+  ([ADR-0016](docs/adr/0016-development-plan-candidate-pool-champion-on-outcomes.md)). New gate
+  `gate_candidates` after `model`; `gate_champion` now follows `backtest`. The Modeler
+  recommends the pool (`pool`, not `champion`), the Outcomes Analyst recommends the champion.
+  Later stages read the champion through `ctx.champion()`. What used to be the sealed holdout
+  is now the *test* sample (`data/test.parquet`), because the pool is compared on it; a sealed
+  holdout is a third sample the plan keeps when the data can spare it, scored at validation.
+  The model stage's payload and metrics changed (`pool`, `leaders`, `best_score`;
+  `champion`, `cv_mean` and `holdout_metric` moved to `ctx.champion()`, `backtest` and
+  `validate`). Candidate ids are hashes of the specification.
+- Recorded agent answers from before this change do not replay: the `live_commercial` example
+  needs re-recording, and its replay test is skipped until then.
+- Nine stages and six review gates. An interactive run pauses first at `gate_intent`; scripts that
+  expected `gate_data` first need to decide it (`accept` with a reason while questions are open).
+- The four core design questions are raised by intake (same ids, `design-<field>`); after the
+  intent is confirmed their answers re-enter at `ideate` as before.
+- Synthetic demos ship an intent document generated from the preset's design brief.
+- Runs recorded before this change load with `intake` and `gate_intent` skipped.
+- **Why a step is out of date.** Every invalidation names its cause (the gate decision, answered
+  question or validator loop) in `StepState.rerun_reason`; the reason stays on the step through
+  the re-run. The rail and the stage panel show it.
+- **What a re-run changed.** Before a stage runs again the engine keeps its last result as
+  `stages/<stage>/result.prev.json`; `service.step_changes` and the stage panel compare the two.
+- **Compare runs** (`cognos compare A B`, `/compare/<a>/<b>` in the workbench, "Compare with
+  previous run" on a run): what was decided differently (gate actions, overrides, config) and what
+  it did to the results (metrics with the difference, verdicts, findings). "Improved" / "worse" is
+  claimed only where the metric has a direction (`compare.py`).
+- **Export a run** (`cognos export RUN`, the Export button): one zip of the documents, stage
+  results and small evidence tables, state (decisions, challenges, questions), config and the agent
+  audit log, with `EXPORT.json` listing every file and its SHA-256. The data directory (the sealed
+  holdout), fitted models and binary caches are never included; agent prompts and raw outputs only
+  with `--with-agent-io`. Sealed packages travel with the export.
+- **Seats and a sealed package.** Each gate belongs to one seat: the model developer (data, design,
+  champion), the independent reviewer (validation), or the approver (sign-off). The workbench shows
+  one map and switches seat; the engine refuses the wrong seat. Use, horizon, default definition
+  and segment cannot be waived. `approve` writes `packages/vN.json` once, bound to a digest of
+  recorded facts. A later edit supersedes that package and does not rewrite the file. Autonomous
+  acceptance is express preparation (`seat=express`), not a signature, and does not seal a package.
+  Approval is not deployment. Who did what — person, agent, or the engine — is computed on read.
+
+### Removed
+- Profile fields nothing read: `backtest.enabled`, `backtest.scheme`, `backtest.pbo`,
+  `impact.extra_fields`. A profile that still sets them loads; the keys are dropped.
+- The v0.x search path, called only by tests since ADR-0016: `ratchet_search`,
+  `metrics.holdout_split`, `integrations/autoforge_loop.py`.
+- Unused public functions: `service.preview_source`, `RunContext.save_model` / `load_model`,
+  `TaskType.is_ml`, `stages.all_stage_names`, `okf.is_conformant`.
+- Agent ids match their names (ADR-0023): `data_agent`, `validation_agent`, `writing_agent`,
+  ... instead of `data_analyst`, `validator`, `writer`. The run record names agents by their
+  display name. Older runs, audit files and replay recordings keep their ids and still read.
+- "Provide the data" lists only the chosen tables, one line each, and finds the rest by
+  searching (about 330 px instead of 2,000 for the default catalog). Data the catalog does
+  not have is added under a fold.
+- Clicking a link on the join canvas opens its settings (in the join, several rows per key,
+  rows with no match), set per link instead of once for all links.
+- **Agents are named for their work**: Intake, Data, Design, Modeling, Backtest, Validation,
+  Compliance and Writing agent. Job titles are kept for the people (developer, reviewer,
+  approver). Ids are unchanged.
+- The Agent calls table shows each call's time and short code instead of a cut-off id.
+- **SR 26-2 replaces SR 11-7** ([ADR-0019](docs/adr/0019-sr-26-2-replaces-sr-11-7.md)). The
+  interagency model risk guidance of April 17, 2026 (Fed SR 26-2, OCC Bulletin 2026-13, FDIC
+  FIL-15-2026) superseded SR 11-7. The default regime is `SR26-2`, the readiness report's
+  evidence is `sr26_2` (facts `comply.sr26_2.*`), and stages, prompts, templates and docs cite
+  SR 26-2. A profile or run that names `SR11-7` is read as `SR26-2`; results recorded earlier
+  still display.
+- **The new-run form no longer asks for data or offers demos.** It asks for the model's name
+  and what to start from. Demos are runs (`cognos demo`). `projects/` is removed; its examples
+  live on as the demo presets and the built-in templates.
+- **Workbench redesign.** The workbench adopts the "Ledger" design system used by IRIS-D: paper
+  and warm-black themes, serif display type, mono numerals, one oxblood accent, ruled panels
+  instead of boxed cards, a masthead, figure strips, a numbered stage index and a plain activity
+  feed. Still pure Dash + Mantine; no behaviour changed.
+
 ### Fixed
+- **A trial run goes no further than the champion** (ADR-0017). A main run replaced by a
+  trial run could still be decided at its validation gate or signed off (sealing a package)
+  when it was waiting there, and a trial run of a profile with `validate` switched off ran
+  on through compliance, the white paper and sign-off. The engine now schedules nothing from
+  validation on for a trial run and refuses a decision or a re-open at those gates.
+- **A model fitted again is scored from its new fit.** Scorers were kept in memory by file
+  path, and a pool member keeps its id and path when it is fitted again (a changed plan, new
+  exclusions). In a long-lived process (the workbench) outcomes analysis and validation then
+  scored the earlier fit. A saved scorer is read again whenever its file changes.
+- **A run reads its own copy of the scorers.** The model stage records the absolute path of
+  each scorer, so a trial run scored with its parent's files and a runs folder reached under
+  another path could not score at all. Readers resolve the scorer inside the run's own
+  directory (`pool.scorer_path`).
+- **Trading mode reaches validation and the white paper** (ADR-0005). PBO and the deflated
+  Sharpe ratio are recorded under `trading` on the backtest; validation and the white paper
+  read a key that had not existed since, so PBO never weighed on the overfitting score and
+  both printed as "n/a".
+- **The model card no longer says fair-lending checks were performed when they were not.**
+  It states what the compliance stage recorded: the disparate-impact ratio when
+  `compliance.fair_lending` is on, and that no testing was run when it is off.
+- **A lasso logit fit is the same every time.** The solver shuffled its coordinates without
+  the run's seed, so two fits of one specification differed in the sixth digit.
+- The run list no longer fails when the runs folder holds a run recorded before v1.
 - A stage's status label in the stage index no longer turns sideways when the stage is clicked.
 - **Linked sources** ([ADR-0014](docs/adr/0014-linked-sources-the-join-is-proposed-and-confirmed.md)).
   `data.sources` lists several inputs of any kind (a Snowflake table and a CSV, ...). The engine
@@ -239,35 +345,6 @@ versioning is SemVer.
   existing model's artifacts; `service.save_upload` and `service.create_run(engagement=...)` do the
   same from code. Documents are copied into `runs/<id>/inputs/`.
 - Every agent's context carries the confirmed brief (`project.engagement`).
-
-### Changed
-- Nine stages and six review gates. An interactive run pauses first at `gate_intent`; scripts that
-  expected `gate_data` first need to decide it (`accept` with a reason while questions are open).
-- The four core design questions are raised by intake (same ids, `design-<field>`); after the
-  intent is confirmed their answers re-enter at `ideate` as before.
-- Synthetic demos ship an intent document generated from the preset's design brief.
-- Runs recorded before this change load with `intake` and `gate_intent` skipped.
-- **Why a step is out of date.** Every invalidation names its cause (the gate decision, answered
-  question or validator loop) in `StepState.rerun_reason`; the reason stays on the step through
-  the re-run. The rail and the stage panel show it.
-- **What a re-run changed.** Before a stage runs again the engine keeps its last result as
-  `stages/<stage>/result.prev.json`; `service.step_changes` and the stage panel compare the two.
-- **Compare runs** (`cognos compare A B`, `/compare/<a>/<b>` in the workbench, "Compare with
-  previous run" on a run): what was decided differently (gate actions, overrides, config) and what
-  it did to the results (metrics with the difference, verdicts, findings). "Improved" / "worse" is
-  claimed only where the metric has a direction (`compare.py`).
-- **Export a run** (`cognos export RUN`, the Export button): one zip of the documents, stage
-  results and small evidence tables, state (decisions, challenges, questions), config and the agent
-  audit log, with `EXPORT.json` listing every file and its SHA-256. The data directory (the sealed
-  holdout), fitted models and binary caches are never included; agent prompts and raw outputs only
-  with `--with-agent-io`. Sealed packages travel with the export.
-- **Seats and a sealed package.** Each gate belongs to one seat: the model developer (data, design,
-  champion), the independent reviewer (validation), or the approver (sign-off). The workbench shows
-  one map and switches seat; the engine refuses the wrong seat. Use, horizon, default definition
-  and segment cannot be waived. `approve` writes `packages/vN.json` once, bound to a digest of
-  recorded facts. A later edit supersedes that package and does not rewrite the file. Autonomous
-  acceptance is express preparation (`seat=express`), not a signature, and does not seal a package.
-  Approval is not deployment. Who did what — person, agent, or the engine — is computed on read.
 
 ## [1.0.0] — 2026-09-29
 

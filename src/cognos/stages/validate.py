@@ -8,11 +8,11 @@ five-axis rubric (leakage, overfitting, stability, diagnostics, significance), r
 every issue, and applies a strict decision rule where any confirmed leakage or backtest-overfitting
 signal BLOCKs the pipeline outright.
 
-v1: after the deterministic rubric, the **Validation agent** agent adds the judgment a rubric
+v1: after the deterministic rubric, the **Validation agent** adds the judgment a rubric
 cannot. Its slice holds artifacts and engine metrics only — never the modeler's rationale. Its
 findings cite facts and name the stage that must change; high-severity ones are routed back to that
 stage's agent by the engine (``routed_findings``). An agent can raise FAIL/WARN but never BLOCK:
-BLOCK stays reserved for the engine's confirmed-leakage rule (CLAUDE.md non-negotiable #6).
+BLOCK stays reserved for the engine's confirmed-leakage rule (CLAUDE.md non-negotiable #7).
 """
 
 from __future__ import annotations
@@ -79,7 +79,8 @@ class ValidateStage(Stage):
 
         # --- (2) OVERFITTING -----------------------------------------------------
         overfit_score = 1.0
-        pbo = (backtest.get("pbo") or {}).get("pbo")
+        # trading mode only (ADR-0005): the backtest reports PBO under ``trading``
+        pbo = ((backtest.get("trading") or {}).get("pbo") or {}).get("pbo")
         if pbo is not None and not _is_nan(pbo):
             pbo = float(pbo)
             if pbo > PBO_BLOCK:
@@ -356,6 +357,8 @@ class ValidateStage(Stage):
                             f"{why}.",
                     suggestion="Evidence that rests on this script cannot be relied on until it "
                                "reproduces; re-run explore."))
+                if verdict == Verdict.PASS:
+                    verdict = Verdict.WARN
 
         # --- the Validation agent's challenge (never sees the modeler's rationale) ---
         ideate = ctx.get("ideate")

@@ -80,7 +80,7 @@ def section(title: str, *children, right=None, description: str | None = None) -
                   html.Div(description, className="ledger-desc") if description else None]),
         right,
     ], justify="space-between", align="flex-start", mb="sm", wrap="nowrap")
-    return dmc.Card([head, *children])
+    return dmc.Card([head, *children], className="ledger-section", **{"data-title": title})
 
 
 def table(head: list[str], rows: list[list[Any]], *, striped: bool = True,
@@ -109,6 +109,12 @@ def graph(fig, placeholder: str | None = None, **kw) -> Any:
         return empty(placeholder) if placeholder else None
     return dcc.Graph(figure=fig, config={"displaylogo": False, "responsive": True,
                                          "modeBarButtonsToRemove": ["lasso2d", "select2d"]}, **kw)
+
+
+def chips(items: Any) -> html.Div:
+    """A list of factors or columns as small quiet chips that wrap (mono, hairline, no fill)."""
+    return html.Div([html.Span(str(i), className="ledger-chip") for i in items or []],
+                    className="ledger-chips")
 
 
 def empty(text: str) -> dmc.Text:

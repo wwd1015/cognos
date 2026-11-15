@@ -18,7 +18,6 @@ import pandas as pd
 
 from . import charts, sandbox
 
-DIR = "stages/explore/analyses"
 _SEVERITIES = ("low", "medium", "high")
 
 
@@ -148,13 +147,6 @@ def execute(ctx, requests: list[dict[str, Any]], df: pd.DataFrame | None, env: d
         ctx.save_json(rec["artifact"], {**rec, **result})
         records.append(rec)
     return records
-
-
-def load_result(run_dir: Path, record: dict[str, Any]) -> dict[str, Any]:
-    try:
-        return json.loads((Path(run_dir) / record["artifact"]).read_text(encoding="utf-8"))
-    except (FileNotFoundError, ValueError, KeyError):
-        return {}
 
 
 def reproduce(ctx, record: dict[str, Any]) -> tuple[bool, str]:

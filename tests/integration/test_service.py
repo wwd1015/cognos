@@ -56,6 +56,8 @@ def test_list_runs_includes_legacy_runs_read_only(tmp_path):
     rows = service.list_runs(root)
     assert {r["status"] for r in rows} >= {"legacy", "created"}
     assert next(r for r in rows if r["legacy"])["project"] == "old"
+    # every row carries the same keys, so a page can list a legacy run beside the others
+    assert len({frozenset(r) for r in rows}) == 1
     with pytest.raises(KeyError):
         service.engine(legacy.name, root)
 
@@ -133,3 +135,44 @@ def test_delete_refuses_a_run_that_is_working(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="a step is running"):
         service.delete_runs([run_id], root)
     assert (root / run_id).exists()
+
+
+def test_every_demo_takes_n_and_n_is_the_obligors_of_the_migration_panel(tmp_path):
+    import pandas as pd
+
+    root = tmp_path / "runs"
+    for preset in service.DEMO_PRESETS:
+        if preset != "linked":  # the linked demo splits the cni frame; cni covers its n
+            service.demo_config(preset, root, n=60)
+    panel = pd.read_csv(root / "_demo_data" / "migration.csv")
+    assert panel.groupby("asof")["obligor_id"].nunique().iloc[0] == 60
+
+
+def test_reopen_and_retry_record_who_asked(tmp_path):
+    from cognos.engine.graph import GATES
+
+    root = tmp_path / "runs"
+    cfg = service.demo_config("regression", root, n=200, search_budget=4)
+    run_id = service.create_run(cfg, mode="interactive", provider="heuristic", root=root)
+    for _ in range(4):
+        st = service.run_until_idle(run_id, root)
+        gate = next(g for g in GATES if st.status_of(g) == "awaiting")
+        if gate == "gate_design":
+            break
+        service.submit_gate(run_id, gate, "accept", reason="as proposed", root=root,
+                            background=False)
+
+    st = service.reopen(run_id, "gate_data", root, by="bo@desk")
+    assert st.status_of("gate_data") == "awaiting"
+    assert st.steps["gate_data"].by == "bo@desk" and "bo@desk" in st.steps["gate_data"].message
+
+    eng = service.engine(run_id, root)
+    with eng.lock:
+        state = eng.state
+        state.set_step("explore", "failed", "boom")
+        eng._save(state)
+    st = service.retry(run_id, "explore", root, background=False, by="cy@desk")
+    assert st.status_of("explore") == "pending" and "cy@desk" in st.steps["explore"].message
+    events = service.run_events(run_id, root=root)
+    assert any(e["type"] == "gate_waiting" and e.get("by") == "bo@desk" for e in events)
+    assert any(e["type"] == "step_retry" and e.get("by") == "cy@desk" for e in events)
