@@ -29,7 +29,7 @@
    =========================================== */
 :root {
   --paper: #faf9f6; --raised: #fffefb; --surface: #f5f3ee; --sunken: #f1efe8;
-  --ink: #16140f; --ink-2: #6b6557; --ink-3: #8d8775;
+  --ink: #16140f; --ink-2: #6b6557; --ink-3: #777160;
   --accent: #7d2230; --accent-tint: rgba(125, 34, 48, 0.07); --accent-border: rgba(125, 34, 48, 0.30);
   --hair: rgba(22, 20, 15, 0.07); --line: rgba(22, 20, 15, 0.12); --line-strong: rgba(22, 20, 15, 0.30);
   --good: #2f6b4f; --warn: #9a6a12; --bad: #a3312b;
@@ -41,7 +41,7 @@
 }
 [data-theme="dark"] {
   --paper: #171510; --raised: #201d16; --surface: #1d1a13; --sunken: #121009;
-  --ink: #f0ede4; --ink-2: #9a937f; --ink-3: #7d7767;
+  --ink: #f0ede4; --ink-2: #9a937f; --ink-3: #857f6e;
   --accent: #d98b96; --accent-tint: rgba(217, 139, 150, 0.10); --accent-border: rgba(217, 139, 150, 0.34);
   --hair: rgba(240, 237, 228, 0.09); --line: rgba(240, 237, 228, 0.15); --line-strong: rgba(240, 237, 228, 0.34);
   --good: #7fbf9c; --warn: #d9a94a; --bad: #e08a80;
@@ -334,7 +334,7 @@ body.moving .chrome { opacity: 1; }
 <body>
 
 <!-- The edition: the system version this deck describes. test_deck.py holds it to cognos.__version__. -->
-<script type="application/json" id="edition">{"edition": 11, "system_version": "1.0.0", "date": "2026-11-08"}</script>
+<script type="application/json" id="edition">{"edition": 12, "system_version": "1.0.0", "date": "2026-11-15"}</script>
 
 <div class="stage" id="stage">
 
@@ -719,6 +719,7 @@ body.moving .chrome { opacity: 1; }
         <tr><td class="mono">9</td><td class="mono">v1.0.0</td><td class="mono">2026-11-07</td><td>Column transformations in two steps: whether and which at the data gate, one variable at a time with the curve previewed before it counts; the parameters at the design gate, fitted on the development sample only. A custom expression of the variable is allowed (ADR-0024).</td></tr>
         <tr><td class="mono">10</td><td class="mono">v1.0.0</td><td class="mono">2026-11-08</td><td>The design stage in six confirmed steps: model form (each framework's role can be changed with a reason, and a form the engine cannot fit proposed), data treatment, variables, assessment plan, single-factor analysis, summary. The single-factor analysis is seen before the search, after the rules; every look is kept, revised rules are counted and exceptions carry a reason. Models are filtered by rules including variance inflation and ranked in order or by a weighted blend (ADR-0025).</td></tr>
         <tr><td class="mono">11</td><td class="mono">v1.0.0</td><td class="mono">2026-11-08</td><td>A variable can enter in several forms at once (as it is and its log; a driver lagged and as its change), each a variable of its own in the single-factor screen. Every form is decided at the data gate; the design gate fits only shapes and expressions and shows the variables and their forms as one table (ADR-0026). The design stage has seven steps: the variable rules come before the single-factor analysis and the model rules and ranking after it (ADR-0025).</td></tr>
+        <tr><td class="mono">12</td><td class="mono">v1.0.0</td><td class="mono">2026-11-15</td><td>Small grey text meets 4.5:1 contrast in both themes, matching the workbench.</td></tr>
       </tbody>
     </table>
     </div>
