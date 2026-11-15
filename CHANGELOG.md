@@ -137,6 +137,9 @@ versioning is SemVer.
   re-runs when one is recorded after it; `docs/limitations.md` lists the two apart.
 
 ### Changed
+- A snapshot's provenance (`data/source.json`) also leaves out source options whose name
+  contains "token", "secret" or "credential", as well as "password" or "key" as before.
+  Everything else recorded is unchanged; existing runs are not rewritten.
 - Workbench font sizes are in rem, so they follow the browser's text-size setting. Nothing
   changes at the default setting.
 - **The run record lists re-opens, retries and take-overs.** Each is kept on the run

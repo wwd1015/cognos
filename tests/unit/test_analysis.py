@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import sys
 import types
@@ -47,6 +48,26 @@ def test_file_source_reads_common_formats_and_records_provenance(tmp_path, frame
         datasources.load(_cfg({"kind": "file", "path": str(tmp_path / "nope.csv")}))
     with pytest.raises(datasources.SourceError, match="unknown data source"):
         datasources.load(_cfg({"kind": "oracle", "table": "t"}))
+
+
+SECRET_LOOKING = ("api_token", "client_secret", "CREDENTIAL_file", "password_env",
+                  "private_key_file_env")
+ORDINARY = {"warehouse": "WH", "schema": "RISK", "role": "ANALYST"}
+
+
+def test_provenance_leaves_out_options_named_like_secrets(tmp_path, frame):
+    options = {**ORDINARY, **{name: "x" for name in SECRET_LOOKING}}
+    assert datasources._recordable(options) == ORDINARY
+    # end to end: the snapshot's data/source.json records the ordinary options only
+    path = tmp_path / "d.csv"
+    frame.to_csv(path, index=False)
+    from cognos.context import RunContext
+
+    ctx = RunContext(_cfg({"kind": "file", "path": str(path), "options": options}),
+                     runs_root=tmp_path / "runs")
+    ctx.load_dataset()
+    recorded = json.loads((ctx.data_dir / "source.json").read_text(encoding="utf-8"))
+    assert recorded["options"] == ORDINARY
 
 
 def test_sqlite_source_reads_a_table_or_one_read_only_query(tmp_path, frame):

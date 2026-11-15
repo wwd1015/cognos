@@ -35,10 +35,12 @@ number stays with the main session. Nothing is committed.
 8. ~~Merge `review-2026-11` into `main`.~~ Merged on 2026-11-15 (`daa3338`), not pushed.
 9. ~~Two follow-ups: `ModelStage.run` cut into steps; the payload check extended to rows
    and the gate handler.~~ Done 2026-11-15.
-10. **Now:** the open decisions below, one at a time with the user. `review-2026-11` is
-    ahead of `main` again; merge when the user says.
+10. ~~The open decisions, one at a time.~~ Run record: yes, built. px to rem: yes, done.
+    Input borders: kept as they are. Deck grey: done. Provenance filter: yes, built.
+    One-pass scoring: no.
 
-Still waiting for a yes or no: the provenance filter; scoring a factor's folds in one pass.
+No decision is waiting. Noted, not changed: a run's saved profile (`config.yaml`) still
+carries every source option as written; only the provenance is filtered.
 
 ## Decided and done on 2026-11-13
 
@@ -55,9 +57,6 @@ D1 to D11 of the review were confirmed and built. What is left open from them:
 ## Suspected (not proven, not changed)
 
 - **ADR-0025's file name** says "six-steps"; its title says seven. Renaming breaks links.
-- **Provenance filter.** `datasources` drops options whose name contains "password" or "key"
-  from the provenance. An option named `token` would be recorded. Options are documented as
-  never a secret; the filter is narrower than the rule.
 - **Environment.** The `.venv`'s `.pth` files carry the macOS hidden flag, so Python 3.12
   skips them and `.venv/bin/python -m pytest` cannot import `cognos` without
   `PYTHONPATH=src`. `chflags nohidden .venv/lib/python3.12/site-packages/*.pth` should clear
@@ -126,13 +125,10 @@ Looked at and dropped: *fitting the pool members in parallel*. Finalizing the wh
 takes 0.1 to 0.4 s of a 7 to 10 s run (measured on three demos), so there is nothing to
 gain; an earlier note here said otherwise and was wrong.
 
-Next:
-
-1. **What is left is validation itself.** After the memo and the direct fit, most of a
-   run is still `cv_score` (about 2 ms a fold, thousands of folds in the single-factor
-   analysis). The next step would be scoring a factor's folds in one vectorised pass for
-   OLS; that changes the arithmetic, so it needs agreement to a tolerance, not to the bit,
-   and therefore a decision.
+Decided against on 2026-11-15: *scoring a factor's folds in one vectorised pass*. It
+would be faster but agree with today's numbers to a tolerance, not to the bit. The user:
+an analysis that takes seconds or even minutes is fine; do not over-engineer it. No
+further speed work is planned.
 
 Also looked at and dropped: *reading `state.json` only when it moved*. A state load is
 0.15 ms and listing a run 0.45 ms (measured 2026-11-15); the page asks once a second and
