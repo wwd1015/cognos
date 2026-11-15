@@ -137,6 +137,19 @@ versioning is SemVer.
   re-runs when one is recorded after it; `docs/limitations.md` lists the two apart.
 
 ### Changed
+- **The creed reads in the engine's order everywhere: the engine disposes, agents recommend,
+  people decide.** The README, ARCHITECTURE, CONTEXT, CLAUDE.md, ADR-0010's heading, the
+  package description, the CLI, the workbench and the decision log say it in that order.
+- **The three-part C mark** (docs/brand) replaces the two-O wordmark in the workbench
+  masthead, the tab icon and the deck: solid ink, the engine; dashed, the agents; the oxblood
+  block that locks the C, a person. Drawn with CSS masks so it follows both themes.
+- **Re-opening a decision puts what follows on hold.** A finished step after a re-opened gate
+  shows "on hold"; the same decision again leaves it standing, new data sends the data gate
+  back with the earlier exclusions, forms and target offered. Express preparation never
+  replaces a person's decision.
+- **The Explore page decides variables beside their numbers.** The outcome sits with the join;
+  every variable is one line of a scrolling table (type, missing share, correlation,
+  information value, stability, collinearity, the Data agent's advice) with an In/Out switch.
 - An export replaces a source option whose name contains "password", "key", "token",
   "secret" or "credential" with `<left out of the export>` in the exported `config.yaml` and
   `state.json`, unless it is an environment reference (a name ending `_env`, or a value

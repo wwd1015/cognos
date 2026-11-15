@@ -1,4 +1,4 @@
-"""The v1 workflow: agents recommend, humans decide at gates, the engine disposes.
+"""The v1 workflow: the engine disposes, agents recommend, people decide at gates.
 
 Driven through :class:`cognos.engine.Engine` with the deterministic (heuristic) agents, or with
 recorded outputs (replay) where a test needs a specific agent answer.

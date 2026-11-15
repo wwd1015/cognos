@@ -1,4 +1,4 @@
-# Agents recommend, humans decide, the engine disposes (v1.0)
+# The engine disposes, agents recommend, people decide (v1.0)
 
 ADR-0001 made COGNOS a two-layer system — reasoning proposes, the engine disposes — but in v0.x the
 reasoning layer was thin: stages called an optional `brain.generate()` in a few places, parsed JSON

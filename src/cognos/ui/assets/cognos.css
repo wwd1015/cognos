@@ -113,12 +113,13 @@ a:hover { text-decoration: underline; text-underline-offset: 0.2em; }
   font-family: var(--font-display); font-weight: 700; font-size: 1.6875rem; letter-spacing: 0.01em;
   line-height: 1;
 }
-/* the wordmark's two O's are the creed: dashed, the agents suggest; solid, a person decides
-   (docs/brand/cognos-logo.svg) */
-.wm-o { display: inline-block; width: 0.7em; height: 0.7em; margin: 0 0.05em; border-radius: 50%; box-sizing: border-box; }
-.wm-o.agent { background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2233%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2211%22%20stroke-dasharray%3D%2216%209.9%22/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2080%2080%22%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2233%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2211%22%20stroke-dasharray%3D%2216%209.9%22/%3E%3C/svg%3E") center / contain no-repeat; }
-.wm-o.person { background: var(--accent); }
+/* the mark (docs/brand/cognos-mark.svg): the creed as one C. Solid ink, the engine disposes;
+   dashed, agents recommend; the oxblood block that locks it, people decide. The ink follows
+   the text colour and the block the accent, so it holds in both themes. */
+.wm-mark { display: inline-block; position: relative; width: 1.2em; height: 1.2em; vertical-align: -0.24em; margin-right: 0.28em; }
+.wm-mark::before, .wm-mark::after { content: ""; position: absolute; inset: 0; }
+.wm-mark::before { background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Cpath%20d=%22M71.92%2071.92%20A31%2031%200%200%201%2023.15%2065.50%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22/%3E%3Cpath%20d=%22M20.87%2060.60%20A31%2031%200%200%201%2051.08%2019.02%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22%20stroke-dasharray=%2214.43%208.66%22/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Cpath%20d=%22M71.92%2071.92%20A31%2031%200%200%201%2023.15%2065.50%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22/%3E%3Cpath%20d=%22M20.87%2060.60%20A31%2031%200%200%201%2051.08%2019.02%22%20fill=%22none%22%20stroke=%22%23000%22%20stroke-width=%2213%22%20stroke-dasharray=%2214.43%208.66%22/%3E%3C/svg%3E") center / contain no-repeat; }
+.wm-mark::after { background: var(--accent); -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Crect%20x=%2260.22%22%20y=%2216.92%22%20width=%2216%22%20height=%2216%22%20fill=%22%23000%22%20transform=%22rotate%2836%2068.22%2024.92%29%22/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Crect%20x=%2260.22%22%20y=%2216.92%22%20width=%2216%22%20height=%2216%22%20fill=%22%23000%22%20transform=%22rotate%2836%2068.22%2024.92%29%22/%3E%3C/svg%3E") center / contain no-repeat; }
 .masthead-eyebrow, .eyebrow {
   font-family: var(--font); font-size: 0.65625rem; font-weight: 500; letter-spacing: 0.16em;
   text-transform: uppercase; color: var(--ink-2);

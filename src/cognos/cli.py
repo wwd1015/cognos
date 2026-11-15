@@ -851,7 +851,7 @@ def _cmd_export(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cognos",
-                                description="COGNOS — agents recommend, you decide, the engine disposes.")
+                                description="COGNOS — the engine disposes, agents recommend, people decide.")
     sub = p.add_subparsers(dest="command", required=True)
 
     def runs(sp):

@@ -135,7 +135,7 @@ def runs_page() -> Any:
                      className="ledger-desc"),
             html.Div(id="runs-table", children=runs_table()),
         ], mt="xl"),
-        html.Div([html.Span("Agents recommend, people decide, the engine computes every number."),
+        html.Div([html.Span("The engine computes every number, agents recommend, people decide."),
                   html.Span("Internal use")], className="page-foot"),
         drawer,
         delete_modal(),

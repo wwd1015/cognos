@@ -16,10 +16,10 @@ from ..theme import MANTINE_THEME
 
 
 def header() -> dmc.AppShellHeader:
-    """The masthead: a serif wordmark over a double rule, and a few quiet controls."""
+    """The masthead: the mark and the name over a double rule, and a few quiet controls."""
     return dmc.AppShellHeader(html.Div(html.Div([
-        dcc.Link([html.Span(["C", html.Span(className="wm-o agent"), "GN", html.Span(className="wm-o person"),
-                             "S"], className="masthead-word", title="COGNOS", **{"aria-label": "COGNOS"}),
+        dcc.Link([html.Span([html.Span(className="wm-mark", **{"aria-hidden": "true"}), "COGNOS"],
+                            className="masthead-word", title="COGNOS"),
                   html.Span("Model development workbench", className="masthead-eyebrow")],
                  href="/", className="masthead-brand"),
         html.Div([
