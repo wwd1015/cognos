@@ -19,8 +19,8 @@ versioning is SemVer.
   outcome, the rows of every validation block, the metric, the library versions). A look at
   the screen and a re-run after a changed rule take a fraction of the time; every recorded
   number is the same with and without it.
-- `docs/future-work.md`: what the review left open, the decisions that wait, and what is
-  proposed next.
+- `docs/future-work.md`: what the review decided against, the gaps it knows of and what
+  it suspects and did not prove.
 - Catalog sources (ADR-0022): the data catalog answers search, describe, links and defaults
   behind one plugin contract (`catalog.CatalogSource`, `registry.add_catalog`,
   `COGNOS_CATALOG`), so a metadata system or a skill can supply it. The YAML catalog is the
