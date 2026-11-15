@@ -1,12 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 120" role="img" aria-label="COGNOS">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 120" role="img" aria-label="COGNOS">
   <title>COGNOS</title>
-  <!-- The two O's are the creed: the dashed one suggests (the agents), the solid one decides (a person). -->
-  <g font-family="'Source Serif 4', Georgia, 'Times New Roman', serif" font-weight="600" font-size="112" fill="#f0ede4">
-    <text x="50" y="100" text-anchor="middle">C</text>
-    <text x="232" y="100" text-anchor="middle">G</text>
-    <text x="326" y="100" text-anchor="middle">N</text>
-    <text x="504" y="100" text-anchor="middle">S</text>
-    <circle cx="140" cy="64" r="31" fill="none" stroke="#f0ede4" stroke-width="11" stroke-dasharray="13.5 9"/>
-    <circle cx="418" cy="64" r="37" fill="#e0939e"/>
+  <!-- The creed in one C, read around the curve: solid, the engine disposes; dashed, agents recommend; the oxblood block that locks it, people decide. -->
+  <g transform="scale(1.2)">
+  <path d="M71.92 71.92 A31 31 0 0 1 23.15 65.50" fill="none" stroke="#f0ede4" stroke-width="13"/>
+  <path d="M20.87 60.60 A31 31 0 0 1 51.08 19.02" fill="none" stroke="#f0ede4" stroke-width="13" stroke-dasharray="14.43 8.66"/>
+  <rect x="60.22" y="16.92" width="16" height="16" fill="#e0939e" transform="rotate(36 68.22 24.92)"/>
   </g>
+  <text x="146" y="82" textLength="318" lengthAdjust="spacing" font-family="'Source Serif 4', Georgia, 'Times New Roman', serif" font-weight="600" font-size="64" fill="#f0ede4">COGNOS</text>
 </svg>

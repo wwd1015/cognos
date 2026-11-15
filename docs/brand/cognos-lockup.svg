@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 120" role="img" aria-label="COGNOS: engine disposes, agents recommend, people decide">
+  <title>COGNOS: engine disposes, agents recommend, people decide</title>
+  <!-- The creed in one C, read around the curve: solid, the engine disposes; dashed, agents recommend; the oxblood block that locks it, people decide. -->
+  <g transform="scale(1.2)">
+  <path d="M71.92 71.92 A31 31 0 0 1 23.15 65.50" fill="none" stroke="#16140f" stroke-width="13"/>
+  <path d="M20.87 60.60 A31 31 0 0 1 51.08 19.02" fill="none" stroke="#16140f" stroke-width="13" stroke-dasharray="14.43 8.66"/>
+  <rect x="60.22" y="16.92" width="16" height="16" fill="#7d2230" transform="rotate(36 68.22 24.92)"/>
+  </g>
+  <text x="146" y="70" textLength="300" lengthAdjust="spacing" font-family="'Source Serif 4', Georgia, 'Times New Roman', serif" font-weight="600" font-size="60" fill="#16140f">COGNOS</text>
+  <text x="147" y="101" textLength="446" lengthAdjust="spacing" font-family="'IBM Plex Mono', Menlo, Consolas, monospace" font-weight="500" font-size="13.5" fill="#5c574b">ENGINE DISPOSES · AGENTS RECOMMEND · <tspan fill="#7d2230">PEOPLE DECIDE</tspan></text>
+</svg>
