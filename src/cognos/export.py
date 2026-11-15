@@ -36,35 +36,31 @@ NOT_INCLUDED = ("data/ (training data and the sealed holdout)", "models/ (fitted
                 "binary caches under stages/ (.parquet, .joblib, .npz)")
 
 
-def _redact_data(data: Any) -> bool:
-    """Replace secret-named literal options in a ``data`` mapping (a profile's data section, or
-    the data given at gate_source): its ``source`` and each of its ``sources``. In place; says
-    whether anything was replaced."""
-    if not isinstance(data, dict):
+def _redact_in(holder: Any, key: str = "data") -> bool:
+    """Replace ``holder[key]`` (a ``data`` mapping) by ``datasources.redacted_data`` of it;
+    says whether anything was replaced."""
+    if not isinstance(holder, dict):
         return False
-    changed = False
-    for src in [data.get("source"), *(data.get("sources") or [])]:
-        if isinstance(src, dict) and isinstance(src.get("options"), dict):
-            new = datasources.redacted(src["options"])
-            if new != src["options"]:
-                src["options"], changed = new, True
+    new, changed = datasources.redacted_data(holder.get(key))
+    if changed:
+        holder[key] = new
     return changed
 
 
 def redact_profile(raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     """A loaded ``config.yaml`` as it may leave the run, and whether anything was replaced."""
     out = copy.deepcopy(raw)
-    return out, _redact_data(out.get("data"))
+    return out, _redact_in(out)
 
 
 def redact_state(raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     """A loaded ``state.json`` as it may leave the run: the data given at gate_source sits in
     ``overrides.data`` and on each gate_source decision's payload."""
     out = copy.deepcopy(raw)
-    changed = _redact_data((out.get("overrides") or {}).get("data"))
+    changed = _redact_in(out.get("overrides"))
     for d in out.get("decisions") or []:
         if isinstance(d, dict) and d.get("gate") == "gate_source":
-            changed = _redact_data((d.get("payload") or {}).get("data")) or changed
+            changed = _redact_in(d.get("payload")) or changed
     return out, changed
 
 

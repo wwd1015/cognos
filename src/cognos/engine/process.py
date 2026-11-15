@@ -23,6 +23,7 @@ from ..agents.contracts import FRIENDLY
 # The four sponsor decisions a package cannot be sealed without (data questions may be
 # accepted as assumptions; these may not). Defined once, in config; read here by the gates.
 from ..config import CORE_DESIGN
+from ..datasources import redacted_data
 from ..fsutil import atomic_write
 from .graph import LABELS, STAGES, STEPS
 from .state import PackageSeal, RunState, utcnow
@@ -116,7 +117,8 @@ def material(config: Any, state: RunState, results: dict[str, Any]) -> dict[str,
         **tried,
         "design": effective_design(config, state),
         # What the data are and how they enter: given, joined, aimed at, excluded, formed.
-        "data": ov.data,
+        # Literal source options named like a secret are replaced: a package never holds one.
+        "data": redacted_data(ov.data)[0],
         "target": ov.target or getattr(config.data, "target", None) or None,
         "task": ov.task or getattr(getattr(config, "task", None), "value", None),
         "join": (payload_of("explore").get("linking") or {}).get("plan") or ov.join,

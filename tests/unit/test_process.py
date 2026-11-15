@@ -150,6 +150,59 @@ def test_approve_seals_a_package_and_a_later_edit_does_not_rewrite_it(make_confi
     assert path.read_text(encoding="utf-8") == original  # the sealed file is never rewritten
 
 
+_GIVEN = {"source": {"kind": "sql", "location": "loans", "options": {
+    "warehouse": "W", "api_token": "abc123", "password_env": "MY_PW",
+    "client_secret": "env:MY_SECRET"}}}
+
+
+def test_a_package_binds_the_data_with_secret_named_literals_replaced(make_config, runs_dir, tmp_path):
+    """A literal source option named like a secret is replaced in the material; the run's own
+    overrides keep it (the engine reads them back); the sealed file verifies against itself."""
+    from cognos.datasources import LEFT_OUT
+    from cognos.engine.process import seal_package
+
+    eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
+    state = eng.state.model_copy(deep=True)
+    state.overrides.data = json.loads(json.dumps(_GIVEN))
+    body = material(eng.config, state, {})
+    assert body["data"]["source"]["options"] == {
+        "warehouse": "W", "api_token": LEFT_OUT, "password_env": "MY_PW",
+        "client_secret": "env:MY_SECRET"}
+    assert state.overrides.data == _GIVEN  # the state keeps the value
+    seal = seal_package(state, eng.config, {}, tmp_path)
+    sealed = json.loads((tmp_path / seal.path).read_text(encoding="utf-8"))
+    assert "abc123" not in json.dumps(sealed)
+    assert digest_of(sealed["material"]) == sealed["digest"] == seal.digest
+
+
+def test_a_run_without_secret_named_options_binds_its_data_as_before(make_config, runs_dir):
+    eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
+    state = eng.state.model_copy(deep=True)
+    for data in (None, {}, {"source": {"kind": "csv", "location": "x.csv",
+                                       "options": {"sep": ";", "password_env": "PW"}},
+                            "sources": [{"name": "a", "options": {"token": "env:T"}}]}):
+        state.overrides.data = data
+        body = material(eng.config, state, {})
+        assert body["data"] == data and body["data"] is data
+        assert digest_of(body) == digest_of({**body, "data": state.overrides.data})
+
+
+def test_the_value_of_a_secret_is_not_a_recorded_fact(make_config, runs_dir):
+    """Two runs that differ only in the literal value of a secret-named option bind the same
+    digest: the secret's value is not a recorded fact. An ordinary option still counts."""
+    eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
+
+    def digest(**options):
+        state = eng.state.model_copy(deep=True)
+        given = json.loads(json.dumps(_GIVEN))
+        given["source"]["options"].update(options)
+        state.overrides.data = given
+        return digest_of(material(eng.config, state, {}))
+
+    assert digest(api_token="abc123") == digest(api_token="other")
+    assert digest(warehouse="W") != digest(warehouse="X")
+
+
 def test_open_brief_cannot_be_signed(make_config, runs_dir):
     eng = Engine(make_config("classification"), runs_root=runs_dir, mode="interactive")
     for _ in range(20):

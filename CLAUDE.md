@@ -59,8 +59,9 @@ finding per item; `document` lists the two apart). A new way to close a gap must
 Seats (`engine/process.py`): developer on intent, source, data, design, candidates and champion; reviewer on validation;
 approver on sign-off. The engine refuses a seat on another seat's gate. Use, horizon, default
 definition and segment cannot be assumed, and `approve` refuses while any of them is open.
-`approve` writes `packages/vN.json` once (a digest of recorded facts). A later invalidation
-supersedes the live pointer and does not rewrite the file. Autonomous acceptance is seat
+`approve` writes `packages/vN.json` once (a digest of recorded facts). The data it binds has
+literal source options named like a secret replaced (`datasources.redacted_data`), so a package
+never holds one. A later invalidation supersedes the live pointer and does not rewrite the file. Autonomous acceptance is seat
 `express` — preparation, not a signature, and it does not seal a package. The record
 (`process.journal`) is computed on read from stamps the run already carries.
 
